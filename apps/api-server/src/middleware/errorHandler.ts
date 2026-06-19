@@ -5,6 +5,10 @@ import { ToolRunnerError } from "@freeos/tool-runner";
 import type { ErrorResponse } from "../types/api";
 
 export const errorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
+  if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+    response.status(504).json({ error: "The local service request timed out. FREEOS is still available; verify the optional service and retry." });
+    return;
+  }
   if (error instanceof MemoryCoreError) {
     const status = error.code === "not_found" ? 404 : error.code === "conflict" ? 409 : error.code === "validation" ? 400 : 503;
     response.status(status).json({ error: error.message });

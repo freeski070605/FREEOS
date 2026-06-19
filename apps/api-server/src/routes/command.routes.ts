@@ -3,6 +3,9 @@ import { checkSearxngStatus, getResearchService } from "@freeos/research-core";
 import { getMemoryStore } from "@freeos/memory-core";
 import { getVoiceStatus, synthesizeSpeech } from "@freeos/voice-core";
 import { getToolRegistry, ToolRequests } from "@freeos/tool-runner";
+import { getRagConfig, RagService } from "@freeos/rag-core";
+import Database from "better-sqlite3";
+import { join } from "node:path";
 import { config } from "../config";
 import { getOllamaStatus } from "../services/ollama.service";
 import { getSystemStatus } from "../services/system.service";
@@ -13,10 +16,32 @@ getMemoryStore(); // Initializes additive Command Center tables before any comma
 const store = () => getMemoryStore();
 const registry = () => getToolRegistry();
 const db = () => registry().database;
+
+// Get or create RAG service
+let ragService: RagService | null = null;
+function getRagService(): RagService | null {
+  if (!ragService) {
+    try {
+      const ragConfig = getRagConfig();
+      if (!ragConfig.enabled) return null;
+      
+      const freeosRoot = process.env.FREEOS_ROOT || process.cwd();
+      const dbPath = join(freeosRoot, "data", "freeos.sqlite");
+      const ragDb = new Database(dbPath);
+      ragDb.pragma("foreign_keys = ON");
+      ragService = new RagService(ragConfig, ragDb);
+    } catch {
+      return null;
+    }
+  }
+  return ragService;
+}
+
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const count = (sql: string, ...args: unknown[]) => Number((db().prepare(sql).get(...args) as { count: number }).count);
 const bool = (value: unknown, fallback: boolean) => typeof value === "boolean" ? value : fallback;
 const tags = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : typeof value === "string" ? value.split(",").map((item) => item.trim()).filter(Boolean) : [];
+
 
 commandRouter.get("/status", async (_request, response, next) => {
   try {
@@ -24,6 +49,7 @@ commandRouter.get("/status", async (_request, response, next) => {
     const memory = store().getMemoryStatus(); const projects = store().getProjectStatus(); const voice = getVoiceStatus(); const tools = registry().listTools();
     const pendingMemory = memory.pendingProposals; const pendingTools = count("SELECT COUNT(*) AS count FROM tool_requests WHERE status='pending'");
     response.json({
+      version: config.version, releaseName: config.releaseName, phaseNumber: config.phaseNumber, isStableRelease: true,
       api: { online: true, service: "FREEOS API", timestamp: new Date().toISOString() }, system: getSystemStatus(), ollama: { ...ollama, defaultModel: config.defaultModel }, memory,
       projects, research: { searxngOnline, searxngBaseUrl: config.searxngBaseUrl, counts: getResearchService().getStatusCounts() }, voice,
       tools: { enabled: true, registered: tools.length, pendingRequests: pendingTools, highRiskBlocked: tools.filter((tool) => tool.riskLevel === "high_risk").every((tool) => !tool.enabled) },
@@ -97,13 +123,37 @@ commandRouter.post("/chat", async (request, response, next) => {
         const rows = db().prepare("SELECT title, query FROM research_sessions ORDER BY id DESC LIMIT 5").all() as Array<{ title: string; query: string }>;
         research = `RECENT RESEARCH SESSIONS\n${rows.map((row) => `- ${row.title}: ${row.query}`).join("\n")}`;
       }
-      const localResponse = await fetch(`${config.ollamaBaseUrl}/api/generate`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ model, prompt: message, system: [systemPrompt, liveStatus, context, research, createdMemoryProposalId ? "A pending memory proposal was created; tell the user it still requires approval." : "", createdToolRequestId ? "A tool request was created; tell the user it requires approval and a separate Run click." : ""].filter(Boolean).join("\n\n"), stream: false, think: false, options: { temperature: 0.2, num_predict: 500 } }), signal: AbortSignal.timeout(120_000) });
+      
+      const useRag = bool(body.useRag, false);
+      const ragMode = typeof body.ragMode === "string" ? body.ragMode : "keyword";
+      const ragTopK = typeof body.ragTopK === "number" ? body.ragTopK : undefined;
+      let ragUsed = false;
+      let ragSources: Array<{ documentPath: string; documentName: string; chunks: number[] }> = [];
+      let ragContext = "";
+      
+      if (useRag) {
+        const rag = getRagService();
+        if (rag) {
+          try {
+            const contextResult = await rag.buildContext(message, projectKey, ragTopK, false, false, true);
+            if (contextResult.context && contextResult.context.trim().length > 0) {
+              ragUsed = true;
+              ragSources = contextResult.sources;
+              ragContext = `INDEXED DOCUMENTS\n${contextResult.context}`;
+            }
+          } catch (error) {
+            console.warn("RAG context retrieval failed, continuing without RAG:", error);
+          }
+        }
+      }
+      
+      const localResponse = await fetch(`${config.ollamaBaseUrl}/api/generate`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ model, prompt: message, system: [systemPrompt, liveStatus, context, research, ragContext, createdMemoryProposalId ? "A pending memory proposal was created; tell the user it still requires approval." : "", createdToolRequestId ? "A tool request was created; tell the user it requires approval and a separate Run click." : ""].filter(Boolean).join("\n\n"), stream: false, think: false, options: { temperature: 0.2, num_predict: 500 } }), signal: AbortSignal.timeout(120_000) });
       if (!localResponse.ok) throw new Error(`Local Ollama returned HTTP ${localResponse.status}.`);
       const payload = await localResponse.json() as { response?: string }; responseText = payload.response?.trim() ?? "";
       if (!responseText) throw new Error("Local Ollama returned an empty response.");
     }
     const speech = body.speak === true ? await synthesizeSpeech(responseText) : null;
     const result = db().prepare(`INSERT INTO command_chat_sessions (message,response,project_key,model,used_memory,used_project_notes,used_research_context,created_memory_proposal_id,created_tool_request_id,audio_output_path) VALUES (?,?,?,?,?,?,?,?,?,?)`).run(message, responseText, projectKey ?? null, model, useMemory ? 1 : 0, projectKey && useProjectNotes ? 1 : 0, useResearchContext ? 1 : 0, createdMemoryProposalId, createdToolRequestId, speech?.outputPath ?? null);
-    response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null });
+    response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null, ragUsed: bool(body.useRag, false), ragSources, ragMode: bool(body.useRag, false) ? body.ragMode : undefined });
   } catch (error) { next(error); }
 });

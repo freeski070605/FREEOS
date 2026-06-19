@@ -25,6 +25,7 @@ export function ResearchPanel({ projects, onMemoryChanged, onNoteChanged }: { pr
     const settled = await Promise.allSettled([api.researchStatus(), api.researchSessions()]);
     if (settled[0].status === "fulfilled") setStatus(settled[0].value);
     if (settled[1].status === "fulfilled") setSessions(settled[1].value);
+    if (settled.some((item) => item.status === "rejected")) setFeedback({ error: "Research status is unavailable. The rest of FREEOS remains usable; verify the local API and SearXNG setup." });
   }, []);
   useEffect(() => { void refreshStatus(); }, [refreshStatus]);
 

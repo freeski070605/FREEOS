@@ -2,6 +2,9 @@ export interface HealthStatus { online: boolean; service: string; timestamp: str
 export interface SystemStatus {
   appName: "FREEOS";
   assistantName: "free-os";
+  version: string;
+  releaseName: string;
+  isStableRelease: boolean;
   phase: string;
   localFirst: boolean;
   localMemoryEnabled: boolean;

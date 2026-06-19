@@ -13,6 +13,7 @@ import { voiceRouter } from "./routes/voice.routes";
 import { toolsRouter } from "./routes/tools.routes";
 import { automationsRouter } from "./routes/automations.routes";
 import { commandRouter } from "./routes/command.routes";
+import { ragRouter } from "./routes/rag.routes";
 import { registerDefaultTools } from "@freeos/tool-runner";
 
 const app = express();
@@ -33,6 +34,7 @@ app.use("/voice", voiceRouter);
 app.use("/tools", toolsRouter);
 app.use("/automations", automationsRouter);
 app.use("/command", commandRouter);
+app.use("/rag", ragRouter);
 
 app.use((_request, response) => {
   response.status(404).json({ error: "Route not found." });

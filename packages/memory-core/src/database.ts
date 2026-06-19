@@ -384,6 +384,88 @@ export class MemoryStore {
       CREATE INDEX IF NOT EXISTS idx_automation_events_created ON automation_events(created_at);
       CREATE INDEX IF NOT EXISTS idx_command_chat_created ON command_chat_sessions(created_at);
       CREATE INDEX IF NOT EXISTS idx_backup_events_created ON backup_events(created_at);
+      CREATE TABLE IF NOT EXISTS rag_sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL UNIQUE,
+        project_key TEXT,
+        source_type TEXT NOT NULL DEFAULT 'folder',
+        root_path TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (project_key) REFERENCES projects(project_key)
+      );
+      CREATE TABLE IF NOT EXISTS rag_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id INTEGER,
+        project_key TEXT,
+        file_path TEXT NOT NULL UNIQUE,
+        file_name TEXT NOT NULL,
+        file_ext TEXT,
+        file_size INTEGER,
+        file_hash TEXT,
+        title TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        indexed_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (source_id) REFERENCES rag_sources(id) ON DELETE SET NULL,
+        FOREIGN KEY (project_key) REFERENCES projects(project_key)
+      );
+      CREATE TABLE IF NOT EXISTS rag_chunks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        document_id INTEGER NOT NULL,
+        chunk_index INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        content_hash TEXT,
+        token_estimate INTEGER,
+        metadata TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (document_id) REFERENCES rag_documents(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS rag_embeddings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chunk_id INTEGER NOT NULL UNIQUE,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        dimensions INTEGER,
+        embedding_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (chunk_id) REFERENCES rag_chunks(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS rag_index_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        root_path TEXT NOT NULL,
+        project_key TEXT,
+        files_seen INTEGER NOT NULL DEFAULT 0,
+        files_indexed INTEGER NOT NULL DEFAULT 0,
+        chunks_created INTEGER NOT NULL DEFAULT 0,
+        errors TEXT,
+        started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        finished_at TEXT,
+        FOREIGN KEY (project_key) REFERENCES projects(project_key)
+      );
+      CREATE TABLE IF NOT EXISTS rag_queries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query TEXT NOT NULL,
+        project_key TEXT,
+        mode TEXT NOT NULL DEFAULT 'keyword',
+        top_k INTEGER NOT NULL DEFAULT 8,
+        results_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (project_key) REFERENCES projects(project_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_rag_sources_enabled ON rag_sources(enabled);
+      CREATE INDEX IF NOT EXISTS idx_rag_documents_status ON rag_documents(status);
+      CREATE INDEX IF NOT EXISTS idx_rag_documents_source ON rag_documents(source_id);
+      CREATE INDEX IF NOT EXISTS idx_rag_documents_project ON rag_documents(project_key);
+      CREATE INDEX IF NOT EXISTS idx_rag_chunks_document ON rag_chunks(document_id);
+      CREATE INDEX IF NOT EXISTS idx_rag_embeddings_chunk ON rag_embeddings(chunk_id);
+      CREATE INDEX IF NOT EXISTS idx_rag_index_jobs_status ON rag_index_jobs(status);
+      CREATE INDEX IF NOT EXISTS idx_rag_queries_created ON rag_queries(created_at);
     `);
 
     const insertProject = this.#database.prepare(`
@@ -585,6 +667,10 @@ export class MemoryStore {
     if (!project) throw new MemoryCoreError(`Unknown projectKey: ${projectKey}.`, "not_found");
     const noteCount = Number((this.#database.prepare("SELECT COUNT(*) AS count FROM project_notes WHERE project_key = ?").get(project.projectKey) as Row).count);
     return { ...project, noteCount };
+  }
+
+  getDatabase(): Database.Database {
+    return this.#database;
   }
 
   buildLocalContext(options: LocalContextOptions = {}): string {

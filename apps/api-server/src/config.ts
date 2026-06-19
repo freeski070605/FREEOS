@@ -8,6 +8,9 @@ function parsePort(value: string | undefined, fallback: number): number {
 }
 
 export const config = Object.freeze({
+  version: process.env.FREEOS_VERSION?.trim() || "1.0.0",
+  releaseName: process.env.FREEOS_RELEASE_NAME?.trim() || "Command Center v1",
+  phaseNumber: 6,
   port: parsePort(process.env.API_PORT, 3001),
   ollamaBaseUrl: (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, ""),
   searxngBaseUrl: (process.env.SEARXNG_BASE_URL ?? "http://127.0.0.1:8080").replace(/\/$/, ""),

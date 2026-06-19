@@ -36,3 +36,12 @@ Logs and `system_events` should not contain secrets. Phase 5 has no background a
 - Backups never delete or overwrite and exclude `.env`, dependencies, model files, large service trees, and generated voice audio by default.
 - Unified activity is a local audit view, not an execution channel.
 - The Command Center does not enable cloud providers, always-listening voice, or a background scheduler.
+
+## RAG (Retrieval Augmented Generation) rules
+
+- **Scanning scope**: RAG only indexes files in allowed roots (`data/documents`, `data/projects`, `docs`). The entire filesystem is never scanned.
+- **Exclusions**: RAG never indexes secrets (`.env` files), model files (`.gguf`, `.bin`), databases (`.sqlite`, `.db`), audio/video files, or excluded directories (`node_modules`, `.git`, `exports/backups`, etc.).
+- **Source file safety**: Deleting document index records does not delete the source file. Source files are never destructively modified during indexing.
+- **Memory approval**: Document content is used only for context in chat, not automatically saved as memory. Documents do not bypass memory approval requirements.
+- **Embeddings**: Optional local embeddings through Ollama require explicit opt-in and configuration. Keyword search works without any embedding service.
+- **No cloud dependency**: RAG requires only local SQLite and Ollama (if embeddings are enabled). No paid API keys or cloud providers are required.
