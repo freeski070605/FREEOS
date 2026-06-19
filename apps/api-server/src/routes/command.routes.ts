@@ -106,6 +106,10 @@ commandRouter.post("/chat", async (request, response, next) => {
     const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.defaultModel;
     const useMemory = bool(body.useMemory, true); const useProjectNotes = bool(body.useProjectNotes, true); const useResearchContext = bool(body.useResearchContext, false);
     let createdMemoryProposalId: number | null = null; let createdToolRequestId: number | null = null; let responseText: string;
+    let ragUsed = false;
+    let ragSources: Array<{ documentPath: string; documentName: string; chunks: number[] }> = [];
+    let ragContext = "";
+    const warnings: string[] = [];
     if (highRisk.test(message)) {
       responseText = "I can’t perform or queue that high-risk action. FREEOS keeps destructive actions, sending, purchases, trading, deployments, and credential access blocked. I can help with a safe plan or read-only review instead.";
     } else {
@@ -127,9 +131,6 @@ commandRouter.post("/chat", async (request, response, next) => {
       const useRag = bool(body.useRag, false);
       const ragMode = typeof body.ragMode === "string" ? body.ragMode : "keyword";
       const ragTopK = typeof body.ragTopK === "number" ? body.ragTopK : undefined;
-      let ragUsed = false;
-      let ragSources: Array<{ documentPath: string; documentName: string; chunks: number[] }> = [];
-      let ragContext = "";
       
       if (useRag) {
         const rag = getRagService();
@@ -140,10 +141,15 @@ commandRouter.post("/chat", async (request, response, next) => {
               ragUsed = true;
               ragSources = contextResult.sources;
               ragContext = `INDEXED DOCUMENTS\n${contextResult.context}`;
+            } else {
+              warnings.push("RAG requested but no matching indexed documents were found.");
             }
           } catch (error) {
             console.warn("RAG context retrieval failed, continuing without RAG:", error);
+            warnings.push("RAG context retrieval failed. Chat will continue without indexed documents.");
           }
+        } else if (bool(body.useRag, false)) {
+          warnings.push("RAG is not enabled or unavailable. Chat will continue without indexed documents.");
         }
       }
       
@@ -154,6 +160,6 @@ commandRouter.post("/chat", async (request, response, next) => {
     }
     const speech = body.speak === true ? await synthesizeSpeech(responseText) : null;
     const result = db().prepare(`INSERT INTO command_chat_sessions (message,response,project_key,model,used_memory,used_project_notes,used_research_context,created_memory_proposal_id,created_tool_request_id,audio_output_path) VALUES (?,?,?,?,?,?,?,?,?,?)`).run(message, responseText, projectKey ?? null, model, useMemory ? 1 : 0, projectKey && useProjectNotes ? 1 : 0, useResearchContext ? 1 : 0, createdMemoryProposalId, createdToolRequestId, speech?.outputPath ?? null);
-    response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null, ragUsed: bool(body.useRag, false), ragSources: ragSources ?? [], ragMode: bool(body.useRag, false) ? body.ragMode : undefined });
+    response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null, memoryUsed: useMemory, projectNotesUsed: Boolean(projectKey && useProjectNotes), ragUsed, ragSources: ragSources ?? [], ragMode: ragUsed ? (typeof body.ragMode === "string" ? body.ragMode : "keyword") : undefined, warnings: warnings.length > 0 ? warnings : undefined });
   } catch (error) { next(error); }
 });
