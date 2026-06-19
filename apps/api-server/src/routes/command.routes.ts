@@ -24,13 +24,13 @@ function getRagService(): RagService | null {
     try {
       const ragConfig = getRagConfig();
       if (!ragConfig.enabled) return null;
-      
-      const freeosRoot = process.env.FREEOS_ROOT || process.cwd();
-      const dbPath = join(freeosRoot, "data", "freeos.sqlite");
+
+      const dbPath = join(ragConfig.documentsDir, "..", "..", "freeos.sqlite");
       const ragDb = new Database(dbPath);
       ragDb.pragma("foreign_keys = ON");
       ragService = new RagService(ragConfig, ragDb);
-    } catch {
+    } catch (error) {
+      console.warn("Failed to initialize RAG service for /command/chat:", error);
       return null;
     }
   }
@@ -105,17 +105,20 @@ commandRouter.post("/chat", async (request, response, next) => {
     const projectKey = typeof body.projectKey === "string" && body.projectKey.trim() ? body.projectKey.trim() : undefined;
     const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.defaultModel;
     const useMemory = bool(body.useMemory, true); const useProjectNotes = bool(body.useProjectNotes, true); const useResearchContext = bool(body.useResearchContext, false);
-    let createdMemoryProposalId: number | null = null; let createdToolRequestId: number | null = null; let responseText: string;
+    let createdMemoryProposalId: number | null = null; let createdToolRequestId: number | null = null; let responseText = "";
     let ragUsed = false;
     let ragSources: Array<{ documentPath: string; documentName: string; chunks: number[] }> = [];
     let ragContext = "";
     const warnings: string[] = [];
-    const useRag = bool(body.useRag, false);
-    const ragMode = typeof body.ragMode === "string" ? body.ragMode : "keyword";
-    const ragTopK = typeof body.ragTopK === "number" ? body.ragTopK : undefined;
-    const explicitRagOff = body.useRag === false;
-    const inferredRag = /\b(using indexed documents|use indexed docs|use RAG|from indexed documents|based on local documents)\b/i.test(message);
-    const effectiveUseRag = !explicitRagOff && (useRag || inferredRag);
+    const useRagOption = body.useRag === true || body.useRag === "true";
+    const explicitRagOff = body.useRag === false || body.useRag === "false";
+    const explicitRagRequested = /\b(using indexed documents|use indexed documents|use indexed docs|from indexed documents|based on indexed documents|use RAG|with RAG|from local documents)\b/i.test(message);
+    const effectiveUseRag = !explicitRagOff && (useRagOption || explicitRagRequested);
+    const ragModeUsed = typeof body.ragMode === "string" && ["keyword", "hybrid", "embeddings"].includes(body.ragMode) ? body.ragMode as "keyword" | "hybrid" | "embeddings" : "keyword";
+    const ragTopKUsed = typeof body.ragTopK === "number" ? body.ragTopK : typeof body.ragTopK === "string" ? Number(body.ragTopK) : undefined;
+    const ragTopKFinal = Number.isFinite(ragTopKUsed) && ragTopKUsed! > 0 ? ragTopKUsed! : 3;
+    let blockedModelGuess = false;
+    let shouldCallModel = true;
 
     if (highRisk.test(message)) {
       responseText = "I can’t perform or queue that high-risk action. FREEOS keeps destructive actions, sending, purchases, trading, deployments, and credential access blocked. I can help with a safe plan or read-only review instead.";
@@ -135,36 +138,60 @@ commandRouter.post("/chat", async (request, response, next) => {
         const rows = db().prepare("SELECT title, query FROM research_sessions ORDER BY id DESC LIMIT 5").all() as Array<{ title: string; query: string }>;
         research = `RECENT RESEARCH SESSIONS\n${rows.map((row) => `- ${row.title}: ${row.query}`).join("\n")}`;
       }
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[FREEOS] /command/chat RAG payload", { useRagOption, explicitRagRequested, effectiveUseRag, ragModeUsed, ragTopKFinal });
+      }
 
       if (effectiveUseRag) {
         const rag = getRagService();
-        if (rag) {
+        if (!rag) {
+          warnings.push("RAG is not enabled or unavailable. FREEOS did not answer from model guesses.");
+          responseText = "I can’t answer that from indexed documents because no matching indexed document chunks were found. Re-index the relevant files or adjust the search terms, then retry.";
+          blockedModelGuess = true;
+          shouldCallModel = false;
+        } else {
           try {
-            const contextResult = await rag.buildContext(message, projectKey, ragTopK, false, false, true);
-            if (contextResult.context && contextResult.context.trim().length > 0) {
+            const results = await rag.search(message, ragModeUsed, projectKey, ragTopKFinal);
+            if (process.env.NODE_ENV !== "production") {
+              console.debug("[FREEOS] /command/chat RAG results", { count: results.length, paths: results.map((item) => item.documentPath) });
+            }
+
+            if (results.length > 0) {
               ragUsed = true;
-              ragSources = Array.isArray(contextResult.sources) ? contextResult.sources : [];
-              ragContext = `INDEXED DOCUMENTS\n${contextResult.context}`;
+              const sourceMap = new Map<string, Set<number>>();
+              for (const item of results) {
+                const path = item.documentPath || "unknown";
+                if (!sourceMap.has(path)) sourceMap.set(path, new Set());
+                sourceMap.get(path)!.add(item.chunkIndex);
+              }
+              ragSources = Array.from(sourceMap.entries()).map(([documentPath, chunks]) => ({ documentPath, documentName: documentPath.split(/[\\/]/).pop() || "unknown", chunks: Array.from(chunks).sort((a, b) => a - b) }));
+              ragContext = results.map((item) => `[${item.documentName || item.documentPath || "unknown"} chunk ${item.chunkIndex}]\n${item.content}`).join("\n\n");
             } else {
-              warnings.push("RAG was requested but no matching indexed documents were found.");
+              warnings.push("Indexed documents were requested, but no matching RAG context was found. FREEOS did not answer from model guesses.");
+              responseText = "I can’t answer that from indexed documents because no matching indexed document chunks were found. Re-index the relevant files or adjust the search terms, then retry.";
+              blockedModelGuess = true;
+              shouldCallModel = false;
             }
           } catch (error) {
-            console.warn("RAG context retrieval failed, continuing without RAG:", error);
-            warnings.push("RAG context retrieval failed. Chat will continue without indexed documents.");
+            console.warn("RAG search failed for /command/chat:", error);
+            warnings.push("RAG retrieval failed. FREEOS did not answer from model guesses.");
+            responseText = "I can’t answer that from indexed documents because no matching indexed document chunks were found. Re-index the relevant files or adjust the search terms, then retry.";
+            blockedModelGuess = true;
+            shouldCallModel = false;
           }
-        } else {
-          warnings.push("RAG is not enabled or unavailable. Chat will continue without indexed documents.");
         }
       }
 
-      const localResponse = await fetch(`${config.ollamaBaseUrl}/api/generate`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ model, prompt: message, system: [systemPrompt, liveStatus, context, research, ragContext, createdMemoryProposalId ? "A pending memory proposal was created; tell the user it still requires approval." : "", createdToolRequestId ? "A tool request was created; tell the user it requires approval and a separate Run click." : ""].filter(Boolean).join("\n\n"), stream: false, think: false, options: { temperature: 0.2, num_predict: 500 } }), signal: AbortSignal.timeout(120_000) });
-      if (!localResponse.ok) throw new Error(`Local Ollama returned HTTP ${localResponse.status}.`);
-      const payload = await localResponse.json() as { response?: string };
-      responseText = payload.response?.trim() ?? "";
-      if (!responseText) throw new Error("Local Ollama returned an empty response.");
+      if (shouldCallModel) {
+        const localResponse = await fetch(`${config.ollamaBaseUrl}/api/generate`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ model, prompt: message, system: [systemPrompt, liveStatus, context, research, ragContext, createdMemoryProposalId ? "A pending memory proposal was created; tell the user it still requires approval." : "", createdToolRequestId ? "A tool request was created; tell the user it requires approval and a separate Run click." : ""].filter(Boolean).join("\n\n"), stream: false, think: false, options: { temperature: 0.2, num_predict: 500 } }), signal: AbortSignal.timeout(120_000) });
+        if (!localResponse.ok) throw new Error(`Local Ollama returned HTTP ${localResponse.status}.`);
+        const payload = await localResponse.json() as { response?: string };
+        responseText = payload.response?.trim() ?? "";
+        if (!responseText) throw new Error("Local Ollama returned an empty response.");
+      }
     }
     const speech = body.speak === true ? await synthesizeSpeech(responseText) : null;
     const result = db().prepare(`INSERT INTO command_chat_sessions (message,response,project_key,model,used_memory,used_project_notes,used_research_context,created_memory_proposal_id,created_tool_request_id,audio_output_path) VALUES (?,?,?,?,?,?,?,?,?,?)`).run(message, responseText, projectKey ?? null, model, useMemory ? 1 : 0, projectKey && useProjectNotes ? 1 : 0, useResearchContext ? 1 : 0, createdMemoryProposalId, createdToolRequestId, speech?.outputPath ?? null);
-    response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null, memoryUsed: useMemory, projectNotesUsed: Boolean(projectKey && useProjectNotes), ragUsed, ragSources: ragSources ?? [], ragMode: useRag ? ragMode : undefined, warnings: warnings.length > 0 ? warnings : undefined });
+    response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null, memoryUsed: useMemory, projectNotesUsed: Boolean(projectKey && useProjectNotes), ragRequested: effectiveUseRag, ragUsed, ragSources: ragSources ?? [], ragModeUsed: ragModeUsed, ragTopKUsed: ragTopKFinal, ragQueryUsed: message, blockedModelGuess, warnings: warnings.length > 0 ? warnings : undefined });
   } catch (error) { next(error); }
 });
