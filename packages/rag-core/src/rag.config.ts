@@ -54,7 +54,7 @@ export function getRagConfig(): RagConfig {
   const embeddingsEnabled = process.env.RAG_EMBEDDINGS_ENABLED === "true";
   const embeddingProvider = (process.env.RAG_EMBEDDING_PROVIDER ?? "ollama") as "ollama" | "local" | "none";
   const embeddingModel = process.env.RAG_EMBEDDING_MODEL ?? "nomic-embed-text";
-  const topK = parseInt(process.env.RAG_TOP_K ?? "8", 10);
+  const topK = parseInt(process.env.RAG_DEFAULT_TOP_K ?? "3", 10);
 
   return {
     enabled,

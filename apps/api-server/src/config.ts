@@ -10,6 +10,11 @@ function parsePort(value: string | undefined, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : fallback;
 }
 
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export const config = Object.freeze({
   version: process.env.FREEOS_VERSION?.trim() || "1.0.0",
   releaseName: process.env.FREEOS_RELEASE_NAME?.trim() || "Command Center v1",
@@ -18,6 +23,12 @@ export const config = Object.freeze({
   ollamaBaseUrl: (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, ""),
   searxngBaseUrl: (process.env.SEARXNG_BASE_URL ?? "http://127.0.0.1:8080").replace(/\/$/, ""),
   defaultModel: process.env.FREEOS_DEFAULT_MODEL?.trim() || "qwen3:8b",
+  fastModel: process.env.FREEOS_FAST_MODEL?.trim() || "qwen3:4b",
+  commandChatTimeoutMs: parsePositiveInteger(process.env.COMMAND_CHAT_TIMEOUT_MS, 300_000),
+  ollamaGenerateTimeoutMs: parsePositiveInteger(process.env.OLLAMA_GENERATE_TIMEOUT_MS, 300_000),
+  ragContextMaxChars: parsePositiveInteger(process.env.RAG_CONTEXT_MAX_CHARS, 5_000),
+  ragDefaultTopK: parsePositiveInteger(process.env.RAG_DEFAULT_TOP_K, 3),
+  ragMaxTopK: parsePositiveInteger(process.env.RAG_MAX_TOP_K, 8),
   dashboardOrigins: Array.from(new Set([
     "http://localhost:5173",
     "http://127.0.0.1:5173",

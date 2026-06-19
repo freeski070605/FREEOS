@@ -5,7 +5,7 @@ import { getVoiceStatus, synthesizeSpeech } from "@freeos/voice-core";
 import { getToolRegistry, ToolRequests } from "@freeos/tool-runner";
 import { getRagConfig, RagService } from "@freeos/rag-core";
 import { config } from "../config";
-import { getOllamaStatus } from "../services/ollama.service";
+import { generateWithOllama, getOllamaStatus, isOllamaModelInstalled, LocalModelError } from "../services/ollama.service";
 import { getSystemStatus } from "../services/system.service";
 import { createBackup, getBackupStatus } from "../services/backup.service";
 
@@ -96,9 +96,13 @@ const remember = /\bremember\s+(?:that\s+)?(.+)/is;
 commandRouter.post("/chat", async (request, response, next) => {
   const body = record(request.body); const message = String(body.message ?? "").trim();
   if (!message) { response.status(400).json({ error: "message is required." }); return; }
+  const routeTimeoutMs = Math.max(config.commandChatTimeoutMs, config.ollamaGenerateTimeoutMs) + 10_000;
+  request.setTimeout(routeTimeoutMs);
+  response.setTimeout(routeTimeoutMs);
   try {
     const projectKey = typeof body.projectKey === "string" && body.projectKey.trim() ? body.projectKey.trim() : undefined;
-    const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.defaultModel;
+    const modelMode = body.modelMode === "fast" ? "fast" : "standard";
+    const model = modelMode === "fast" ? config.fastModel : typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.defaultModel;
     const useMemory = bool(body.useMemory, true); const useProjectNotes = bool(body.useProjectNotes, true); const useResearchContext = bool(body.useResearchContext, false);
     let createdMemoryProposalId: number | null = null; let createdToolRequestId: number | null = null; let responseText = "";
     let ragUsed = false;
@@ -111,9 +115,25 @@ commandRouter.post("/chat", async (request, response, next) => {
     const effectiveUseRag = !explicitRagOff && (useRagOption || explicitRagRequested);
     const ragModeUsed = typeof body.ragMode === "string" && ["keyword", "hybrid", "embeddings"].includes(body.ragMode) ? body.ragMode as "keyword" | "hybrid" | "embeddings" : "keyword";
     const ragTopKUsed = typeof body.ragTopK === "number" ? body.ragTopK : typeof body.ragTopK === "string" ? Number(body.ragTopK) : undefined;
-    const ragTopKFinal = Number.isFinite(ragTopKUsed) && ragTopKUsed! > 0 ? ragTopKUsed! : 3;
+    const requestedRagTopK = Number.isFinite(ragTopKUsed) && ragTopKUsed! > 0 ? Math.floor(ragTopKUsed!) : config.ragDefaultTopK;
+    const ragTopKFinal = Math.min(requestedRagTopK, config.ragMaxTopK);
+    if (requestedRagTopK > config.ragMaxTopK) warnings.push(`RAG topK was capped at ${config.ragMaxTopK}.`);
     let blockedModelGuess = false;
     let shouldCallModel = true;
+
+    if (modelMode === "fast" && !(await isOllamaModelInstalled(model))) {
+      response.status(400).json({
+        error: "fast_model_not_installed",
+        response: `Fast model is not installed. Run: ollama pull ${model}`,
+        freeosStillOnline: true,
+        ragRequested: effectiveUseRag,
+        ragUsed: false,
+        ragSources: [],
+        blockedModelGuess: false,
+        warnings: [`Fast model ${model} is not installed.`],
+      });
+      return;
+    }
 
     if (highRisk.test(message)) {
       responseText = "I can’t perform or queue that high-risk action. FREEOS keeps destructive actions, sending, purchases, trading, deployments, and credential access blocked. I can help with a safe plan or read-only review instead.";
@@ -160,7 +180,8 @@ commandRouter.post("/chat", async (request, response, next) => {
                 sourceMap.get(path)!.add(item.chunkIndex);
               }
               ragSources = Array.from(sourceMap.entries()).map(([documentPath, chunks]) => ({ documentPath, documentName: documentPath.split(/[\\/]/).pop() || "unknown", chunks: Array.from(chunks).sort((a, b) => a - b) }));
-              ragContext = results.map((item) => `[${item.documentName || item.documentPath || "unknown"} chunk ${item.chunkIndex}]\n${item.content}`).join("\n\n");
+              const fullRagContext = results.map((item) => `[${item.documentName || item.documentPath || "unknown"} chunk ${item.chunkIndex}]\n${item.content}`).join("\n\n");
+              ragContext = fullRagContext.slice(0, config.ragContextMaxChars);
             } else {
               warnings.push("No matching indexed document chunks were found for the RAG query. FREEOS did not answer from model guesses.");
               responseText = "I can’t answer that from indexed documents because no matching indexed document chunks were found for the RAG query. Re-index the relevant files or adjust the search terms, then retry.";
@@ -178,11 +199,29 @@ commandRouter.post("/chat", async (request, response, next) => {
       }
 
       if (shouldCallModel) {
-        const localResponse = await fetch(`${config.ollamaBaseUrl}/api/generate`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ model, prompt: message, system: [systemPrompt, liveStatus, context, research, ragContext, createdMemoryProposalId ? "A pending memory proposal was created; tell the user it still requires approval." : "", createdToolRequestId ? "A tool request was created; tell the user it requires approval and a separate Run click." : ""].filter(Boolean).join("\n\n"), stream: false, think: false, options: { temperature: 0.2, num_predict: 500 } }), signal: AbortSignal.timeout(120_000) });
-        if (!localResponse.ok) throw new Error(`Local Ollama returned HTTP ${localResponse.status}.`);
-        const payload = await localResponse.json() as { response?: string };
-        responseText = payload.response?.trim() ?? "";
-        if (!responseText) throw new Error("Local Ollama returned an empty response.");
+        try {
+          responseText = await generateWithOllama({
+            model,
+            prompt: message,
+            system: [systemPrompt, liveStatus, context, research, ragContext, createdMemoryProposalId ? "A pending memory proposal was created; tell the user it still requires approval." : "", createdToolRequestId ? "A tool request was created; tell the user it requires approval and a separate Run click." : ""].filter(Boolean).join("\n\n"),
+            timeoutMs: config.ollamaGenerateTimeoutMs,
+          });
+        } catch (error) {
+          if (error instanceof LocalModelError && error.code === "local_model_timeout") {
+            response.status(504).json({
+              error: "local_model_timeout",
+              response: "The local model took too long to respond. FREEOS is still online. Try lower RAG topK, a shorter prompt, or a faster model.",
+              freeosStillOnline: true,
+              ragRequested: effectiveUseRag,
+              ragUsed,
+              ragSources,
+              blockedModelGuess: false,
+              warnings: [...warnings, "Local Ollama generation exceeded the configured timeout."],
+            });
+            return;
+          }
+          throw error;
+        }
       }
     }
     const speech = body.speak === true ? await synthesizeSpeech(responseText) : null;

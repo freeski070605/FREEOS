@@ -112,6 +112,16 @@ export interface ProposalInput {
 
 type JsonRecord = Record<string, unknown>;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
+declare const __FRONTEND_COMMAND_TIMEOUT_MS__: number;
+const FRONTEND_COMMAND_TIMEOUT_MS = typeof __FRONTEND_COMMAND_TIMEOUT_MS__ === "number" ? __FRONTEND_COMMAND_TIMEOUT_MS__ : 300_000;
+const COMMAND_RESPONSE_GRACE_MS = 15_000;
+
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number, readonly payload: JsonRecord) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -119,14 +129,17 @@ function isRecord(value: unknown): value is JsonRecord {
 
 async function requestJson(path: string, init?: RequestInit, timeoutMs = 7000): Promise<unknown> {
   try {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
       headers: { Accept: "application/json", ...(init?.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}), ...init?.headers },
-      signal: AbortSignal.timeout(timeoutMs),
+      signal,
     });
     const payload: unknown = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(isRecord(payload) && typeof payload.error === "string" ? payload.error : `Request returned HTTP ${response.status}.`);
+      const errorPayload = isRecord(payload) ? payload : {};
+      throw new ApiError(typeof errorPayload.error === "string" ? errorPayload.error : `Request returned HTTP ${response.status}.`, response.status, errorPayload);
     }
     if (import.meta.env.DEV) console.debug(`[FREEOS API] ${path}`, payload);
     return payload;
@@ -145,7 +158,7 @@ export const api = {
   commandStatus: async () => record(await requestJson("/command/status", undefined, 12000), "/command/status") as unknown as CommandStatus,
   commandActivity: async (limit = 25): Promise<CommandActivity[]> => { const data = record(await requestJson(`/command/activity?limit=${limit}`), "/command/activity"); return Array.isArray(data.activity) ? data.activity as CommandActivity[] : []; },
   commandApprovals: async () => record(await requestJson("/command/approvals"), "/command/approvals") as unknown as CommandApprovals,
-  commandChat: async (input: { message: string; projectKey?: string; useMemory?: boolean; useProjectNotes?: boolean; useResearchContext?: boolean; allowToolSuggestions?: boolean; useRag?: boolean; ragMode?: "keyword" | "hybrid" | "embeddings"; ragTopK?: number; speak?: boolean; model?: string }) => record(await requestJson("/command/chat", { method: "POST", body: JSON.stringify(input) }, 130000), "/command/chat") as unknown as CommandChatResponse,
+  commandChat: async (input: { message: string; projectKey?: string; useMemory?: boolean; useProjectNotes?: boolean; useResearchContext?: boolean; allowToolSuggestions?: boolean; useRag?: boolean; ragMode?: "keyword" | "hybrid" | "embeddings"; ragTopK?: number; speak?: boolean; model?: string; modelMode?: "standard" | "fast" }, signal?: AbortSignal) => record(await requestJson("/command/chat", { method: "POST", body: JSON.stringify(input), signal }, FRONTEND_COMMAND_TIMEOUT_MS + COMMAND_RESPONSE_GRACE_MS), "/command/chat") as unknown as CommandChatResponse,
   quickNote: async (input: { projectKey?: string; title: string; content: string; tags?: string[] }) => requestJson("/command/quick-note", { method: "POST", body: JSON.stringify(input) }),
   createBackup: async (input: { includeDatabase: boolean; includeProjects: boolean; includeDocs: boolean; includeLogs: boolean }) => requestJson("/command/backup", { method: "POST", body: JSON.stringify(input) }, 120000),
   backupStatus: async () => record(await requestJson("/command/backup/status"), "/command/backup/status") as unknown as BackupStatus,
