@@ -1,0 +1,19 @@
+{
+  "name": "@freeos/tool-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "dependencies": {
+    "@freeos/memory-core": "*",
+    "@freeos/voice-core": "*",
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.18.1",
+    "typescript": "^5.9.2"
+  }
+}

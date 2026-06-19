@@ -1,0 +1,37 @@
+{
+  "name": "freeos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n API,DASHBOARD -c cyan,magenta \"npm run dev:api\" \"npm run dev:dashboard\"",
+    "dev:api": "npm run dev --workspace @freeos/api-server",
+    "dev:dashboard": "npm run dev --workspace @freeos/dashboard",
+    "build": "npm run build --workspaces --if-present",
+    "build:api": "npm run build --workspace @freeos/api-server",
+    "build:dashboard": "npm run build --workspace @freeos/dashboard",
+    "check:ollama": "node tools/scripts/check-ollama.js",
+    "check:searxng": "node tools/scripts/check-searxng.js",
+    "check:voice": "npm run build --workspace @freeos/voice-core && node tools/scripts/check-voice.js",
+    "setup:folders": "node tools/scripts/create-local-folders.js",
+    "setup:whisper-folders": "node tools/scripts/setup-whisper-folders.js",
+    "init:memory": "npm run build --workspace @freeos/memory-core && node tools/scripts/init-memory.js",
+    "init:voice": "npm run build --workspace @freeos/memory-core && npm run build --workspace @freeos/voice-core && node tools/scripts/init-voice.js",
+    "init:tools": "npm run build --workspace @freeos/memory-core && npm run build --workspace @freeos/voice-core && npm run build --workspace @freeos/tool-runner && node tools/scripts/init-tools.js",
+    "tools:status": "npm run build --workspace @freeos/tool-runner && node tools/scripts/tools-status.js",
+    "memory:status": "npm run build --workspace @freeos/memory-core && node tools/scripts/memory-status.js",
+    "research:status": "npm run build --workspace @freeos/memory-core && npm run build --workspace @freeos/research-core && node tools/scripts/research-status.js",
+    "command:status": "node tools/scripts/command-status.js",
+    "backup:freeos": "node tools/scripts/backup-freeos.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
