@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
 import { dirname, join } from "node:path";
-import { getRagConfig } from "@freeos/rag-core";
+import { getRagConfig, searchKeywordsWithDebug } from "@freeos/rag-core";
 import { RagService } from "@freeos/rag-core";
 import { readFileSync } from "node:fs";
 
@@ -148,7 +148,7 @@ ragRouter.get("/documents/:id/chunks", (_req: Request, res: Response) => {
 // POST /rag/search
 ragRouter.post("/search", async (req: Request, res: Response) => {
   try {
-    const { query, projectKey, mode, topK } = req.body;
+    const { query, projectKey, mode, topK, debug } = req.body;
 
     if (!query) {
       res.status(400).json({ error: "query is required" });
@@ -156,6 +156,27 @@ ragRouter.post("/search", async (req: Request, res: Response) => {
     }
 
     const service = getRagService();
+    if (debug === true || debug === "true") {
+      if (!mode || mode === "keyword") {
+        const debugResult = searchKeywordsWithDebug(query, getDb(), topK || config.topK, projectKey);
+        res.json({ results: debugResult.results, count: debugResult.results.length, debug: debugResult.debug });
+        return;
+      }
+      const results = await service.search(query, mode || "keyword", projectKey, topK);
+      const documentsSearched = Array.from(new Set(results.map((item) => item.documentId))).length;
+      const debugResult = {
+        query,
+        normalizedQuery: query,
+        expandedQueriesTried: [query],
+        termsUsed: query.toLowerCase().split(/\s+/).filter(Boolean),
+        fallbackUsed: false,
+        resultsCount: results.length,
+        documentsSearched,
+        chunksSearched: results.length,
+      };
+      res.json({ results, count: results.length, debug: debugResult });
+      return;
+    }
     const results = await service.search(query, mode || "keyword", projectKey, topK);
 
     res.json({ results, count: results.length });

@@ -1,6 +1,9 @@
 import dotenv from "dotenv";
+import { resolve } from "node:path";
 
-dotenv.config();
+// npm workspace scripts run from apps/api-server, while FREEOS keeps its runtime
+// configuration at the repository root. This path works from both src and dist.
+dotenv.config({ path: resolve(__dirname, "../../../.env") });
 
 function parsePort(value: string | undefined, fallback: number): number {
   const parsed = Number(value);

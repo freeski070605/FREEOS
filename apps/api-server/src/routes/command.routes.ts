@@ -4,8 +4,6 @@ import { getMemoryStore } from "@freeos/memory-core";
 import { getVoiceStatus, synthesizeSpeech } from "@freeos/voice-core";
 import { getToolRegistry, ToolRequests } from "@freeos/tool-runner";
 import { getRagConfig, RagService } from "@freeos/rag-core";
-import Database from "better-sqlite3";
-import { join } from "node:path";
 import { config } from "../config";
 import { getOllamaStatus } from "../services/ollama.service";
 import { getSystemStatus } from "../services/system.service";
@@ -25,10 +23,7 @@ function getRagService(): RagService | null {
       const ragConfig = getRagConfig();
       if (!ragConfig.enabled) return null;
 
-      const dbPath = join(ragConfig.documentsDir, "..", "..", "freeos.sqlite");
-      const ragDb = new Database(dbPath);
-      ragDb.pragma("foreign_keys = ON");
-      ragService = new RagService(ragConfig, ragDb);
+      ragService = new RagService(ragConfig, db());
     } catch (error) {
       console.warn("Failed to initialize RAG service for /command/chat:", error);
       return null;
@@ -145,8 +140,8 @@ commandRouter.post("/chat", async (request, response, next) => {
       if (effectiveUseRag) {
         const rag = getRagService();
         if (!rag) {
-          warnings.push("RAG is not enabled or unavailable. FREEOS did not answer from model guesses.");
-          responseText = "I can’t answer that from indexed documents because no matching indexed document chunks were found. Re-index the relevant files or adjust the search terms, then retry.";
+          warnings.push("RAG is disabled or unavailable. FREEOS did not answer from model guesses.");
+          responseText = "I can’t answer from indexed documents because RAG is disabled or unavailable.";
           blockedModelGuess = true;
           shouldCallModel = false;
         } else {
@@ -167,15 +162,15 @@ commandRouter.post("/chat", async (request, response, next) => {
               ragSources = Array.from(sourceMap.entries()).map(([documentPath, chunks]) => ({ documentPath, documentName: documentPath.split(/[\\/]/).pop() || "unknown", chunks: Array.from(chunks).sort((a, b) => a - b) }));
               ragContext = results.map((item) => `[${item.documentName || item.documentPath || "unknown"} chunk ${item.chunkIndex}]\n${item.content}`).join("\n\n");
             } else {
-              warnings.push("Indexed documents were requested, but no matching RAG context was found. FREEOS did not answer from model guesses.");
-              responseText = "I can’t answer that from indexed documents because no matching indexed document chunks were found. Re-index the relevant files or adjust the search terms, then retry.";
+              warnings.push("No matching indexed document chunks were found for the RAG query. FREEOS did not answer from model guesses.");
+              responseText = "I can’t answer that from indexed documents because no matching indexed document chunks were found for the RAG query. Re-index the relevant files or adjust the search terms, then retry.";
               blockedModelGuess = true;
               shouldCallModel = false;
             }
           } catch (error) {
             console.warn("RAG search failed for /command/chat:", error);
-            warnings.push("RAG retrieval failed. FREEOS did not answer from model guesses.");
-            responseText = "I can’t answer that from indexed documents because no matching indexed document chunks were found. Re-index the relevant files or adjust the search terms, then retry.";
+            warnings.push("RAG is unavailable because retrieval failed. FREEOS did not answer from model guesses.");
+            responseText = "I can’t answer from indexed documents because the RAG service is unavailable.";
             blockedModelGuess = true;
             shouldCallModel = false;
           }
