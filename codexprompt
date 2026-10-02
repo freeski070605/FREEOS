@@ -1,0 +1,341 @@
+Update the FREEOS Doctrine + Expert Training Layer prompt before implementation.
+
+Important correction:
+The doctrine/training system must not be limited to developer, creative, business, music, lawful research, automation, and local AI.
+
+FREEOS must support an expandable domain system so Drew can train it across any approved area, including but not limited to:
+
+* developer
+* creative_artist
+* business_builder
+* music_rollout
+* lawful_research
+* automation_architect
+* local_ai_operator
+* medical_research
+* fitness_nutrition
+* sports_analyst
+* sports_betting_research
+* finance_research
+* real_estate
+* marketing
+* sales
+* psychology_behavior
+* education_tutor
+* game_design
+* content_strategy
+* video_production
+* cybersecurity_research
+* hardware_pc_support
+* spiritual_study
+* general_research
+
+Website Learning / Source Ingestion Requirement
+
+FREEOS already has Phase 3 web research through SearXNG and public page reading. The Doctrine + Expert Training Layer must connect to that research layer so FREEOS can learn from websites in a controlled approval-based way.
+
+Add website-to-doctrine ingestion.
+
+Required flow:
+1. User provides a URL or selects an existing research result.
+2. FREEOS reads the public page using the existing research/page reader.
+3. FREEOS extracts:
+   - page title
+   - URL
+   - domain
+   - author if detectable
+   - publish/update date if detectable
+   - key claims
+   - key lessons
+   - caveats
+   - source type
+   - relevant doctrine domain
+   - proposed trust level
+4. FREEOS must not automatically accept website content as truth.
+5. FREEOS must create doctrine proposals from website content.
+6. Drew must approve doctrine proposals before they become durable doctrine.
+7. FREEOS must preserve source URL and evidence metadata with every doctrine proposal.
+8. FREEOS must support creating training lessons from website content.
+9. FREEOS must support creating rejected claims from website content if Drew rejects them.
+10. FREEOS must not crawl entire websites automatically.
+11. FREEOS must not bypass logins, paywalls, captchas, robots restrictions, or private pages.
+12. FREEOS must not treat low-quality websites as high-trust sources automatically.
+
+Add API endpoints:
+
+POST /doctrine/ingest-url
+Body:
+- url required
+- domain required
+- projectKey optional
+- proposedTrustLevel optional default unverified_claim
+- createTrainingLesson optional default false
+- tags optional
+- notes optional
+
+Behavior:
+- Uses existing research page reader to read the URL.
+- Extracts readable text.
+- Uses local Ollama to summarize/extract claims if available.
+- Creates one or more pending doctrine proposals.
+- Does not create approved doctrine directly.
+- Returns proposals created and source metadata.
+
+POST /doctrine/from-research-result/:id
+Body:
+- domain required
+- proposedTrustLevel optional
+- createTrainingLesson optional
+- tags optional
+- notes optional
+
+Behavior:
+- Uses an existing research_result record.
+- Creates pending doctrine proposals from it.
+- Does not auto-approve.
+
+Add dashboard features in Doctrine / Training tab:
+- Ingest Website URL form
+- Select domain
+- Select proposed trust level
+- Checkbox: create training lesson
+- Submit to doctrine proposal queue
+- Show extracted claims before approval if possible
+- Show source URL/domain
+- Approve/reject like normal doctrine
+
+High-stakes source rules:
+For medical_research, lawful_research, finance_research, cybersecurity_research, and sports_betting_research:
+- Prefer official/primary/high-quality sources.
+- Mark claims from weak sources as unverified_claim or working_theory.
+- Require source backing.
+- Do not allow website content to override FREEOS safety rules.
+- Do not present website content as final professional advice.
+
+Source quality labels:
+Add source quality metadata:
+- primary_source
+- official_source
+- peer_reviewed
+- reputable_secondary
+- commercial_source
+- opinion_source
+- forum_or_social
+- unknown_quality
+
+FREEOS should preserve source quality in doctrine proposals.
+
+Core requirement:
+Domains must be database-driven, not hardcoded only in the UI.
+
+Add/modify database tables:
+
+expert_domains:
+
+* id
+* domain_key unique
+* name
+* description
+* category
+* truth_standard JSON/text
+* safety_rules JSON/text
+* avoid_rules JSON/text
+* requires_source_backing
+* high_stakes
+* enabled
+* created_at
+* updated_at
+
+Expert profiles should reference domain_key.
+
+Add API endpoints:
+
+GET /doctrine/domains
+Returns all expert domains.
+
+POST /doctrine/domains
+Creates a new domain.
+Body:
+
+* domainKey
+* name
+* description
+* category optional
+* truthStandard optional
+* safetyRules optional
+* avoidRules optional
+* requiresSourceBacking optional default false
+* highStakes optional default false
+
+PATCH /doctrine/domains/:domainKey
+Updates a domain safely.
+
+Default domains should include the original domains plus these additional ones:
+
+medical_research
+Name: Medical Research
+Purpose: Help Drew understand medical topics, symptoms, studies, general wellness information, and questions to ask professionals.
+Truth standard: medical guidelines, peer-reviewed research, official medical organizations, drug labels, and clinician-reviewed sources.
+Safety rules:
+
+* FREEOS is not a doctor.
+* Do not diagnose.
+* Do not prescribe.
+* Do not replace emergency care.
+* Encourage professional care for serious, urgent, worsening, or unclear symptoms.
+* Clearly separate general information from medical advice.
+* Use current/source-backed information when possible.
+  Avoid:
+* certainty without evidence
+* unsafe dosing advice
+* ignoring emergency symptoms
+* treating anecdotes as medical truth
+
+fitness_nutrition
+Name: Fitness + Nutrition
+Purpose: Training plans, vegetarian/vegan nutrition, weight gain, workout structure, recovery, and habit building.
+Truth standard: established exercise science, nutrition references, Drew-approved goals, and practical tracking.
+Safety rules:
+
+* Consider injury risk.
+* Avoid extreme diets.
+* Avoid supplement claims without evidence.
+* Recommend professional help for medical conditions.
+  Avoid:
+* unrealistic transformation promises
+* unsafe calorie/supplement advice
+
+sports_analyst
+Name: Sports Analyst
+Purpose: Sports research, matchups, player/team analysis, trends, injuries, schedules, and performance context.
+Truth standard: current stats, official schedules, injury reports, reliable sports data, and clearly stated assumptions.
+Safety rules:
+
+* Mark uncertainty.
+* Do not invent stats.
+* Use current data when needed.
+  Avoid:
+* fake certainty
+* outdated rosters/injury info
+* pretending predictions are guarantees
+
+sports_betting_research
+Name: Sports Betting Research
+Purpose: Betting research, odds comparison, matchup analysis, risk framing, and bet selection support.
+Truth standard: current odds, injury reports, line movement, matchup data, historical stats, and bankroll rules.
+Safety rules:
+
+* Never guarantee wins.
+* Clearly explain risk.
+* Encourage bankroll discipline.
+* Avoid chasing losses.
+* Treat picks as analysis, not certainty.
+  Avoid:
+* “locks”
+* guaranteed profit claims
+* reckless parlays without risk context
+* fake confidence
+
+finance_research
+Name: Finance Research
+Purpose: General finance, market research, trading research, crypto/forex/stocks context, and risk review.
+Truth standard: current market data, official broker/exchange data, filings, reputable financial data, and Drew-approved strategy rules.
+Safety rules:
+
+* FREEOS is not a financial advisor.
+* Do not guarantee returns.
+* Do not place trades automatically.
+* Risk management and manual approval required.
+  Avoid:
+* guaranteed profit claims
+* unverified rumors
+* automatic trade execution
+
+cybersecurity_research
+Name: Cybersecurity Research
+Purpose: Defensive security research, local system hardening, safe coding, vulnerability understanding, and privacy.
+Truth standard: official docs, CVEs, defensive best practices, verified technical sources.
+Safety rules:
+
+* Defensive-only.
+* Do not provide instructions for unauthorized access, malware, credential theft, evasion, or exploitation of third-party systems.
+  Avoid:
+* offensive misuse
+* stealth/persistence guidance
+* credential abuse
+
+hardware_pc_support
+Name: Hardware + PC Support
+Purpose: Windows support, drivers, local AI setup, GPU/CUDA, storage, performance, and troubleshooting.
+Truth standard: installed system state, official hardware/software docs, command outputs, and verified configuration.
+Safety rules:
+
+* Avoid destructive commands unless approved.
+* Backup before risky changes.
+  Avoid:
+* guessing driver/hardware state
+* unsafe registry/system changes
+
+general_research
+Name: General Research
+Purpose: Broad research across topics not covered by a specific domain.
+Truth standard: source quality, recency, multiple sources, and uncertainty labeling.
+Safety rules:
+
+* Separate fact from assumption.
+* Use source-backed claims when possible.
+  Avoid:
+* treating one weak source as truth
+* overconfidence
+
+Update dashboard:
+The Doctrine / Training tab should include:
+
+* Expert Domains section
+* Create new domain form
+* Domain library
+* High-stakes badge
+* Requires source backing badge
+* Domain-specific truth standards
+* Domain-specific safety rules
+
+Update command chat:
+If useDoctrine is true and doctrineDomain is provided:
+
+* Load expert_domains rules for that domain.
+* Load expert profile if provided.
+* Load approved doctrine items.
+* Apply high-stakes safety handling when highStakes=true.
+
+High-stakes behavior:
+For medical_research, finance_research, lawful_research, cybersecurity_research, and sports_betting_research:
+
+* Clearly mark uncertainty.
+* Prefer source-backed facts.
+* Avoid definitive claims without evidence.
+* Do not claim professional authority.
+* Do not replace qualified professional advice.
+* Do not execute dangerous actions.
+* Do not present predictions as guarantees.
+
+Update docs/DOCTRINE_AND_TRAINING.md:
+Add:
+
+* expandable domain system
+* how to create a new domain
+* high-stakes domains
+* medical research boundaries
+* sports betting research boundaries
+* finance research boundaries
+* cybersecurity defensive-only boundary
+
+Update tests:
+
+* Create/list expert domains.
+* Use medical_research domain in doctrine context.
+* Use sports_analyst domain in doctrine context.
+* Use sports_betting_research domain in chat with no guarantee language.
+* Ensure high-stakes domains cannot override FREEOS safety rules.
+
+Important:
+The system should allow Drew to train FREEOS across any subject, but the truth standard and safety rules must change based on domain. Do not hardcode FREEOS to only the initial domains.

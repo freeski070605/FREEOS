@@ -4,6 +4,7 @@ import type { JsonObject, ToolRun } from "./tool.types";
 import { ToolRunnerError } from "./tool.types";
 import { getToolRegistry, type ToolRegistry } from "./toolRegistry";
 import { ToolRequests } from "./toolRequests";
+import { ComputerError, computerAuditArgs, computerAuditOutput, validateComputerArgs } from "@freeos/computer-core";
 
 export class ToolExecutor {
   readonly requests: ToolRequests;
@@ -25,8 +26,20 @@ export class ToolExecutor {
 
   private async execute(toolKey: string, args: JsonObject, requestId: number | null, approved: boolean): Promise<ToolRun> {
     const tool = this.registry.requireTool(toolKey); assertExecutable(tool, approved || tool.riskLevel === "read_only");
-    const run = this.requests.startRun(toolKey, args, requestId);
-    try { const output = await executeSafeTool(this.registry, toolKey, args); return this.requests.finishRun(run.id, "completed", output, null); }
+    if (toolKey.startsWith("computer.")) {
+      try { validateComputerArgs(toolKey, args); }
+      catch (error) {
+        this.registry.logEvent("tool.arguments.blocked", "Computer arguments rejected before audit persistence.", {toolKey, requestId});
+        if (error instanceof ComputerError) throw new ToolRunnerError(error.message, error.code === "validation" ? "validation" : "blocked");
+        throw error;
+      }
+    }
+    const run = this.requests.startRun(toolKey, computerAuditArgs(toolKey, args), requestId);
+    try {
+      const output = await executeSafeTool(this.registry, toolKey, args);
+      const finished = this.requests.finishRun(run.id, "completed", computerAuditOutput(toolKey, output), null);
+      return { ...finished, output };
+    }
     catch (error) { const message = error instanceof Error ? error.message : "Tool execution failed."; this.requests.finishRun(run.id, error instanceof ToolRunnerError && error.code === "blocked" ? "blocked" : "failed", null, message); throw error; }
   }
 }

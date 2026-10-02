@@ -3,10 +3,13 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { ToolDefinition, ToolRiskLevel } from "./tool.types";
 import { ToolRunnerError } from "./tool.types";
+import { CONTROL_KEYS, OBSERVATION_KEYS } from "@freeos/computer-core";
 
 type Row = Record<string, unknown>;
 
 export const DEFAULT_TOOLS: Array<Omit<ToolDefinition, "id" | "createdAt" | "updatedAt">> = [
+  ...OBSERVATION_KEYS.map(toolKey => ({ toolKey, name: toolKey, description: toolKey === "computer.screen.capture" ? "Local PNG observation; separate screen-capture switch required." : "Read-only local Windows inspection.", category: "computer", riskLevel: "read_only" as ToolRiskLevel, enabled: true, requiresApproval: false })),
+  ...CONTROL_KEYS.map(toolKey => ({ toolKey, name: toolKey, description: "Windows control: inspect exact arguments, approve, then run. Requires control switch and allowed application.", category: "computer", riskLevel: "medium_risk" as ToolRiskLevel, enabled: true, requiresApproval: true })),
   { toolKey: "system.status.snapshot", name: "System status snapshot", description: "Returns FREEOS API, Ollama, memory, research, voice, and SearXNG status.", category: "system", riskLevel: "read_only", enabled: true, requiresApproval: false },
   { toolKey: "projects.list", name: "List projects", description: "Lists registered FREEOS projects.", category: "projects", riskLevel: "read_only", enabled: true, requiresApproval: false },
   { toolKey: "memory.status", name: "Memory status", description: "Shows approved, pending, and rejected memory counts.", category: "memory", riskLevel: "read_only", enabled: true, requiresApproval: false },

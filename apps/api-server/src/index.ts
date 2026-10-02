@@ -15,6 +15,7 @@ import { automationsRouter } from "./routes/automations.routes";
 import { commandRouter } from "./routes/command.routes";
 import { ragRouter } from "./routes/rag.routes";
 import { registerDefaultTools } from "@freeos/tool-runner";
+import { computerRouter } from "./routes/computer.routes";
 
 const app = express();
 registerDefaultTools();
@@ -32,6 +33,7 @@ app.use("/projects", projectsRouter);
 app.use("/research", researchRouter);
 app.use("/voice", voiceRouter);
 app.use("/tools", toolsRouter);
+app.use("/computer", computerRouter);
 app.use("/automations", automationsRouter);
 app.use("/command", commandRouter);
 app.use("/rag", ragRouter);

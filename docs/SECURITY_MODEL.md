@@ -15,7 +15,7 @@ Approval does not bypass policy. An approved request can still be blocked if its
 
 - File creation is limited to `data/`, `docs/`, `generated/`, and `exports/` below the FREEOS root.
 - Resolved path containment prevents `..` traversal and outside-root absolute paths.
-- There is no automatic deletion.
+- There is no arbitrary automatic deletion. Computer screenshot housekeeping is the sole narrow exception described below.
 - Existing files require `overwrite: true` in the args that the user approves.
 - Scripts use direct process argument arrays, not a hidden shell command.
 - Only explicitly listed scripts in `tools/scripts` can run.
@@ -45,3 +45,22 @@ Logs and `system_events` should not contain secrets. Phase 5 has no background a
 - **Memory approval**: Document content is used only for context in chat, not automatically saved as memory. Documents do not bypass memory approval requirements.
 - **Embeddings**: Optional local embeddings through Ollama require explicit opt-in and configuration. Keyword search works without any embedding service.
 - **No cloud dependency**: RAG requires only local SQLite and Ollama (if embeddings are enabled). No paid API keys or cloud providers are required.
+
+## Computer Operator Foundation (1.1)
+
+`COMPUTER_CONTROL_ENABLED=false` and `COMPUTER_SCREEN_CAPTURE_ENABLED=false` are independent default-off kill switches. Only the exact value `true` opts in. Status, visible-window, active-window, and safe process inspection remain available while locked. `isComputerControlAllowed()` is the centralized emergency-stop policy seam; every control checks it at execution time. Changing the environment file requires restarting the API; this is not yet a global in-flight emergency stop.
+
+Brain -> future Agent/Planner -> Tool approval layer -> Computer Operator -> Windows. The operator supplies capabilities and never chooses its own mission. Model output, chat, voice, automation events, and observed screen/window content cannot grant permission.
+
+- Observation tools run through the existing executor and log runs. Capture additionally requires the separate capture switch. Screenshots can contain private desktop content: opt in only when the desktop is appropriate to capture.
+- Focus, mouse movement/clicks, typing, allowed keys/hotkeys, and app launch are medium-risk actions requiring request -> inspect -> approve -> run -> log. Registry tampering cannot make a computer control run directly. Every attempt that reaches execution has arguments, timestamps, approval linkage, and result/error. Approved requests are single-use, including concurrent calls and blocked attempts.
+- Exact executable paths and argument arrays are displayed before approval. Launch is limited to the Windows System32 paths for `notepad.exe`, `calc.exe`, and `mspaint.exe`, with empty args only. Everything else is denied, including cmd, PowerShell/pwsh, wscript/cscript, mshta, rundll32, reg, schtasks, interpreter hosts, and .bat/.cmd/.ps1/.vbs/.js scripts. No arbitrary shell text reaches PowerShell.
+- Input targets must be visible main windows in trusted Windows locations belonging to Notepad, Paint, or Calculator. Input checks the current foreground window; clicks also check the window under the current physical monitor coordinates. Negative coordinates on secondary monitors are valid; gaps between monitors and off-screen coordinates are refused. Coordinates and focus can change after approval, so targets are rechecked during execution. This is not a security sandbox for a compromised local desktop.
+- Typing uses literal Unicode SendInput, never SendKeys expression interpolation or clipboard paste. Limit: 4000 printable characters; no control characters. Enter, Windows-key shortcuts, paste, arbitrary hotkeys, and shell targets are unavailable. Allowed navigation keys and combinations are enumerated in `computer-core/src/policy.ts`.
+- Do not submit passwords, tokens, private keys, or other secrets. Credential-like text is rejected, but pattern matching cannot identify every secret. All typed text is volatile in API memory and is redacted in persistent requests and runs; restarting expires it. Computer request titles/descriptions are server-generated to prevent accidental payload duplication. Native errors are generic and never echo inputs. Observation returns only the requested names, IDs, titles, and geometry; window titles and screenshots may still contain personal information. Titles are returned to the requesting UI but omitted from persisted audit outputs.
+- Captures use random FREEOS PNG names exclusively under `generated/computer/screenshots/`. A serialized capture queue retains 20. Cleanup rejects symlinks/junction redirects, considers only regular files with the exact generated naming pattern, skips hardlinks, and unlinks only old captures in that exact directory. It never traverses or recursively deletes user folders. Local administrators who can concurrently replace files/directories remain outside this application's trust boundary.
+- Computer control automation rules are not accepted in this foundation. No new background work or autonomous loop is installed. Tests keep both switches false and use isolated temporary SQLite databases.
+
+Existing destructive and external-effect capabilities remain blocked: arbitrary deletion/formatting, shutdown/reboot, registry changes, process killing, installation/uninstallation, credential retrieval, messages/email, publishing, purchases, money transfers, cryptocurrency, live trading, and production deployment. The general computer agent must never independently decide to move money or place a trade. Future live trading needs a separate explicitly governed subsystem, not GUI input that bypasses trading policy.
+
+Future work should prefer direct APIs and Windows UI Automation over coordinates, with keyboard/mouse fallback, then separately reviewed vision and browser layers. No screen-vision AI is included now.

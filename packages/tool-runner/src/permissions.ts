@@ -1,6 +1,7 @@
 import { isAbsolute, relative, resolve } from "node:path";
 import type { ToolDefinition, ToolRiskLevel } from "./tool.types";
 import { ToolRunnerError } from "./tool.types";
+import { CONTROL_KEYS } from "@freeos/computer-core";
 
 export const ALLOWED_WRITE_DIRECTORIES = ["data", "docs", "generated", "exports"] as const;
 export const WHITELISTED_SCRIPTS = ["tools-status.js"] as const;
@@ -11,10 +12,12 @@ export function classifyRisk(value: string): ToolRiskLevel {
 }
 
 export function canRunDirectly(tool: ToolDefinition): boolean {
+  if ((CONTROL_KEYS as readonly string[]).includes(tool.toolKey)) return false;
   return tool.enabled && tool.riskLevel === "read_only" && !tool.requiresApproval;
 }
 
 export function assertExecutable(tool: ToolDefinition, approved: boolean): void {
+  if ((CONTROL_KEYS as readonly string[]).includes(tool.toolKey) && (!approved || !tool.requiresApproval || tool.riskLevel !== "medium_risk")) throw new ToolRunnerError("Computer actions require an approved medium-risk request.", "blocked");
   if (!tool.enabled || tool.riskLevel === "high_risk") throw new ToolRunnerError(`${tool.name} is blocked by the Phase 5 deny-first policy.`, "blocked");
   if (tool.riskLevel !== "read_only" && (!tool.requiresApproval || !approved)) throw new ToolRunnerError("Write and action tools require an approved tool request.", "blocked");
 }

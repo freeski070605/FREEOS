@@ -16,6 +16,7 @@ const requiredPath = (label, path) => report(existsSync(resolve(root, path)) ? "
 const optionalPath = (label, path) => report(existsSync(resolve(root, path)) ? "PASS" : "WARN", label, path);
 
 console.log("FREEOS v1 Environment Check\n");
+for (const key of ["COMPUTER_CONTROL_ENABLED", "COMPUTER_SCREEN_CAPTURE_ENABLED"]) report("PASS", key, value(key, "false") === "true" ? "enabled by explicit configuration" : "locked");
 const nodeMajor = Number(process.versions.node.split(".")[0]); report(nodeMajor >= 20 ? "PASS" : "FAIL", "Node version", process.version);
 const npm = process.platform === "win32"
   ? spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm --version"], { encoding: "utf8" })

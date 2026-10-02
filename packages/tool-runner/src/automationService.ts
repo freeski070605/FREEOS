@@ -4,6 +4,7 @@ import { ToolRunnerError } from "./tool.types";
 import { getToolRegistry, type ToolRegistry } from "./toolRegistry";
 import { ToolRequests } from "./toolRequests";
 import { ToolExecutor } from "./toolExecutor";
+import { ComputerError, validateComputerArgs } from "@freeos/computer-core";
 
 type Row = Record<string, unknown>;
 function parse(value: unknown): JsonObject { try { const result: unknown = JSON.parse(String(value)); return result && typeof result === "object" && !Array.isArray(result) ? result as JsonObject : {}; } catch { return {}; } }
@@ -17,6 +18,11 @@ export class AutomationService {
     if (!input.name?.trim()) throw new ToolRunnerError("name is required.", "validation");
     if (!(["manual", "interval_preview"] as string[]).includes(input.triggerType)) throw new ToolRunnerError("triggerType must be manual or interval_preview.", "validation");
     const tool = this.registry.requireTool(input.actionToolKey);
+    if (tool.toolKey.startsWith("computer.") && tool.riskLevel !== "read_only") throw new ToolRunnerError("Computer control automation is outside this foundation; create an explicit tool request.", "blocked");
+    if (tool.toolKey.startsWith("computer.")) {
+      try { validateComputerArgs(tool.toolKey, input.actionArgs ?? {}); }
+      catch (error) { if (error instanceof ComputerError) throw new ToolRunnerError(error.message, "validation"); throw error; }
+    }
     if (tool.riskLevel === "high_risk" || !tool.enabled) throw new ToolRunnerError("Automation actions cannot target blocked or disabled tools.", "blocked");
     try { this.registry.database.prepare(`INSERT INTO automation_rules (rule_key,name,description,enabled,trigger_type,trigger_config,action_tool_key,action_args,requires_approval) VALUES (?,?,?,?,?,?,?,?,?)`).run(input.ruleKey.trim(), input.name.trim(), input.description?.trim() ?? "", Number(input.enabled ?? false), input.triggerType, JSON.stringify(input.triggerConfig ?? {}), tool.toolKey, JSON.stringify(input.actionArgs ?? {}), Number(tool.riskLevel !== "read_only" || tool.requiresApproval)); }
     catch (error) { throw new ToolRunnerError(error instanceof Error && error.message.includes("UNIQUE") ? "An automation rule with that ruleKey already exists." : "Could not create automation rule.", error instanceof Error && error.message.includes("UNIQUE") ? "conflict" : "database"); }

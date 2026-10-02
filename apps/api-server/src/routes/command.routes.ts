@@ -92,6 +92,32 @@ commandRouter.get("/backup/status", (_request, response, next) => { try { respon
 const systemPrompt = `You are free-os, the local-first FREEOS assistant. You help Drew Free build, research, plan, code, organize, and operate local systems. You must respect FREEOS safety rules. You cannot execute destructive or risky actions. You cannot send messages, trade, purchase, deploy, delete files, or access credentials. You can suggest tools or create approval requests when appropriate. You use approved local memory only. You do not invent saved memory or system telemetry. For status questions, use only the supplied LIVE FREEOS STATUS and clearly say when a metric is not available. You do not require paid API keys. Keep answers direct, practical, and execution-focused.`;
 const highRisk = /\b(delete|remove files?|send (?:an? )?(?:email|message)|purchase|buy|trade|deploy|credential|password|secret|format (?:the )?drive|shutdown|reboot)\b/i;
 const remember = /\bremember\s+(?:that\s+)?(.+)/is;
+const creativeRequest = /\b(hook|verse|bridge|song|caption|scene|story|script|monologue|rewrite|creative|lyrics?)\b/i;
+const singleCreativeOption = /\b(only one|one option|single (?:hook|verse|caption|draft|option)|just one)\b/i;
+type ResponseMode = "precise" | "balanced" | "creative";
+
+const ragExampleUseRule = "Indexed documents are reference material. Use them to understand rules, corrections, standards, and examples. Do not copy example outputs unless the user explicitly asks to repeat them. If a document contains a sample hook, verse, caption, or draft, treat it as an example of the principle, not the final answer. Generate a fresh response.";
+const creativeGenerationRule = "This is a creative generation task. Create fresh wording. Do not reuse prior sample lines from indexed documents. Do not repeat the same hook from previous responses. Preserve the craft principles but change the language, imagery, structure, and emotional angle.";
+const creativeRagRule = "Use the indexed documents to extract:\n- style rules\n- emotional standards\n- correction notes\n- craft principles\n\nDo not use the indexed documents as a source of final lines.";
+
+function generationOptions(mode: ResponseMode) {
+  if (mode === "creative") return { temperature: 0.85, top_p: 0.9, repeat_penalty: 1.15, num_predict: 700 };
+  if (mode === "balanced") return { temperature: 0.55, top_p: 0.85, repeat_penalty: 1.1, num_predict: 600 };
+  return { temperature: 0.3, top_p: 0.8, repeat_penalty: 1.1, num_predict: 500 };
+}
+
+function normalizedCreativeLines(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*(?:[-*•]|option\s+\d+[:.)-]?)\s*/i, "").trim().toLowerCase().replace(/[^a-z0-9'&\s]/g, " ").replace(/\s+/g, " "))
+    .filter((line) => line.length >= 24 && line.split(" ").length >= 5);
+}
+
+function copiesReferenceLine(output: string, referenceMaterial: string[]): boolean {
+  const outputLines = normalizedCreativeLines(output);
+  const referenceLines = referenceMaterial.flatMap(normalizedCreativeLines);
+  return outputLines.some((line) => referenceLines.some((reference) => line.includes(reference) || reference.includes(line)));
+}
 
 commandRouter.post("/chat", async (request, response, next) => {
   const body = record(request.body); const message = String(body.message ?? "").trim();
@@ -118,6 +144,16 @@ commandRouter.post("/chat", async (request, response, next) => {
     const requestedRagTopK = Number.isFinite(ragTopKUsed) && ragTopKUsed! > 0 ? Math.floor(ragTopKUsed!) : config.ragDefaultTopK;
     const ragTopKFinal = Math.min(requestedRagTopK, config.ragMaxTopK);
     if (requestedRagTopK > config.ragMaxTopK) warnings.push(`RAG topK was capped at ${config.ragMaxTopK}.`);
+    const creativeMode = creativeRequest.test(message);
+    const requestedResponseMode = typeof body.responseMode === "string" && ["precise", "balanced", "creative"].includes(body.responseMode) ? body.responseMode as ResponseMode : undefined;
+    const responseMode: ResponseMode = requestedResponseMode ?? (creativeMode ? "creative" : "precise");
+    const providedRecentResponses = Array.isArray(body.recentAssistantResponses)
+      ? body.recentAssistantResponses.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(-5)
+      : [];
+    const storedRecentResponses = creativeMode && providedRecentResponses.length === 0
+      ? (db().prepare("SELECT response FROM command_chat_sessions ORDER BY id DESC LIMIT 5").all() as Array<{ response: string }>).map((row) => row.response)
+      : [];
+    const recentAssistantResponses = (providedRecentResponses.length > 0 ? providedRecentResponses : storedRecentResponses).map((item) => item.slice(0, 700));
     let blockedModelGuess = false;
     let shouldCallModel = true;
 
@@ -130,6 +166,9 @@ commandRouter.post("/chat", async (request, response, next) => {
         ragUsed: false,
         ragSources: [],
         blockedModelGuess: false,
+        creativeMode,
+        exampleCopyBlocked: creativeMode && effectiveUseRag,
+        responseMode,
         warnings: [`Fast model ${model} is not installed.`],
       });
       return;
@@ -199,13 +238,38 @@ commandRouter.post("/chat", async (request, response, next) => {
       }
 
       if (shouldCallModel) {
+        const freshVariationsRule = creativeMode && !singleCreativeOption.test(message)
+          ? "Generate 3 distinct options unless the user explicitly asks for one. Give each option a different emotional angle, such as controlled pain, regret and distance, or love with pride. Do not make the options minor rewrites of one another."
+          : "";
+        const avoidRepeating = creativeMode && recentAssistantResponses.length > 0
+          ? `AVOID REPEATING THESE RECENT ASSISTANT OUTPUTS OR THEIR DISTINCTIVE PHRASES:\n${recentAssistantResponses.map((item, index) => `[Recent ${index + 1}] ${item}`).join("\n\n")}`
+          : "";
+        const ragInstructions = ragUsed ? [ragExampleUseRule, creativeMode ? creativeRagRule : ""].filter(Boolean).join("\n\n") : "";
+        const promptParts = [systemPrompt, `RESPONSE MODE: ${responseMode}.`, creativeMode ? creativeGenerationRule : "", freshVariationsRule, liveStatus, context, research, ragInstructions, avoidRepeating, ragContext, createdMemoryProposalId ? "A pending memory proposal was created; tell the user it still requires approval." : "", createdToolRequestId ? "A tool request was created; tell the user it requires approval and a separate Run click." : ""].filter(Boolean);
         try {
           responseText = await generateWithOllama({
             model,
             prompt: message,
-            system: [systemPrompt, liveStatus, context, research, ragContext, createdMemoryProposalId ? "A pending memory proposal was created; tell the user it still requires approval." : "", createdToolRequestId ? "A tool request was created; tell the user it requires approval and a separate Run click." : ""].filter(Boolean).join("\n\n"),
+            system: promptParts.join("\n\n"),
             timeoutMs: config.ollamaGenerateTimeoutMs,
+            options: generationOptions(responseMode),
           });
+
+          if (creativeMode && copiesReferenceLine(responseText, [ragContext, ...recentAssistantResponses])) {
+            warnings.push("A copied or repeated creative line was detected, so FREEOS regenerated the response.");
+            const firstAttempt = responseText.slice(0, 1_500);
+            responseText = await generateWithOllama({
+              model,
+              prompt: message,
+              system: [...promptParts, `COPY/REPETITION COLLISION DETECTED. Discard the prior attempt below and write entirely new lines with different imagery, syntax, rhyme movement, and emotional framing.\n\nPRIOR ATTEMPT TO AVOID:\n${firstAttempt}`].join("\n\n"),
+              timeoutMs: config.ollamaGenerateTimeoutMs,
+              options: generationOptions("creative"),
+            });
+            if (copiesReferenceLine(responseText, [ragContext, ...recentAssistantResponses, firstAttempt])) {
+              warnings.push("FREEOS blocked a second response because it still repeated reference wording.");
+              responseText = "I couldn’t produce a sufficiently fresh version without repeating the reference material. Try adding a new emotional angle, setting, or central image.";
+            }
+          }
         } catch (error) {
           if (error instanceof LocalModelError && error.code === "local_model_timeout") {
             response.status(504).json({
@@ -216,6 +280,10 @@ commandRouter.post("/chat", async (request, response, next) => {
               ragUsed,
               ragSources,
               blockedModelGuess: false,
+              creativeMode,
+              exampleCopyBlocked: creativeMode && ragUsed,
+              responseMode,
+              ragUsedAs: creativeMode && ragUsed ? "craft_reference" : undefined,
               warnings: [...warnings, "Local Ollama generation exceeded the configured timeout."],
             });
             return;
@@ -226,6 +294,6 @@ commandRouter.post("/chat", async (request, response, next) => {
     }
     const speech = body.speak === true ? await synthesizeSpeech(responseText) : null;
     const result = db().prepare(`INSERT INTO command_chat_sessions (message,response,project_key,model,used_memory,used_project_notes,used_research_context,created_memory_proposal_id,created_tool_request_id,audio_output_path) VALUES (?,?,?,?,?,?,?,?,?,?)`).run(message, responseText, projectKey ?? null, model, useMemory ? 1 : 0, projectKey && useProjectNotes ? 1 : 0, useResearchContext ? 1 : 0, createdMemoryProposalId, createdToolRequestId, speech?.outputPath ?? null);
-    response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null, memoryUsed: useMemory, projectNotesUsed: Boolean(projectKey && useProjectNotes), ragRequested: effectiveUseRag, ragUsed, ragSources: ragSources ?? [], ragModeUsed: ragModeUsed, ragTopKUsed: ragTopKFinal, ragQueryUsed: message, blockedModelGuess, warnings: warnings.length > 0 ? warnings : undefined });
+    response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null, memoryUsed: useMemory, projectNotesUsed: Boolean(projectKey && useProjectNotes), ragRequested: effectiveUseRag, ragUsed, ragSources: ragSources ?? [], ragModeUsed: ragModeUsed, ragTopKUsed: ragTopKFinal, ragQueryUsed: message, blockedModelGuess, warnings: warnings.length > 0 ? warnings : undefined, creativeMode, exampleCopyBlocked: creativeMode && ragUsed, responseMode, ragUsedAs: creativeMode && ragUsed ? "craft_reference" : undefined });
   } catch (error) { next(error); }
 });

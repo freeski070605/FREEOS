@@ -35,6 +35,12 @@ export async function generateWithOllama(input: {
   prompt: string;
   system: string;
   timeoutMs?: number;
+  options?: {
+    temperature: number;
+    top_p: number;
+    repeat_penalty: number;
+    num_predict?: number;
+  };
 }): Promise<string> {
   try {
     const response = await fetch(`${config.ollamaBaseUrl}/api/generate`, {
@@ -46,7 +52,7 @@ export async function generateWithOllama(input: {
         system: input.system,
         stream: false,
         think: false,
-        options: { temperature: 0.2, num_predict: 500 },
+        options: { temperature: 0.2, top_p: 0.8, repeat_penalty: 1.1, num_predict: 500, ...input.options },
       }),
       signal: AbortSignal.timeout(input.timeoutMs ?? config.ollamaGenerateTimeoutMs),
     });

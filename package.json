@@ -34,7 +34,9 @@
     "env:check": "node tools/scripts/env-check.js",
     "db:integrity": "node tools/scripts/db-integrity.js",
     "backup:verify": "node tools/scripts/verify-backup.js",
-    "release:check": "node tools/scripts/release-check.js"
+    "release:check": "node tools/scripts/release-check.js",
+    "computer:status": "npm run build --workspace @freeos/computer-core && node tools/scripts/computer-status.js",
+    "test:computer": "npm run build --workspace @freeos/computer-core && npm run build --workspace @freeos/tool-runner && node --test tools/tests/computer.test.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

@@ -9,6 +9,7 @@ import { resolveAllowedWritePath, WHITELISTED_SCRIPTS } from "./permissions";
 import type { JsonObject } from "./tool.types";
 import { ToolRunnerError } from "./tool.types";
 import type { ToolRegistry } from "./toolRegistry";
+import { ComputerError, executeComputerTool } from "@freeos/computer-core";
 
 const executeFile = promisify(execFile);
 function requiredString(value: unknown, label: string): string { if (typeof value !== "string" || !value.trim()) throw new ToolRunnerError(`${label} is required.`, "validation"); return value.trim(); }
@@ -16,6 +17,10 @@ async function endpointOnline(url: string): Promise<boolean> { try { const respo
 function count(registry: ToolRegistry, table: string): number { return Number((registry.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count); }
 
 export async function executeSafeTool(registry: ToolRegistry, toolKey: string, args: JsonObject): Promise<unknown> {
+  if (toolKey.startsWith("computer.")) {
+    try { return await executeComputerTool(registry.rootDir, toolKey, args); }
+    catch (error) { if (error instanceof ComputerError) throw new ToolRunnerError(error.message, error.code === "unavailable" ? "blocked" : error.code); throw error; }
+  }
   switch (toolKey) {
     case "system.status.snapshot": {
       const [ollamaOnline, searxngOnline] = await Promise.all([endpointOnline(process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434/api/tags"), endpointOnline(process.env.SEARXNG_BASE_URL ?? "http://127.0.0.1:8080/search?q=freeos&format=json")]);

@@ -5,11 +5,14 @@
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "scripts": { "build": "tsc -p tsconfig.json" },
+  "scripts": {
+    "build": "npm run build --workspace @freeos/computer-core && tsc -p tsconfig.json"
+  },
   "dependencies": {
     "@freeos/memory-core": "*",
     "@freeos/voice-core": "*",
-    "better-sqlite3": "^12.11.1"
+    "better-sqlite3": "^12.11.1",
+    "@freeos/computer-core": "*"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
