@@ -470,19 +470,20 @@ export class RagService {
   }
 
   async buildContext(
-    query: string,
-    projectKey?: string,
-    topK: number = 8,
-    includeMemory: boolean = true,
-    includeProjectNotes: boolean = true,
-    includeDocuments: boolean = true,
-  ): Promise<RagContext> {
+  query: string,
+  projectKey?: string,
+  topK: number = 8,
+  includeMemory: boolean = true,
+  includeProjectNotes: boolean = true,
+  includeDocuments: boolean = true,
+  mode: "keyword" | "hybrid" | "embeddings" = "keyword",
+): Promise<RagContext> {
     let contextParts: string[] = [];
     const sources = new Map<string, Set<number>>();
 
     // Get document chunks
     if (includeDocuments) {
-      const results = await this.search(query, "keyword", projectKey, topK);
+      const results = await this.search(query, mode, projectKey, topK);
       for (const result of results) {
         contextParts.push(`[${result.documentName}] ${result.content}`);
 
@@ -526,14 +527,35 @@ export class RagService {
   }
 
   deleteDocumentIndexOnly(documentId: number): void {
-    // Only delete index records, not the source file
-    this.#db.prepare("DELETE FROM rag_chunks WHERE document_id = ?").run(documentId);
-    this.#db.prepare("DELETE FROM rag_embeddings WHERE chunk_id IN (SELECT id FROM rag_chunks WHERE document_id = ?)").run(documentId);
+  // Delete index records transactionally.
+  // The original source document is never deleted.
+  const removeIndex = this.#db.transaction((id: number) => {
+    this.#db
+      .prepare(`
+        DELETE FROM rag_embeddings
+        WHERE chunk_id IN (
+          SELECT id
+          FROM rag_chunks
+          WHERE document_id = ?
+        )
+      `)
+      .run(id);
 
-    // Update document status
-    this.#db.prepare("UPDATE rag_documents SET status = ?, indexed_at = NULL WHERE id = ?").run("pending", documentId);
-  }
+    this.#db
+      .prepare("DELETE FROM rag_chunks WHERE document_id = ?")
+      .run(id);
 
+    this.#db
+      .prepare(`
+        UPDATE rag_documents
+        SET status = ?, indexed_at = NULL
+        WHERE id = ?
+      `)
+      .run("pending", id);
+  });
+
+  removeIndex(documentId);
+}
   listSources(): RagSource[] {
     const rows = this.#db.prepare("SELECT * FROM rag_sources ORDER BY created_at DESC").all() as Row[];
     return rows.map(rowToSource);
