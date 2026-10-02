@@ -142,9 +142,21 @@ export class RagService {
     }
 
     const stmt = this.#db.prepare(`
-      INSERT OR REPLACE INTO rag_sources (source_key, project_key, source_type, root_path, display_name)
-      VALUES (?, ?, ?, ?, ?)
-    `);
+  INSERT INTO rag_sources (
+    source_key,
+    project_key,
+    source_type,
+    root_path,
+    display_name
+  )
+  VALUES (?, ?, ?, ?, ?)
+  ON CONFLICT(source_key) DO UPDATE SET
+    project_key = excluded.project_key,
+    source_type = excluded.source_type,
+    root_path = excluded.root_path,
+    display_name = excluded.display_name,
+    updated_at = CURRENT_TIMESTAMP
+`);
 
     stmt.run(sourceKey, projectKey || null, sourceType, rootPath, displayName);
 
