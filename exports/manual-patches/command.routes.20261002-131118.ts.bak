@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { checkSearxngStatus, getResearchService } from "@freeos/research-core";
 import { getMemoryStore } from "@freeos/memory-core";
 import { getVoiceStatus, synthesizeSpeech } from "@freeos/voice-core";
@@ -109,7 +109,7 @@ function generationOptions(mode: ResponseMode) {
 function normalizedCreativeLines(value: string): string[] {
   return value
     .split(/\r?\n/)
-    .map((line) => line.replace(/^\s*(?:[-*â€¢]|option\s+\d+[:.)-]?)\s*/i, "").trim().toLowerCase().replace(/[^a-z0-9'&\s]/g, " ").replace(/\s+/g, " "))
+    .map((line) => line.replace(/^\s*(?:[-*•]|option\s+\d+[:.)-]?)\s*/i, "").trim().toLowerCase().replace(/[^a-z0-9'&\s]/g, " ").replace(/\s+/g, " "))
     .filter((line) => line.length >= 24 && line.split(" ").length >= 5);
 }
 
@@ -139,50 +139,53 @@ commandRouter.post("/chat", async (request, response, next) => {
     const explicitRagOff = body.useRag === false || body.useRag === "false";
     const explicitRagRequested = /\b(using indexed documents|use indexed documents|use indexed docs|from indexed documents|based on indexed documents|use RAG|with RAG|from local documents)\b/i.test(message);
     const effectiveUseRag = !explicitRagOff && (useRagOption || explicitRagRequested);
+   let ragModeUsed: "keyword" | "hybrid" | "embeddings" =
+  typeof body.ragMode === "string" &&
+  ["keyword", "hybrid", "embeddings"].includes(body.ragMode)
+    ? (body.ragMode as "keyword" | "hybrid" | "embeddings")
+    : "keyword";
 
-    let ragModeUsed: "keyword" | "hybrid" | "embeddings" =
-      typeof body.ragMode === "string" &&
-      ["keyword", "hybrid", "embeddings"].includes(body.ragMode)
-        ? (body.ragMode as "keyword" | "hybrid" | "embeddings")
-        : "keyword";
+if (
+  body.ragMode !== undefined &&
+  body.ragMode !== "keyword" &&
+  body.ragMode !== "hybrid" &&
+  body.ragMode !== "embeddings"
+) {
+  warnings.push("Unknown RAG mode was replaced with keyword mode.");
+}
 
-    if (
-      body.ragMode !== undefined &&
-      body.ragMode !== "keyword" &&
-      body.ragMode !== "hybrid" &&
-      body.ragMode !== "embeddings"
-    ) {
-      warnings.push("Unknown RAG mode was replaced with keyword mode.");
-    }
+const ragTopKRaw =
+  typeof body.ragTopK === "number"
+    ? body.ragTopK
+    : typeof body.ragTopK === "string"
+      ? Number(body.ragTopK)
+      : config.ragDefaultTopK;
 
-    const ragTopKDefault =
-      Number.isFinite(config.ragDefaultTopK) &&
-      config.ragDefaultTopK >= 1
-        ? Math.min(Math.floor(config.ragDefaultTopK), 20)
-        : 8;
+const ragTopKDefault =
+  Number.isFinite(config.ragDefaultTopK) && config.ragDefaultTopK > 0
+    ? Math.floor(config.ragDefaultTopK)
+    : 8;
 
-    const ragTopKRaw =
-      typeof body.ragTopK === "number"
-        ? body.ragTopK
-        : typeof body.ragTopK === "string"
-          ? Number(body.ragTopK)
-          : ragTopKDefault;
+const ragTopKLimit = Math.min(
+  Number.isFinite(config.ragMaxTopK) && config.ragMaxTopK > 0
+    ? Math.floor(config.ragMaxTopK)
+    : 20,
+  20,
+);
 
-    let ragTopKFinal =
-      Number.isFinite(ragTopKRaw) && ragTopKRaw >= 1
-        ? Math.floor(ragTopKRaw)
-        : ragTopKDefault;
+let ragTopKFinal =
+  Number.isFinite(ragTopKRaw) && ragTopKRaw >= 1
+    ? Math.floor(ragTopKRaw)
+    : ragTopKDefault;
 
-    if (!Number.isFinite(ragTopKRaw) || ragTopKRaw < 1) {
-      warnings.push(
-        `Invalid RAG topK was replaced with ${ragTopKDefault}.`,
-      );
-    }
+if (!Number.isFinite(ragTopKRaw) || ragTopKRaw < 1) {
+  warnings.push(`Invalid RAG topK was replaced with ${ragTopKDefault}.`);
+}
 
-    if (ragTopKFinal > 20) {
-      warnings.push("RAG topK was capped at 20.");
-      ragTopKFinal = 20;
-    }
+if (ragTopKFinal > ragTopKLimit) {
+  warnings.push(`RAG topK was capped at ${ragTopKLimit}.`);
+  ragTopKFinal = ragTopKLimit;
+}
     const creativeMode = creativeRequest.test(message);
     const requestedResponseMode = typeof body.responseMode === "string" && ["precise", "balanced", "creative"].includes(body.responseMode) ? body.responseMode as ResponseMode : undefined;
     const responseMode: ResponseMode = requestedResponseMode ?? (creativeMode ? "creative" : "precise");
@@ -214,7 +217,7 @@ commandRouter.post("/chat", async (request, response, next) => {
     }
 
     if (highRisk.test(message)) {
-      responseText = "I canâ€™t perform or queue that high-risk action. FREEOS keeps destructive actions, sending, purchases, trading, deployments, and credential access blocked. I can help with a safe plan or read-only review instead.";
+      responseText = "I can’t perform or queue that high-risk action. FREEOS keeps destructive actions, sending, purchases, trading, deployments, and credential access blocked. I can help with a safe plan or read-only review instead.";
     } else {
       const memoryMatch = message.match(remember);
       if (memoryMatch?.[1]) createdMemoryProposalId = store().createProposal({ title: memoryMatch[1].trim().slice(0, 80), content: memoryMatch[1].trim(), category: projectKey ? "project" : "general", projectKey, source: "command-chat", reason: "Requested in local chat; awaiting approval." }).id;
@@ -237,95 +240,39 @@ commandRouter.post("/chat", async (request, response, next) => {
 
       if (effectiveUseRag) {
         const rag = getRagService();
-
         if (!rag) {
-          warnings.push(
-            "RAG is disabled or unavailable. FREEOS did not answer from model guesses.",
-          );
-
-          responseText =
-            "I can’t answer from indexed documents because RAG is disabled or unavailable.";
-
+          warnings.push("RAG is disabled or unavailable. FREEOS did not answer from model guesses.");
+          responseText = "I can’t answer from indexed documents because RAG is disabled or unavailable.";
           blockedModelGuess = true;
           shouldCallModel = false;
         } else {
           try {
-            const ragStatus = await rag.getStatus();
-
-            if (
-              ragModeUsed !== "keyword" &&
-              (
-                !ragStatus.embeddingsEnabled ||
-                !ragStatus.embeddingModelAvailable
-              )
-            ) {
-              const requestedMode = ragModeUsed;
-
-              ragModeUsed = "keyword";
-
-              warnings.push(
-                `${requestedMode} RAG is unavailable because local embeddings are not ready. FREEOS used keyword retrieval instead.`,
-              );
-            }
-
-            const contextResult = await rag.buildContext(
-              message,
-              projectKey,
-              ragTopKFinal,
-              false,
-              false,
-              true,
-              ragModeUsed,
-            );
-
+            const results = await rag.search(message, ragModeUsed, projectKey, ragTopKFinal);
             if (process.env.NODE_ENV !== "production") {
-              console.debug(
-                "[FREEOS] /command/chat RAG results",
-                {
-                  sourceCount: contextResult.sources.length,
-                  ragModeUsed,
-                  ragTopKFinal,
-                },
-              );
+              console.debug("[FREEOS] /command/chat RAG results", { count: results.length, paths: results.map((item) => item.documentPath) });
             }
 
-            if (contextResult.context.trim().length > 0) {
+            if (results.length > 0) {
               ragUsed = true;
-
-              ragSources = contextResult.sources.map((source) => ({
-                documentPath: source.documentPath,
-                documentName: source.documentName,
-                chunks: source.chunks,
-              }));
-
-              ragContext = contextResult.context.slice(
-                0,
-                config.ragContextMaxChars,
-              );
+              const sourceMap = new Map<string, Set<number>>();
+              for (const item of results) {
+                const path = item.documentPath || "unknown";
+                if (!sourceMap.has(path)) sourceMap.set(path, new Set());
+                sourceMap.get(path)!.add(item.chunkIndex);
+              }
+              ragSources = Array.from(sourceMap.entries()).map(([documentPath, chunks]) => ({ documentPath, documentName: documentPath.split(/[\\/]/).pop() || "unknown", chunks: Array.from(chunks).sort((a, b) => a - b) }));
+              const fullRagContext = results.map((item) => `[${item.documentName || item.documentPath || "unknown"} chunk ${item.chunkIndex}]\n${item.content}`).join("\n\n");
+              ragContext = fullRagContext.slice(0, config.ragContextMaxChars);
             } else {
-              warnings.push(
-                "No matching indexed document chunks were found for the RAG query. FREEOS did not answer from model guesses.",
-              );
-
-              responseText =
-                "I can’t answer that from indexed documents because no matching indexed document chunks were found. Re-index the relevant files or adjust the search terms, then retry.";
-
+              warnings.push("No matching indexed document chunks were found for the RAG query. FREEOS did not answer from model guesses.");
+              responseText = "I can’t answer that from indexed documents because no matching indexed document chunks were found for the RAG query. Re-index the relevant files or adjust the search terms, then retry.";
               blockedModelGuess = true;
               shouldCallModel = false;
             }
           } catch (error) {
-            console.warn(
-              "RAG retrieval failed for /command/chat:",
-              error,
-            );
-
-            warnings.push(
-              "RAG retrieval failed. FREEOS did not answer from model guesses.",
-            );
-
-            responseText =
-              "I can’t answer from indexed documents because the RAG service is unavailable.";
-
+            console.warn("RAG search failed for /command/chat:", error);
+            warnings.push("RAG is unavailable because retrieval failed. FREEOS did not answer from model guesses.");
+            responseText = "I can’t answer from indexed documents because the RAG service is unavailable.";
             blockedModelGuess = true;
             shouldCallModel = false;
           }
@@ -362,7 +309,7 @@ commandRouter.post("/chat", async (request, response, next) => {
             });
             if (copiesReferenceLine(responseText, [ragContext, ...recentAssistantResponses, firstAttempt])) {
               warnings.push("FREEOS blocked a second response because it still repeated reference wording.");
-              responseText = "I couldnâ€™t produce a sufficiently fresh version without repeating the reference material. Try adding a new emotional angle, setting, or central image.";
+              responseText = "I couldn’t produce a sufficiently fresh version without repeating the reference material. Try adding a new emotional angle, setting, or central image.";
             }
           }
         } catch (error) {
@@ -389,7 +336,6 @@ commandRouter.post("/chat", async (request, response, next) => {
     }
     const speech = body.speak === true ? await synthesizeSpeech(responseText) : null;
     const result = db().prepare(`INSERT INTO command_chat_sessions (message,response,project_key,model,used_memory,used_project_notes,used_research_context,created_memory_proposal_id,created_tool_request_id,audio_output_path) VALUES (?,?,?,?,?,?,?,?,?,?)`).run(message, responseText, projectKey ?? null, model, useMemory ? 1 : 0, projectKey && useProjectNotes ? 1 : 0, useResearchContext ? 1 : 0, createdMemoryProposalId, createdToolRequestId, speech?.outputPath ?? null);
-    response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null, memoryUsed: useMemory, projectNotesUsed: Boolean(projectKey && useProjectNotes), ragRequested: effectiveUseRag, ragUsed, ragSources: ragSources ?? [], ragMode: ragModeUsed, ragModeUsed: ragModeUsed, ragTopKUsed: ragTopKFinal, ragQueryUsed: message, blockedModelGuess, warnings, creativeMode, exampleCopyBlocked: creativeMode && ragUsed, responseMode, ragUsedAs: creativeMode && ragUsed ? "craft_reference" : undefined });
+    response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null, memoryUsed: useMemory, projectNotesUsed: Boolean(projectKey && useProjectNotes), ragRequested: effectiveUseRag, ragUsed, ragSources: ragSources ?? [], ragModeUsed: ragModeUsed, ragTopKUsed: ragTopKFinal, ragQueryUsed: message, blockedModelGuess, warnings: warnings.length > 0 ? warnings : undefined, creativeMode, exampleCopyBlocked: creativeMode && ragUsed, responseMode, ragUsedAs: creativeMode && ragUsed ? "craft_reference" : undefined });
   } catch (error) { next(error); }
 });
-
