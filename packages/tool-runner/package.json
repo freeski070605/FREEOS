@@ -6,13 +6,14 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "npm run build --workspace @freeos/computer-core && tsc -p tsconfig.json"
+    "build": "npm run build --workspace @freeos/computer-core && npm run build --workspace @freeos/coding-core && tsc -p tsconfig.json"
   },
   "dependencies": {
     "@freeos/memory-core": "*",
     "@freeos/voice-core": "*",
     "better-sqlite3": "^12.11.1",
-    "@freeos/computer-core": "*"
+    "@freeos/computer-core": "*",
+    "@freeos/coding-core": "*"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

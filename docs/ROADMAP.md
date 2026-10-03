@@ -16,8 +16,8 @@ FREEOS v1.0.0 is complete and stable. Phases 1–6 culminated in Command Center 
 
 1. **RAG stabilization** - ingestion reliability, retrieval quality, grounded answers, and explicit local indexing controls.
 2. **Computer Operator** - FREEOS 1.1 foundation: typed Windows observation, opt-in local screenshots, approved focus/input/app launch, centralized control lock, and audit. No autonomous loop. Broader application permissions, UI Automation, and an in-flight emergency stop remain future work.
-3. **Safe Coding Workspace** - isolated project changes, readable diffs, tests, approval boundaries, and rollback.
-4. **Browser Operator** - explicit site permissions and inspectable browser actions; no automatic messaging, purchases, or publishing.
+3. **Safe Coding Workspace** - completed in FREEOS 1.2: registered roots, protected reads and search, structured change previews, Tool Runner approval, touched-file snapshots, hash-guarded rollback, and approved verification commands. Build, coding and Computer Operator tests, database integrity, environment check, RAG status, and API smoke tests passed.
+4. **Browser Operator** - next recommended build; explicit site permissions and inspectable browser actions, with no automatic messaging, purchases, or publishing.
 5. **Opt-in Scheduler** - explicit schedules, preview, approval, audit, and global off switch; no default background autonomy.
 6. **Project-Specific Agents** - agents limited to selected project context and permissions.
 7. **Mission Engine** - user-defined objectives and constraints, bounded task planning, approvals, measurable progress, and audit.

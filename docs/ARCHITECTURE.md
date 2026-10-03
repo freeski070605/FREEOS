@@ -9,6 +9,7 @@ FREEOS is a local-first Node.js/TypeScript monorepo. Express runs on port 3001, 
 - `voice-core`: local recording storage, voice sessions, whisper.cpp STT, Piper or Windows TTS, and voice configuration.
 - `tool-runner`: tool registry, risk classification, approval queue, execution logs, path policy, safe executors, and automation rules.
 - `computer-core`: typed local Windows observation, PNG capture, validated window/input operations, application allowlist, and centralized control policy. It has no cloud or native npm dependency.
+- `coding-core`: registered source roots, bounded reads and search, fixed Git and command execution, structured change previews, session snapshots, and hash-guarded rollback.
 - API server: exposes each capability without moving permission decisions into the browser.
 - Dashboard: presents status, registries, queues, histories, and explicit controls.
 
@@ -64,3 +65,9 @@ Screenshots are PNGs in `generated/computer/screenshots/`. Retention keeps the n
 The foundation application policy permits trusted Windows Notepad, Calculator, and Paint targets. Launch accepts only their exact System32 executable paths and an explicit empty argument array. Broader applications and arguments require a reviewed policy extension. This intentionally small allowlist prevents input into terminals, browsers, file managers, and credential windows. Packaged Windows applications may refuse launch or focus in some sessions; failures are surfaced rather than simulated.
 
 The long-term operator should be hybrid: direct OS/filesystem APIs for reliable structured work; Windows UI Automation for accessible controls; keyboard/mouse only as a fallback; screen vision and browser automation in later, separately governed layers. This reduces coordinate fragility and makes targets and effects more inspectable. This foundation adds no screen-vision AI.
+
+## FREEOS 1.2 Safe Coding Workspace
+
+Coding uses direct filesystem, Git, and process APIs without Computer Operator input. `coding-core` validates all paths against registered roots and rejects secrets, links, binaries, and generated directories. It creates expiring previews for complete text create/update change sets and rechecks hashes before applying. Session manifests and touched-file snapshots live in `exports/coding-sessions/`. Rollback verifies post-apply hashes before restoring only those files.
+
+`tool-runner` registers read-only coding inspection and preview tools. Apply, command run, and rollback enter its existing medium-risk request → approve → run → audit flow. The API exposes inspection and preview routes; it has no direct mutation route. The dashboard Coding panel prepares requests and displays the shared Approval Hub. See [Safe Coding Workspace](SAFE_CODING_WORKSPACE.md).

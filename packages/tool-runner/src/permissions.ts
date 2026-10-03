@@ -13,10 +13,12 @@ export function classifyRisk(value: string): ToolRiskLevel {
 
 export function canRunDirectly(tool: ToolDefinition): boolean {
   if ((CONTROL_KEYS as readonly string[]).includes(tool.toolKey)) return false;
+  if (["coding.change.apply", "coding.command.run", "coding.session.rollback"].includes(tool.toolKey)) return false;
   return tool.enabled && tool.riskLevel === "read_only" && !tool.requiresApproval;
 }
 
 export function assertExecutable(tool: ToolDefinition, approved: boolean): void {
+  if (["coding.change.apply", "coding.command.run", "coding.session.rollback"].includes(tool.toolKey) && (!approved || !tool.requiresApproval || tool.riskLevel !== "medium_risk")) throw new ToolRunnerError("Coding actions require an approved medium-risk request.", "blocked");
   if ((CONTROL_KEYS as readonly string[]).includes(tool.toolKey) && (!approved || !tool.requiresApproval || tool.riskLevel !== "medium_risk")) throw new ToolRunnerError("Computer actions require an approved medium-risk request.", "blocked");
   if (!tool.enabled || tool.riskLevel === "high_risk") throw new ToolRunnerError(`${tool.name} is blocked by the Phase 5 deny-first policy.`, "blocked");
   if (tool.riskLevel !== "read_only" && (!tool.requiresApproval || !approved)) throw new ToolRunnerError("Write and action tools require an approved tool request.", "blocked");

@@ -34,10 +34,12 @@ export class ToolExecutor {
         throw error;
       }
     }
-    const run = this.requests.startRun(toolKey, computerAuditArgs(toolKey, args), requestId);
+    const auditArgs = toolKey === "coding.change.preview" ? { summary: args.summary, files: Array.isArray(args.files) ? args.files.map((file: any) => ({ path: file?.path, operation: file?.operation })) : [] } : computerAuditArgs(toolKey, args);
+    const run = this.requests.startRun(toolKey, auditArgs, requestId);
     try {
-      const output = await executeSafeTool(this.registry, toolKey, args);
-      const finished = this.requests.finishRun(run.id, "completed", computerAuditOutput(toolKey, output), null);
+      const output = await executeSafeTool(this.registry, toolKey, args, { requestId: requestId ?? undefined, toolRunId: run.id });
+      const auditOutput = toolKey === "coding.file.read" || toolKey === "coding.search" || toolKey === "coding.git.diff" || toolKey === "coding.git.diff_file" || toolKey === "coding.change.preview" || toolKey === "coding.command.run" ? { redacted: true } : computerAuditOutput(toolKey, output);
+      const finished = this.requests.finishRun(run.id, "completed", auditOutput, null);
       return { ...finished, output };
     }
     catch (error) { const message = error instanceof Error ? error.message : "Tool execution failed."; this.requests.finishRun(run.id, error instanceof ToolRunnerError && error.code === "blocked" ? "blocked" : "failed", null, message); throw error; }

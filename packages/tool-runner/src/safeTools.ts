@@ -10,13 +10,34 @@ import type { JsonObject } from "./tool.types";
 import { ToolRunnerError } from "./tool.types";
 import type { ToolRegistry } from "./toolRegistry";
 import { ComputerError, executeComputerTool } from "@freeos/computer-core";
+import { coding, CodingError } from "@freeos/coding-core";
 
 const executeFile = promisify(execFile);
 function requiredString(value: unknown, label: string): string { if (typeof value !== "string" || !value.trim()) throw new ToolRunnerError(`${label} is required.`, "validation"); return value.trim(); }
 async function endpointOnline(url: string): Promise<boolean> { try { const response = await fetch(url, { signal: AbortSignal.timeout(1800) }); return response.ok; } catch { return false; } }
 function count(registry: ToolRegistry, table: string): number { return Number((registry.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count); }
 
-export async function executeSafeTool(registry: ToolRegistry, toolKey: string, args: JsonObject): Promise<unknown> {
+export async function executeSafeTool(registry: ToolRegistry, toolKey: string, args: JsonObject, audit: { requestId?: number; toolRunId?: number } = {}): Promise<unknown> {
+  if (toolKey.startsWith("coding.")) {
+    try {
+      switch (toolKey) {
+        case "coding.status": return await coding.status();
+        case "coding.workspaces.list": return await coding.workspaces();
+        case "coding.workspace.inspect": return await coding.inspect(args as { workspaceRoot: string });
+        case "coding.file.read": return await coding.read(args as { workspaceRoot: string; path: string; startLine?: number; endLine?: number });
+        case "coding.search": return await coding.search(args as { workspaceRoot: string; query: string; maxResults?: number });
+        case "coding.git.status": return await coding.gitStatus(args as { workspaceRoot: string });
+        case "coding.git.diff": return await coding.gitDiff(args as { workspaceRoot: string; path?: string });
+        case "coding.git.diff_file": return await coding.gitDiffFile(args as { workspaceRoot: string; path: string });
+        case "coding.change.preview": return await coding.preview(args as unknown as import("@freeos/coding-core").ChangeSet);
+        case "coding.command.preview": return await coding.commandPreview(args as { workspaceRoot: string; command: string; path?: string });
+        case "coding.sessions.list": return await coding.sessions();
+        case "coding.change.apply": return await coding.apply(args as { previewId: string }, audit);
+        case "coding.command.run": return await coding.commandRun(args as { workspaceRoot: string; command: string; path?: string });
+        case "coding.session.rollback": return await coding.rollback(args as { sessionId: string });
+      }
+    } catch (error) { if (error instanceof CodingError) throw new ToolRunnerError(error.message, error.code); throw error; }
+  }
   if (toolKey.startsWith("computer.")) {
     try { return await executeComputerTool(registry.rootDir, toolKey, args); }
     catch (error) { if (error instanceof ComputerError) throw new ToolRunnerError(error.message, error.code === "unavailable" ? "blocked" : error.code); throw error; }

@@ -41,8 +41,8 @@ export function ChatPanel({ projects, onApprovalCreated }: { projects: Project[]
   const [error, setError] = useState<string | null>(null);
   const [waitingMessage, setWaitingMessage] = useState("");
   const [options, setOptions] = useState({ useMemory: true, useProjectNotes: true, useResearchContext: false, allowToolSuggestions: true, speak: false, useRag: false });
-  const [ragMode, setRagMode] = useState<RagMode>("keyword");
-  const [ragTopK, setRagTopK] = useState(3);
+  const [ragMode, setRagMode] = useState<RagMode>("hybrid");
+  const [ragTopK, setRagTopK] = useState(8);
   const [modelMode, setModelMode] = useState<ModelMode>("standard");
   const [responseModeOverride, setResponseModeOverride] = useState<ResponseMode | null>(null);
   const [recentAssistantResponses, setRecentAssistantResponses] = useState<string[]>([]);

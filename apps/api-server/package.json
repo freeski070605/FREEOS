@@ -18,7 +18,8 @@
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "multer": "^2.0.2",
-    "@freeos/computer-core": "*"
+    "@freeos/computer-core": "*",
+    "@freeos/coding-core": "*"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

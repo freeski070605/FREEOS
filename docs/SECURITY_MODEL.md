@@ -64,3 +64,9 @@ Brain -> future Agent/Planner -> Tool approval layer -> Computer Operator -> Win
 Existing destructive and external-effect capabilities remain blocked: arbitrary deletion/formatting, shutdown/reboot, registry changes, process killing, installation/uninstallation, credential retrieval, messages/email, publishing, purchases, money transfers, cryptocurrency, live trading, and production deployment. The general computer agent must never independently decide to move money or place a trade. Future live trading needs a separate explicitly governed subsystem, not GUI input that bypasses trading policy.
 
 Future work should prefer direct APIs and Windows UI Automation over coordinates, with keyboard/mouse fallback, then separately reviewed vision and browser layers. No screen-vision AI is included now.
+
+## Safe Coding Workspace (1.2)
+
+Coding has a separate registered-root boundary and does not use computer control or screen capture. Reads, search, diffs, previews, and fixed Git inspection are read-only. Apply, command run, and rollback are medium-risk Tool Runner actions requiring a pending request, human approval, and a separate run. Chat cannot run them directly. Registry configuration alone cannot make them read-only; the executor still checks policy.
+
+Change sets contain only full text create/update operations. Updates require SHA-256 matches; preview IDs expire after 30 minutes and on restart. Apply revalidates all paths and hashes. Snapshots include touched files only, and rollback blocks if later edits changed a post-apply hash. Protected paths include `.env*`, SSH keys, credentials, tokens, browser profiles, dependencies, Git internals, models, binaries, and generated directories. Symlinks are refused. Audit records redact source reads, diffs, search matches, and proposed content. See [Safe Coding Workspace](SAFE_CODING_WORKSPACE.md).
