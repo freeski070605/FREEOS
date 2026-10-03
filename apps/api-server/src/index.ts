@@ -20,6 +20,7 @@ import { schedulerRouter } from "./routes/scheduler.routes";
 import { computerRouter } from "./routes/computer.routes";
 import { codingRouter } from "./routes/coding.routes";
 import { browserRouter } from "./routes/browser.routes";
+import { agentsRouter } from "./routes/agents.routes";
 
 const app = express();
 registerDefaultTools();
@@ -50,6 +51,7 @@ app.use("/tools", toolsRouter);
 app.use("/computer", computerRouter);
 app.use("/coding", codingRouter);
 app.use("/browser", browserRouter);
+app.use("/agents", agentsRouter);
 app.use("/scheduler", schedulerRouter);
 app.use("/automations", automationsRouter);
 app.use("/command", commandRouter);

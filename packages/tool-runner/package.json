@@ -6,10 +6,11 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "npm run build --workspace @freeos/computer-core && npm run build --workspace @freeos/coding-core && npm run build --workspace @freeos/browser-core && npm run build --workspace @freeos/scheduler-core && tsc -p tsconfig.json"
+    "build": "npm run build --workspace @freeos/computer-core && npm run build --workspace @freeos/coding-core && npm run build --workspace @freeos/browser-core && npm run build --workspace @freeos/scheduler-core && npm run build --workspace @freeos/agent-core && tsc -p tsconfig.json"
   },
   "dependencies": {
     "@freeos/memory-core": "*",
+    "@freeos/agent-core": "*",
     "@freeos/voice-core": "*",
     "better-sqlite3": "^12.11.1",
     "@freeos/computer-core": "*",

@@ -13,6 +13,7 @@ import { ComputerError, executeComputerTool } from "@freeos/computer-core";
 import { coding, CodingError } from "@freeos/coding-core";
 import { executeBrowserTool, BrowserError } from "@freeos/browser-core";
 import { getScheduler, type ScheduleInput } from "@freeos/scheduler-core";
+import { AgentStore, AGENT_TEMPLATES } from "@freeos/agent-core";
 
 const executeFile = promisify(execFile);
 function requiredString(value: unknown, label: string): string { if (typeof value !== "string" || !value.trim()) throw new ToolRunnerError(`${label} is required.`, "validation"); return value.trim(); }
@@ -20,6 +21,24 @@ async function endpointOnline(url: string): Promise<boolean> { try { const respo
 function count(registry: ToolRegistry, table: string): number { return Number((registry.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count); }
 
 export async function executeSafeTool(registry: ToolRegistry, toolKey: string, args: JsonObject, audit: { requestId?: number; toolRunId?: number } = {}): Promise<unknown> {
+  if (toolKey.startsWith("agents.")) {
+    const store = new AgentStore(registry.database, key => registry.getToolByKey(key), key => !!getMemoryStore().getProjectByKey(key), registry.rootDir);
+    const id = () => Number(args.id);
+    switch (toolKey) {
+      case "agents.status": return store.status();
+      case "agents.templates.list": return { templates: AGENT_TEMPLATES };
+      case "agents.list": return { agents: store.list() };
+      case "agents.get": return { agent: store.get(id()) };
+      case "agents.runs.list": return { runs: store.listRuns() };
+      case "agents.run.get": return { run: store.getRun(id()) };
+      case "agents.run.preview": return store.previewRun(id(), requiredString(args.projectKey,"projectKey"), requiredString(args.objective,"objective"), Array.isArray(args.toolRequests) ? args.toolRequests as Array<{toolKey:string;args:Record<string,unknown>}> : []);
+      case "agents.create": return { agent: store.create(args.agent) };
+      case "agents.update": return { agent: store.update(id(), args.agent) };
+      case "agents.enable": return { agent: store.setEnabled(id(), true) };
+      case "agents.disable": return { agent: store.setEnabled(id(), false) };
+      case "agents.delete": store.delete(id()); return { deleted: true };
+    }
+  }
   if (toolKey.startsWith("scheduler.")) {
     const scheduler = getScheduler();
     const id = () => requiredString(args.id, "id");
@@ -53,7 +72,7 @@ export async function executeSafeTool(registry: ToolRegistry, toolKey: string, a
         case "coding.change.preview": return await coding.preview(args as unknown as import("@freeos/coding-core").ChangeSet);
         case "coding.command.preview": return await coding.commandPreview(args as { workspaceRoot: string; command: string; path?: string });
         case "coding.sessions.list": return await coding.sessions();
-        case "coding.change.apply": return await coding.apply(args as { previewId: string }, audit);
+        case "coding.change.apply": if (typeof args.workspaceRoot === "string" && coding.previewWorkspace(String(args.previewId)) !== args.workspaceRoot) throw new ToolRunnerError("Coding preview belongs to a different workspace.", "blocked"); return await coding.apply(args as { previewId: string }, audit);
         case "coding.command.run": return await coding.commandRun(args as { workspaceRoot: string; command: string; path?: string });
         case "coding.session.rollback": return await coding.rollback(args as { sessionId: string });
       }

@@ -38,7 +38,7 @@ export class ToolRequests {
     if (tool.toolKey.startsWith("coding.") && tool.riskLevel !== "read_only") {
       const args = input.args ?? {};
       const keys = Object.keys(args);
-      const allowed = tool.toolKey === "coding.change.apply" ? ["previewId"] : tool.toolKey === "coding.session.rollback" ? ["sessionId"] : ["workspaceRoot", "command", "path"];
+      const allowed = tool.toolKey === "coding.change.apply" ? ["previewId", "workspaceRoot"] : tool.toolKey === "coding.session.rollback" ? ["sessionId"] : ["workspaceRoot", "command", "path"];
       if (keys.some(key => !allowed.includes(key)) || keys.length === 0 || Object.values(args).some(value => typeof value !== "string" || value.length > 500)) throw new ToolRunnerError("Invalid coding request arguments.", "validation");
     }
     if (tool.riskLevel === "read_only") throw new ToolRunnerError("Read-only tools run directly and do not use the approval queue.", "validation");

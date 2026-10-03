@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@freeos/memory-core": "*",
+    "@freeos/agent-core": "*",
     "@freeos/rag-core": "*",
     "@freeos/research-core": "*",
     "@freeos/voice-core": "*",

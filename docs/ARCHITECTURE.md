@@ -1,5 +1,9 @@
 # FREEOS Architecture
 
+## FREEOS 1.5 Project-Specific Agents
+
+`agent-core` owns typed agent definitions, templates, scope policy, and SQLite run history. The API composes scoped project notes, approved memory, and hybrid RAG with local Ollama. The model receives context and reports; structured user requests alone reach Tool Runner. Agent mutations and action requests use its approval queue. The dashboard provides explicit preview and run controls. See [Project-Specific Agents](PROJECT_SPECIFIC_AGENTS.md).
+
 FREEOS is a local-first Node.js/TypeScript monorepo. Express runs on port 3001, React/Vite on 5173, and SQLite state lives in `data/freeos.sqlite`.
 
 ## Capability layers

@@ -6,6 +6,8 @@ import { getToolRegistry, type ToolRegistry } from "./toolRegistry";
 import { ToolRequests } from "./toolRequests";
 import { ComputerError, computerAuditArgs, computerAuditOutput, validateComputerArgs } from "@freeos/computer-core";
 import { browserAuditArgs, isBrowserActionKey } from "@freeos/browser-core";
+import { AgentStore } from "@freeos/agent-core";
+import { getMemoryStore } from "@freeos/memory-core";
 
 export class ToolExecutor {
   readonly requests: ToolRequests;
@@ -21,6 +23,14 @@ export class ToolExecutor {
   async runApprovedToolRequest(id: number): Promise<ToolRun> {
     const request = this.requests.get(id);
     if (request.status !== "approved") throw new ToolRunnerError(`Tool request must be approved before execution; current status is ${request.status}.`, "blocked");
+    const agentRequest = /^agent:(\d+):run:(\d+)$/.exec(request.requestedBy);
+    if (agentRequest) {
+      const store = new AgentStore(this.registry.database, key => this.registry.getToolByKey(key), key => !!getMemoryStore().getProjectByKey(key), this.registry.rootDir);
+      const agent = store.get(Number(agentRequest[1]));
+      const agentRun = store.getRun(Number(agentRequest[2]));
+      if (agentRun.agentId !== agent.id || !agentRun.approvalsCreated.includes(id) || agentRun.status !== "waiting_approval") throw new ToolRunnerError("Agent request is no longer valid for this run.", "blocked");
+      store.assertTool(agent, agentRun.projectKey, request.toolKey, request.args);
+    }
     const tool = this.registry.requireTool(request.toolKey);
     assertExecutable(tool, true);
     const args = tool.toolKey === "browser.input" || tool.toolKey === "browser.select" ? { ...request.args, value: this.requests.browserInputPayload(id) ?? "" } : tool.toolKey === "browser.navigate" ? { ...request.args, url: this.requests.browserUrlPayload(id) ?? "" } : request.args;

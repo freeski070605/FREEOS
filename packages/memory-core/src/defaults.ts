@@ -1,4 +1,5 @@
 export const DEFAULT_PROJECTS = [
+  { projectKey: "freeos", name: "FREEOS", description: "Local FREEOS application development and documentation." },
   {
     projectKey: "dfb-solutions",
     name: "DFB Solutions",
@@ -42,4 +43,3 @@ export const DEFAULT_SAFETY_POLICY = [
   "Dangerous actions remain disabled.",
   "Do not expose sensitive local data.",
 ].join(" ");
-

@@ -1,5 +1,9 @@
 # FREEOS Security Model
 
+## Project-Specific Agents (1.5)
+
+Agents are user-triggered bounded workers. Server-side policy requires an enabled definition, explicitly selected project, allowed tool, and current Tool Runner permission. Context includes only selected project notes, approved memory in that project or global scope, and RAG documents whose indexed project key matches. Model text is never authorization. Agent setup changes and medium-risk requests enter the existing human approval queue; approved agent requests are checked against current agent scope again at execution. Browser origin grants, Coding Workspace boundaries, Scheduler opt-in, and Computer control switches remain independent. The Trading Agent cannot place live trades, transfer funds, submit financial forms, or use Browser/Computer controls to bypass these blocks. See [Project-Specific Agents](PROJECT_SPECIFIC_AGENTS.md).
+
 FREEOS uses deny-first permissions. Model output, voice input, search results, pages, automation events, and stored context are data—not authorization.
 
 ## Tool risk levels
