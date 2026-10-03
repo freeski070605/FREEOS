@@ -20,6 +20,7 @@
     "multer": "^2.0.2",
     "@freeos/computer-core": "*",
     "@freeos/coding-core": "*"
+    ,"@freeos/scheduler-core": "*"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

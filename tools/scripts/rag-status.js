@@ -1,9 +1,16 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 
 import Database from "better-sqlite3";
+import { loadEnvFile } from "node:process";
 import { join, resolve } from "node:path";
 
 const freeosRoot = process.env.FREEOS_ROOT || resolve(process.cwd());
+
+try {
+  loadEnvFile(join(freeosRoot, ".env"));
+} catch {
+  // Allow the script to continue with defaults when .env is unavailable.
+}
 const dbPath = join(freeosRoot, "data", "freeos.sqlite");
 
 console.log("[RAG Status Report]");
@@ -54,8 +61,9 @@ try {
   console.log(`  RAG_TOP_K: ${process.env.RAG_TOP_K || "8"}`);
 
   db.close();
-  console.log("\n✓ RAG system is ready");
+  console.log("\nâœ“ RAG system is ready");
 } catch (error) {
   console.error("[RAG] Error reading RAG status:", error);
   process.exit(1);
 }
+

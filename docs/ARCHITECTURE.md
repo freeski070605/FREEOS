@@ -10,6 +10,8 @@ FREEOS is a local-first Node.js/TypeScript monorepo. Express runs on port 3001, 
 - `tool-runner`: tool registry, risk classification, approval queue, execution logs, path policy, safe executors, and automation rules.
 - `computer-core`: typed local Windows observation, PNG capture, validated window/input operations, application allowlist, and centralized control policy. It has no cloud or native npm dependency.
 - `coding-core`: registered source roots, bounded reads and search, fixed Git and command execution, structured change previews, session snapshots, and hash-guarded rollback.
+- `browser-core`: installed Edge/Chrome lifecycle through Playwright Core, isolated FREEOS profile, origin grants, bounded page inspection, typed actions, browser-only screenshots, and session audit. See `BROWSER_OPERATOR.md`.
+- `scheduler-core`: structured recurrence, SQLite schedules and occurrence claims, opt-in poll loop, runtime pause, due dispatch through Tool Runner, and audit. See `OPT_IN_SCHEDULER.md`.
 - API server: exposes each capability without moving permission decisions into the browser.
 - Dashboard: presents status, registries, queues, histories, and explicit controls.
 

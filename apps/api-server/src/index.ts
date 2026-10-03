@@ -14,12 +14,25 @@ import { toolsRouter } from "./routes/tools.routes";
 import { automationsRouter } from "./routes/automations.routes";
 import { commandRouter } from "./routes/command.routes";
 import { ragRouter } from "./routes/rag.routes";
-import { registerDefaultTools } from "@freeos/tool-runner";
+import { registerDefaultTools, getToolRegistry, ToolExecutor, ToolRequests } from "@freeos/tool-runner";
+import { Scheduler, configureScheduler } from "@freeos/scheduler-core";
+import { schedulerRouter } from "./routes/scheduler.routes";
 import { computerRouter } from "./routes/computer.routes";
 import { codingRouter } from "./routes/coding.routes";
+import { browserRouter } from "./routes/browser.routes";
 
 const app = express();
 registerDefaultTools();
+const registry = getToolRegistry();
+const scheduler = configureScheduler(new Scheduler(registry.database, {
+  getTool: key => registry.getToolByKey(key),
+  runReadOnly: async (key, args) => {
+    const run = await new ToolExecutor(registry).runReadOnlyTool(key, args);
+    return { toolRunId: run.id, status: run.status };
+  },
+  request: (key, args, title) => new ToolRequests(registry).createToolRequest({ toolKey: key, args, title, description: "Scheduled occurrence requires separate human approval.", requestedBy: "scheduler" }),
+}));
+scheduler.start();
 
 app.disable("x-powered-by");
 app.use(cors({ origin: config.dashboardOrigins }));
@@ -36,6 +49,8 @@ app.use("/voice", voiceRouter);
 app.use("/tools", toolsRouter);
 app.use("/computer", computerRouter);
 app.use("/coding", codingRouter);
+app.use("/browser", browserRouter);
+app.use("/scheduler", schedulerRouter);
 app.use("/automations", automationsRouter);
 app.use("/command", commandRouter);
 app.use("/rag", ragRouter);
@@ -45,7 +60,8 @@ app.use((_request, response) => {
 });
 app.use(errorHandler);
 
-app.listen(config.port, "127.0.0.1", () => {
+const server = app.listen(config.port, "127.0.0.1", () => {
   console.log(`[FREEOS] API online at http://localhost:${config.port}`);
   console.log("[FREEOS] Dangerous actions are disabled.");
 });
+server.on("close", () => scheduler.stop());

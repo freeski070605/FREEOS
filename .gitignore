@@ -21,6 +21,7 @@ data/documents/*
 data/vector-db/*
 !data/vector-db/.gitkeep
 data/voice/*
+data/browser/
 !data/voice/.gitkeep
 !data/voice/recordings/
 !data/voice/output/

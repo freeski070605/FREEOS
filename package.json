@@ -37,7 +37,10 @@
     "release:check": "node tools/scripts/release-check.js",
     "computer:status": "npm run build --workspace @freeos/computer-core && node tools/scripts/computer-status.js",
     "test:computer": "npm run build --workspace @freeos/computer-core && npm run build --workspace @freeos/tool-runner && node --test tools/tests/computer.test.js",
-    "test:coding": "npm run build --workspace @freeos/coding-core && npm run build --workspace @freeos/tool-runner && node --test tools/tests/coding.test.js"
+    "test:coding": "npm run build --workspace @freeos/coding-core && npm run build --workspace @freeos/tool-runner && node --test tools/tests/coding.test.js",
+    "test:browser": "npm run build --workspace @freeos/browser-core && npm run build --workspace @freeos/tool-runner && node --test tools/tests/browser.test.js",
+    "test:browser-engine": "node --test tools/tests/browser-engine.test.js",
+    "test:scheduler": "node --test tools/tests/scheduler.test.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

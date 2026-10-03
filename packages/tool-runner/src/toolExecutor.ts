@@ -5,12 +5,14 @@ import { ToolRunnerError } from "./tool.types";
 import { getToolRegistry, type ToolRegistry } from "./toolRegistry";
 import { ToolRequests } from "./toolRequests";
 import { ComputerError, computerAuditArgs, computerAuditOutput, validateComputerArgs } from "@freeos/computer-core";
+import { browserAuditArgs, isBrowserActionKey } from "@freeos/browser-core";
 
 export class ToolExecutor {
   readonly requests: ToolRequests;
   constructor(readonly registry: ToolRegistry = getToolRegistry()) { this.requests = new ToolRequests(registry); }
 
   async runReadOnlyTool(toolKey: string, args: JsonObject = {}): Promise<ToolRun> {
+    if (isBrowserActionKey(toolKey)) throw new ToolRunnerError("Browser actions require an approved Tool Runner request.", "blocked");
     const tool = this.registry.requireTool(toolKey);
     if (!canRunDirectly(tool)) throw new ToolRunnerError("Only enabled read_only tools can run without approval.", "blocked");
     return this.execute(toolKey, args, null, false);
@@ -21,10 +23,12 @@ export class ToolExecutor {
     if (request.status !== "approved") throw new ToolRunnerError(`Tool request must be approved before execution; current status is ${request.status}.`, "blocked");
     const tool = this.registry.requireTool(request.toolKey);
     assertExecutable(tool, true);
-    return this.execute(tool.toolKey, request.args, request.id, true);
+    const args = tool.toolKey === "browser.input" || tool.toolKey === "browser.select" ? { ...request.args, value: this.requests.browserInputPayload(id) ?? "" } : tool.toolKey === "browser.navigate" ? { ...request.args, url: this.requests.browserUrlPayload(id) ?? "" } : request.args;
+    return this.execute(tool.toolKey, args, request.id, true);
   }
 
   private async execute(toolKey: string, args: JsonObject, requestId: number | null, approved: boolean): Promise<ToolRun> {
+    if (isBrowserActionKey(toolKey) && (!approved || requestId === null)) throw new ToolRunnerError("Browser actions require an approved Tool Runner request.", "blocked");
     const tool = this.registry.requireTool(toolKey); assertExecutable(tool, approved || tool.riskLevel === "read_only");
     if (toolKey.startsWith("computer.")) {
       try { validateComputerArgs(toolKey, args); }
@@ -34,11 +38,11 @@ export class ToolExecutor {
         throw error;
       }
     }
-    const auditArgs = toolKey === "coding.change.preview" ? { summary: args.summary, files: Array.isArray(args.files) ? args.files.map((file: any) => ({ path: file?.path, operation: file?.operation })) : [] } : computerAuditArgs(toolKey, args);
+    const auditArgs = toolKey.startsWith("browser.") ? browserAuditArgs(toolKey, args) : toolKey === "coding.change.preview" ? { summary: args.summary, files: Array.isArray(args.files) ? args.files.map((file: any) => ({ path: file?.path, operation: file?.operation })) : [] } : computerAuditArgs(toolKey, args);
     const run = this.requests.startRun(toolKey, auditArgs, requestId);
     try {
       const output = await executeSafeTool(this.registry, toolKey, args, { requestId: requestId ?? undefined, toolRunId: run.id });
-      const auditOutput = toolKey === "coding.file.read" || toolKey === "coding.search" || toolKey === "coding.git.diff" || toolKey === "coding.git.diff_file" || toolKey === "coding.change.preview" || toolKey === "coding.command.run" ? { redacted: true } : computerAuditOutput(toolKey, output);
+      const auditOutput = toolKey.startsWith("browser.") ? { redacted: true } : toolKey === "coding.file.read" || toolKey === "coding.search" || toolKey === "coding.git.diff" || toolKey === "coding.git.diff_file" || toolKey === "coding.change.preview" || toolKey === "coding.command.run" ? { redacted: true } : computerAuditOutput(toolKey, output);
       const finished = this.requests.finishRun(run.id, "completed", auditOutput, null);
       return { ...finished, output };
     }

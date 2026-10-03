@@ -1,0 +1,11 @@
+{
+  "name": "@freeos/browser-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "dependencies": { "playwright-core": "^1.58.2" },
+  "devDependencies": { "@types/node": "^22.18.1", "typescript": "^5.9.2" }
+}

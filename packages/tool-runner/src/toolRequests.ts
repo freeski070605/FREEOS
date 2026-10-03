@@ -2,13 +2,18 @@ import type { CreateToolRequestInput, JsonObject, ToolRequest, ToolRequestStatus
 import { ToolRunnerError } from "./tool.types";
 import { getToolRegistry, type ToolRegistry } from "./toolRegistry";
 import { ComputerError, computerAuditArgs, validateComputerArgs } from "@freeos/computer-core";
+import { browser, BrowserError, browserAuditArgs } from "@freeos/browser-core";
 
 type Row = Record<string, unknown>;
 // Typed text is volatile: reviewable during this API session, never persisted in SQLite/audit.
 const textPayloads = new Map<string, string>();
+const browserPayloads = new Map<string, string>();
+const browserUrlPayloads = new Map<string, string>();
 const payloadKey = (registry: ToolRegistry, id: number) => `${registry.databasePath}:${id}`;
 function hydrate(registry: ToolRegistry, request: ToolRequest): ToolRequest {
   if (request.toolKey === "computer.keyboard.type") { const text = textPayloads.get(payloadKey(registry, request.id)); request.args = {processId: request.args.processId, text: text ?? "[payload expired; create a new request]"}; }
+  if (request.toolKey === "browser.input" || request.toolKey === "browser.select") request.args = { ...request.args, value: browserPayloads.has(payloadKey(registry, request.id)) ? "[redacted; held in memory]" : "[payload expired; create a new request]" };
+  if (request.toolKey === "browser.navigate" && !browserUrlPayloads.has(payloadKey(registry, request.id))) request.args = { ...request.args, url: "[payload expired; create a new request]" };
   return request;
 }
 function json(value: unknown, fallback: unknown = {}): unknown { try { return JSON.parse(typeof value === "string" ? value : JSON.stringify(fallback)); } catch { return fallback; } }
@@ -17,11 +22,18 @@ function runFromRow(row: Row): ToolRun { return { id: Number(row.id), toolKey: S
 
 export class ToolRequests {
   constructor(readonly registry: ToolRegistry = getToolRegistry()) {}
+  browserInputPayload(id: number): string | undefined { return browserPayloads.get(payloadKey(this.registry, id)); }
+  browserUrlPayload(id: number): string | undefined { return browserUrlPayloads.get(payloadKey(this.registry, id)); }
   createToolRequest(input: CreateToolRequestInput): ToolRequest {
     const tool = this.registry.requireTool(String(input.toolKey ?? "").trim());
+    let browserFormDescription: string | null = null;
     if (tool.toolKey.startsWith("computer.")) {
       try { validateComputerArgs(tool.toolKey, input.args ?? {}); }
       catch (error) { if (error instanceof ComputerError) throw new ToolRunnerError(error.message, error.code === "validation" ? "validation" : "blocked"); throw error; }
+    }
+    if (tool.toolKey.startsWith("browser.") && tool.riskLevel !== "read_only") {
+      try { browser.validateAction(tool.toolKey, input.args ?? {}); if (tool.toolKey === "browser.form.submit") browserFormDescription = JSON.stringify(browser.cachedFormPreview(input.args?.tabId, input.args?.refId)); }
+      catch (error) { if (error instanceof BrowserError) throw new ToolRunnerError(error.message, error.code === "validation" ? "validation" : "blocked"); throw error; }
     }
     if (tool.toolKey.startsWith("coding.") && tool.riskLevel !== "read_only") {
       const args = input.args ?? {};
@@ -35,8 +47,11 @@ export class ToolRequests {
       throw new ToolRunnerError(`${tool.name} is high risk and blocked in Phase 5.`, "blocked");
     }
     if (typeof input.title !== "string" || !input.title.trim()) throw new ToolRunnerError("title is required.", "validation");
-    const result = this.registry.database.prepare(`INSERT INTO tool_requests (tool_key,title,description,requested_args,risk_level,status,requested_by) VALUES (?,?,?,?,?,'pending',?)`).run(tool.toolKey, tool.toolKey.startsWith("computer.") ? tool.name : input.title.trim(), tool.toolKey.startsWith("computer.") ? "Explicit Computer Operator request; inspect arguments before approval." : input.description?.trim() ?? "", JSON.stringify(computerAuditArgs(tool.toolKey, input.args ?? {})), tool.riskLevel, tool.toolKey.startsWith("computer.") ? (input.requestedBy === "command-chat" ? "command-chat" : "dashboard") : input.requestedBy?.trim() || "dashboard");
+    const safeArgs = tool.toolKey.startsWith("browser.") ? browserAuditArgs(tool.toolKey, input.args ?? {}) : computerAuditArgs(tool.toolKey, input.args ?? {});
+    const result = this.registry.database.prepare(`INSERT INTO tool_requests (tool_key,title,description,requested_args,risk_level,status,requested_by) VALUES (?,?,?,?,?,'pending',?)`).run(tool.toolKey, tool.toolKey.startsWith("computer.") || tool.toolKey.startsWith("browser.") ? tool.name : input.title.trim(), browserFormDescription ?? (tool.toolKey.startsWith("computer.") || tool.toolKey.startsWith("browser.") ? "Explicit operator request; inspect arguments before approval." : input.description?.trim() ?? ""), JSON.stringify(safeArgs), tool.riskLevel, tool.toolKey.startsWith("computer.") ? (input.requestedBy === "command-chat" ? "command-chat" : "dashboard") : input.requestedBy?.trim() || "dashboard");
     if (tool.toolKey === "computer.keyboard.type") textPayloads.set(payloadKey(this.registry, Number(result.lastInsertRowid)), String(input.args?.text));
+    if (tool.toolKey === "browser.input" || tool.toolKey === "browser.select") browserPayloads.set(payloadKey(this.registry, Number(result.lastInsertRowid)), String(input.args?.value));
+    if (tool.toolKey === "browser.navigate") browserUrlPayloads.set(payloadKey(this.registry, Number(result.lastInsertRowid)), String(input.args?.url));
     const request = this.get(Number(result.lastInsertRowid));
     this.registry.logEvent("tool.request.created", `Tool request #${request.id} created.`, { requestId: request.id, toolKey: request.toolKey });
     return request;
@@ -44,14 +59,14 @@ export class ToolRequests {
   get(id: number): ToolRequest { const row = this.registry.database.prepare("SELECT * FROM tool_requests WHERE id = ?").get(id) as Row | undefined; if (!row) throw new ToolRunnerError("Tool request not found.", "not_found"); return hydrate(this.registry, requestFromRow(row)); }
   listToolRequests(status?: ToolRequestStatus, limit = 100): ToolRequest[] { const rows = status ? this.registry.database.prepare("SELECT * FROM tool_requests WHERE status = ? ORDER BY id DESC LIMIT ?").all(status, limit) : this.registry.database.prepare("SELECT * FROM tool_requests ORDER BY id DESC LIMIT ?").all(limit); return (rows as Row[]).map(row => hydrate(this.registry, requestFromRow(row))); }
   approveToolRequest(id: number): ToolRequest { const request = this.get(id); if (request.status !== "pending") throw new ToolRunnerError(`Only pending requests can be approved; this request is ${request.status}.`, "conflict"); this.registry.database.prepare("UPDATE tool_requests SET status='approved',reviewed_at=CURRENT_TIMESTAMP WHERE id=?").run(id); this.registry.logEvent("tool.request.approved", `Tool request #${id} approved.`, { requestId: id, toolKey: request.toolKey }); return this.get(id); }
-  rejectToolRequest(id: number): ToolRequest { const request = this.get(id); if (request.status !== "pending") throw new ToolRunnerError(`Only pending requests can be rejected; this request is ${request.status}.`, "conflict"); this.registry.database.prepare("UPDATE tool_requests SET status='rejected',reviewed_at=CURRENT_TIMESTAMP WHERE id=?").run(id); textPayloads.delete(payloadKey(this.registry, id)); this.registry.logEvent("tool.request.rejected", `Tool request #${id} rejected.`, { requestId: id, toolKey: request.toolKey }); return this.get(id); }
+  rejectToolRequest(id: number): ToolRequest { const request = this.get(id); if (request.status !== "pending") throw new ToolRunnerError(`Only pending requests can be rejected; this request is ${request.status}.`, "conflict"); this.registry.database.prepare("UPDATE tool_requests SET status='rejected',reviewed_at=CURRENT_TIMESTAMP WHERE id=?").run(id); textPayloads.delete(payloadKey(this.registry, id)); browserPayloads.delete(payloadKey(this.registry, id)); browserUrlPayloads.delete(payloadKey(this.registry, id)); this.registry.logEvent("tool.request.rejected", `Tool request #${id} rejected.`, { requestId: id, toolKey: request.toolKey }); return this.get(id); }
   startRun(toolKey: string, args: JsonObject, requestId: number | null): ToolRun {
     return this.registry.database.transaction(() => {
       if (requestId !== null) {
         const request = this.get(requestId);
         const previous = this.registry.database.prepare("SELECT id FROM tool_runs WHERE request_id=?").get(requestId);
         if (request.status !== "approved" || previous) throw new ToolRunnerError("Request was already claimed or is no longer approved.", "blocked");
-        if (toolKey === "computer.keyboard.type" && !textPayloads.has(payloadKey(this.registry, requestId))) throw new ToolRunnerError("Typed text expired after restart; create and review a new request.", "blocked");
+        if ((toolKey === "computer.keyboard.type" && !textPayloads.has(payloadKey(this.registry, requestId))) || ((toolKey === "browser.input" || toolKey === "browser.select") && !browserPayloads.has(payloadKey(this.registry, requestId))) || (toolKey === "browser.navigate" && !browserUrlPayloads.has(payloadKey(this.registry, requestId)))) throw new ToolRunnerError("Browser or typed payload expired after restart; create and review a new request.", "blocked");
       }
       const result = this.registry.database.prepare("INSERT INTO tool_runs (tool_key,request_id,status,args) VALUES (?,?,'running',?)").run(toolKey, requestId, JSON.stringify(args));
       return this.getRun(Number(result.lastInsertRowid));
@@ -62,6 +77,8 @@ export class ToolRequests {
     const run = this.getRun(id);
     if (run.requestId) {
       textPayloads.delete(payloadKey(this.registry, run.requestId));
+      browserPayloads.delete(payloadKey(this.registry, run.requestId));
+      browserUrlPayloads.delete(payloadKey(this.registry, run.requestId));
       this.registry.database.prepare("UPDATE tool_requests SET status=?,result_id=? WHERE id=?").run(status, id, run.requestId);
     }
     this.registry.logEvent(`tool.run.${status}`, `Tool run #${id} ${status}.`, { runId: id, requestId: run.requestId, toolKey: run.toolKey, error });

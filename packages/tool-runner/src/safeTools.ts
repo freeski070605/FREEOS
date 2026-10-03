@@ -11,6 +11,8 @@ import { ToolRunnerError } from "./tool.types";
 import type { ToolRegistry } from "./toolRegistry";
 import { ComputerError, executeComputerTool } from "@freeos/computer-core";
 import { coding, CodingError } from "@freeos/coding-core";
+import { executeBrowserTool, BrowserError } from "@freeos/browser-core";
+import { getScheduler, type ScheduleInput } from "@freeos/scheduler-core";
 
 const executeFile = promisify(execFile);
 function requiredString(value: unknown, label: string): string { if (typeof value !== "string" || !value.trim()) throw new ToolRunnerError(`${label} is required.`, "validation"); return value.trim(); }
@@ -18,6 +20,25 @@ async function endpointOnline(url: string): Promise<boolean> { try { const respo
 function count(registry: ToolRegistry, table: string): number { return Number((registry.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count); }
 
 export async function executeSafeTool(registry: ToolRegistry, toolKey: string, args: JsonObject, audit: { requestId?: number; toolRunId?: number } = {}): Promise<unknown> {
+  if (toolKey.startsWith("scheduler.")) {
+    const scheduler = getScheduler();
+    const id = () => requiredString(args.id, "id");
+    switch (toolKey) {
+      case "scheduler.status": return scheduler.status();
+      case "scheduler.schedules.list": return scheduler.list();
+      case "scheduler.schedule.get": return scheduler.get(id());
+      case "scheduler.schedule.preview": return scheduler.preview(args as ScheduleInput);
+      case "scheduler.runs.list": return scheduler.runs(typeof args.limit === "number" ? args.limit : 100);
+      case "scheduler.schedule.create": return scheduler.create(args as ScheduleInput);
+      case "scheduler.schedule.update": return scheduler.update(id(), args as ScheduleInput);
+      case "scheduler.schedule.enable": return scheduler.setEnabled(id(), true);
+      case "scheduler.schedule.disable": return scheduler.setEnabled(id(), false);
+      case "scheduler.schedule.delete": return scheduler.delete(id());
+      case "scheduler.pause": return scheduler.pause();
+      case "scheduler.resume": return scheduler.resume();
+    }
+  }
+  if (toolKey.startsWith("browser.")) { try { return await executeBrowserTool(toolKey, args, audit); } catch (error) { if (error instanceof BrowserError) throw new ToolRunnerError(error.message, error.code === "unavailable" ? "blocked" : error.code); throw error; } }
   if (toolKey.startsWith("coding.")) {
     try {
       switch (toolKey) {
