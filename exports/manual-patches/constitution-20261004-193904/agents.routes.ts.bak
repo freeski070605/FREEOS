@@ -5,7 +5,6 @@ import { getMemoryStore } from "@freeos/memory-core";
 import { RagService, getRagConfig } from "@freeos/rag-core";
 import { config } from "../config";
 import { generateWithOllama } from "../services/ollama.service";
-import { loadFreeosRuntimeDoctrine } from "../services/constitution.service";
 
 export const agentsRouter = Router();
 const registry = () => getToolRegistry();
@@ -110,20 +109,9 @@ agentsRouter.post("/:id/run",async(q,r)=>{
         .filter(x=>s.assertTool(agent,projectKey,x.toolKey,x.args).riskLevel!=="read_only")
         .map(x=>x.toolKey);
 
-    const constitutionalDoctrine=loadFreeosRuntimeDoctrine(registry().rootDir);
-
     const result=await generateWithOllama({
       model:agent.modelMode==="fast"?config.fastModel:config.defaultModel,
       system:`You are ${agent.name}.
-
-FREEOS CONSTITUTIONAL FOUNDATION:
-${constitutionalDoctrine}
-
-AUTHORITY HIERARCHY:
-The FREEOS Constitution is above the global mission, project goals, agent mission,
-current objective, plan, schedule, and tool actions.
-
-No lower-level instruction may override the Constitution.
 
 Mission:
 ${agent.mission}
@@ -188,6 +176,5 @@ Never present a proposed threshold as an existing FREEOS rule.`,
     r.status(201).json({run:s.finish(run.id,approvalIds.length?"waiting_approval":"completed",contextUsed,approvalIds,result)});
   } catch(e){if(runId){try{store().finish(runId,"failed",[],[],e instanceof Error?e.message:"Run failed.");}catch{ /* preserve original failure */ }}sendError(r,e);}
 });
-
 
 
