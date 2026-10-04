@@ -129,10 +129,6 @@ AUTHORITATIVE TOOL RULES:
 - Alert conditions must come from explicit user/project policy or directly observable failure/status fields.
 - If no alert threshold is configured, recommend that the user define one instead of inventing it.
 - Recommendations must distinguish observed facts from proposed policy.
-- Never invent numeric thresholds, minimum counts, timing thresholds, expected values, or alert policies.
-- Alert conditions must come from explicit user/project policy or directly observable failure/status fields.
-- If no alert threshold is configured, recommend that the user define one instead of inventing it.
-- Recommendations must distinguish observed facts from proposed policy.
 - FREEOS "memory" means approved contextual memory/proposals. Do not interpret it as computer RAM unless a live system observation explicitly reports RAM.
 - Never claim an action happened unless tool output confirms it.
 - Never request live trading, purchases, credentials, messaging, publishing, or autonomous financial execution.
@@ -159,12 +155,9 @@ ${pendingActions.length ? pendingActions.join(", ") : "None"}
 Use actual observations first.
 Do not invent capabilities or tool names.
 Distinguish clearly between:
-1. OBSERVED — exact state supported by live tool output,
-2. RECOMMENDED — proposed workflow or schedule,
-3. POLICY NEEDED — thresholds or rules the user has not defined yet,
-4. UNAVAILABLE — capability FREEOS does not currently have.
-
-Never present a proposed threshold as an existing FREEOS rule.`,
+1. observed current state,
+2. recommendation,
+3. capability FREEOS does not currently have.`,
       options:{
         temperature:0.2,
         top_p:0.8,
@@ -176,5 +169,4 @@ Never present a proposed threshold as an existing FREEOS rule.`,
     r.status(201).json({run:s.finish(run.id,approvalIds.length?"waiting_approval":"completed",contextUsed,approvalIds,result)});
   } catch(e){if(runId){try{store().finish(runId,"failed",[],[],e instanceof Error?e.message:"Run failed.");}catch{ /* preserve original failure */ }}sendError(r,e);}
 });
-
 
