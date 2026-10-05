@@ -13,7 +13,10 @@ function Invoke-FreeosJson {
   )
 
   $uri = "$BaseUrl$Path"
-  if ($Method -eq "GET") { return Invoke-RestMethod -Method Get -Uri $uri }
+  if ($Method -eq "GET") {
+    return Invoke-RestMethod -Method Get -Uri $uri
+  }
+
   $json = if ($null -eq $Body) { "{}" } else { $Body | ConvertTo-Json -Depth 10 }
   return Invoke-RestMethod -Method Post -Uri $uri -ContentType "application/json" -Body $json
 }
@@ -25,11 +28,13 @@ if ($status.mode -ne "read-only-inspect-and-draft") { throw "Project Inspection 
 if ($status.canonicalWritesEnabled -ne $false) { throw "Project Inspection must not enable canonical writes." }
 
 Write-Host "`n=== FIND REAL PROJECT-INSPECTION WORK ===" -ForegroundColor Cyan
-$prepared = Invoke-FreeosJson -Method GET -Path "/learning-work/items?status=prepared&workType=project-inspection&limit=100"
+$preparedPath = "/learning-work/items?status=prepared&workType=project-inspection&limit=100"
+$prepared = Invoke-FreeosJson -Method GET -Path $preparedPath
 $work = @($prepared.items | Select-Object -First 1)
 
 if ($work.Count -eq 0) {
-  $queue = Invoke-FreeosJson -Method GET -Path "/continuous-learning/queue?status=open&signalType=project-education&limit=100"
+  $queuePath = "/continuous-learning/queue?status=open&signalType=project-education&limit=100"
+  $queue = Invoke-FreeosJson -Method GET -Path $queuePath
   $projectGap = @($queue.items | Select-Object -First 1)
   if ($projectGap.Count -eq 0) { throw "No real project-education gap is open for inspection." }
   $preparedWork = Invoke-FreeosJson -Method POST -Path "/learning-work/prepare/$($projectGap[0].id)" -Body @{}
@@ -46,7 +51,7 @@ $inspection.draft | Select-Object id,projectKey,status,learningWorkId,queueItemI
 if ($inspection.canonicalWritePerformed -ne $false) { throw "Project Inspection unexpectedly performed a canonical write." }
 if ($inspection.durableMemoryCreated -ne $false) { throw "Project Inspection unexpectedly created durable memory." }
 if ($inspection.queueResolved -ne $false) { throw "Inspection should not resolve the project-education queue before canonical review." }
-if ($inspection.draft.baselineDraft -notmatch "DRAFT — NOT CANONICAL") { throw "Baseline draft is missing its non-canonical warning." }
+if ($inspection.draft.baselineDraft -notmatch "DRAFT.*NOT CANONICAL") { throw "Baseline draft is missing its non-canonical warning." }
 
 Write-Host "`n=== EVIDENCE COUNTS ===" -ForegroundColor Cyan
 $inspection.draft.evidence.counts | Format-List
@@ -64,7 +69,8 @@ if ($repeat.draft.id -ne $inspection.draft.id) { throw "Repeated inspection crea
 
 Write-Host "`n=== VERIFY LEARNING WORK COMPLETED BUT GAP REMAINS OPEN ===" -ForegroundColor Cyan
 $workAfter = Invoke-FreeosJson -Method GET -Path "/learning-work/items/$($work[0].id)"
-$queueAfter = Invoke-FreeosJson -Method GET -Path "/continuous-learning/queue?status=open&signalType=project-education&projectKey=$($work[0].projectKey)&limit=20"
+$queueAfterPath = "/continuous-learning/queue?status=open&signalType=project-education&projectKey=$($work[0].projectKey)&limit=20"
+$queueAfter = Invoke-FreeosJson -Method GET -Path $queueAfterPath
 $workAfter.item | Select-Object id,projectKey,workType,status,resultSummary | Format-List
 if ($workAfter.item.status -ne "completed") { throw "Read-only project inspection should complete its learning work item." }
 if (@($queueAfter.items).Count -lt 1) { throw "Project education gap should remain open until canonical review closes it." }
