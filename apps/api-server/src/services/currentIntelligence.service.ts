@@ -281,13 +281,17 @@ export function setCurrentIntelligenceStatus(id: number, status: "disputed" | "a
   return getCurrentIntelligence(id)!;
 }
 
-export function buildCurrentIntelligenceContext(input: { query: string; projectKey?: string; limit?: number }) {
-  const query = clean(input.query);
-  const projectKey = input.projectKey?.trim() || undefined;
-  const limit = Math.min(Math.max(input.limit ?? 6, 1), 20);
+function scopedCandidates(projectKey: string | undefined, status: CurrentIntelligenceStatus) {
+  const scoped = projectKey ? listCurrentIntelligence({ projectKey, status, limit: 200 }) : [];
+  const global = listCurrentIntelligence({ status, limit: 200 }).filter((item) => item.projectKey === null);
+  const unique = new Map<number, ReturnType<typeof map>>();
+  for (const item of [...scoped, ...global]) unique.set(item.id, item);
+  return [...unique.values()];
+}
+
+function rankForQuery(query: string, projectKey: string | undefined, status: CurrentIntelligenceStatus, limit: number) {
   const words = query.toLowerCase().split(/\W+/).filter((word) => word.length >= 3);
-  const candidates = listCurrentIntelligence({ projectKey, status: "current", limit: 200 });
-  const ranked = candidates
+  return scopedCandidates(projectKey, status)
     .map((item) => {
       const haystack = `${item.topic}\n${item.claim}\n${item.sourceTitle}\n${item.sourceDomain}`.toLowerCase();
       const relevance = words.reduce((sum, word) => sum + (haystack.includes(word) ? 1 : 0), 0);
@@ -298,6 +302,14 @@ export function buildCurrentIntelligenceContext(input: { query: string; projectK
     .filter((item) => item.relevance > 0)
     .sort((a, b) => b.relevance - a.relevance || b.authorityRank - a.authorityRank || b.observedAt.localeCompare(a.observedAt))
     .slice(0, limit);
+}
+
+export function buildCurrentIntelligenceContext(input: { query: string; projectKey?: string; limit?: number }) {
+  const query = clean(input.query);
+  const projectKey = input.projectKey?.trim() || undefined;
+  const limit = Math.min(Math.max(input.limit ?? 6, 1), 20);
+  const ranked = rankForQuery(query, projectKey, "current", limit);
+  const staleMatches = rankForQuery(query, projectKey, "stale", Math.min(limit, 5));
 
   const context = ranked.length === 0 ? "" : [
     "CURRENT INTELLIGENCE",
@@ -305,7 +317,15 @@ export function buildCurrentIntelligenceContext(input: { query: string; projectK
     ...ranked.map((item) => `- [${item.sourceClass}; authority=${item.authority}(${item.authorityRank}); observed=${item.observedAt}; freshness=${item.freshnessDays}d; confidence=${item.confidence}] ${item.topic}: ${item.claim} Source: ${item.sourceUrl}`),
   ].join("\n");
 
-  return { context, items: ranked, query, projectKey: projectKey ?? null };
+  return {
+    context,
+    items: ranked,
+    staleMatches,
+    refreshNeeded: ranked.length === 0,
+    staleEvidenceAvailable: staleMatches.length > 0,
+    query,
+    projectKey: projectKey ?? null,
+  };
 }
 
 export function getCurrentIntelligenceStatus() {
