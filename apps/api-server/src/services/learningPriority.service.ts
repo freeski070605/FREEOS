@@ -1,5 +1,8 @@
 import { existsSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
+import { getMemoryStore } from "@freeos/memory-core";
 import { getToolRegistry } from "@freeos/tool-runner";
+import { availableLocalProjectSources } from "./projectSource.service";
 
 type Row = Record<string, unknown>;
 type Database = ReturnType<typeof getToolRegistry>["database"];
@@ -48,6 +51,12 @@ function readinessBand(score: number): "READY" | "WORKABLE" | "EVIDENCE_POOR" {
   return "EVIDENCE_POOR";
 }
 
+function managedFolderAvailable(folderPath: string): boolean {
+  if (!folderPath) return false;
+  const resolvedPath = isAbsolute(folderPath) ? folderPath : resolve(getMemoryStore().rootDir, folderPath);
+  return existsSync(resolvedPath);
+}
+
 function scoreEvidence(database: Database, projectKey: string, folderPath: string) {
   const approvedMemories = count(database, "memories", "project_key=? AND status='approved'", projectKey);
   const projectNotes = count(database, "project_notes", "project_key=?", projectKey);
@@ -55,7 +64,8 @@ function scoreEvidence(database: Database, projectKey: string, folderPath: strin
   const currentIntelligence = count(database, "current_intelligence_items", "project_key=? AND status='current'", projectKey);
   const experienceEvents = count(database, "experience_events", "project_key=?", projectKey);
   const researchSessions = count(database, "research_sessions", "project_key=?", projectKey);
-  const folderAvailable = Boolean(folderPath && existsSync(folderPath));
+  const availableSourceRoots = availableLocalProjectSources(projectKey);
+  const managedKnowledgeFolderAvailable = managedFolderAvailable(folderPath);
 
   const score = Math.min(100,
     Math.min(40, approvedMemories * 20) +
@@ -64,14 +74,16 @@ function scoreEvidence(database: Database, projectKey: string, folderPath: strin
     Math.min(10, currentIntelligence * 10) +
     Math.min(5, experienceEvents * 5) +
     Math.min(5, researchSessions * 5) +
-    (folderAvailable ? 20 : 0)
+    Math.min(30, availableSourceRoots.length * 20)
   );
 
   return {
     score,
     band: readinessBand(score),
     counts: { approvedMemories, projectNotes, ragDocuments, currentIntelligence, experienceEvents, researchSessions },
-    folderAvailable,
+    availableSourceRoots: availableSourceRoots.length,
+    sourceRoots: availableSourceRoots.map((source) => ({ id: source.id, location: source.location, label: source.label })),
+    managedKnowledgeFolderAvailable,
   };
 }
 
@@ -99,7 +111,9 @@ export function rankOpenProjectEducation() {
     const evidence = scoreEvidence(database, projectKey, String(row.folder_path ?? ""));
     const combinedScore = Math.round(strategicScore * 0.55 + evidence.score * 0.45);
     const nextAction = evidence.band === "EVIDENCE_POOR"
-      ? "Locate/register real project evidence before attempting canonicalization."
+      ? evidence.availableSourceRoots > 0
+        ? "Inspect the registered source root and selectively register/index the strongest project evidence before canonicalization."
+        : "Register a real project source root or project-specific evidence before attempting canonicalization."
       : evidence.band === "WORKABLE"
         ? "Run project inspection and resolve remaining UNKNOWNs from the strongest available local evidence."
         : "Prioritize inspection/review now; enough project-specific evidence exists to make meaningful progress.";
@@ -116,8 +130,10 @@ export function rankOpenProjectEducation() {
       combinedScore,
       evidence: {
         ...evidence.counts,
-        folderAvailable: evidence.folderAvailable,
+        availableSourceRoots: evidence.availableSourceRoots,
+        managedKnowledgeFolderAvailable: evidence.managedKnowledgeFolderAvailable,
       },
+      sourceRoots: evidence.sourceRoots,
       nextAction,
     };
   }).sort((a, b) =>
@@ -131,7 +147,7 @@ export function rankOpenProjectEducation() {
     items,
     weights: { strategicPriority: 0.55, evidenceReadiness: 0.45 },
     strategicSource: "docs/knowledge/08_DFB_EXECUTIVE_LAYER.md",
-    rule: "Rank project-education work by DFB strategic priority and evidence readiness. Empty projects should not block better-supported higher-value learning work.",
+    rule: "Rank project-education work by DFB strategic priority and substantive project evidence. Managed FREEOS project folders are not counted as evidence merely because their starter README exists.",
   };
 }
 
