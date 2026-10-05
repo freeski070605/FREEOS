@@ -9,6 +9,7 @@ import { generateWithOllama, getOllamaStatus, isOllamaModelInstalled, LocalModel
 import { getSystemStatus } from "../services/system.service";
 import { createBackup, getBackupStatus } from "../services/backup.service";
 import { buildGovernedLocalContext } from "../services/governedLocalContext.service";
+import { buildCurrentIntelligenceContext } from "../services/currentIntelligence.service";
 
 export const commandRouter = Router();
 getMemoryStore(); // Initializes additive Command Center tables before any command endpoint is called.
@@ -94,11 +95,13 @@ const highRisk = /\b(delete|remove files?|send (?:an? )?(?:email|message)|purcha
 const remember = /\bremember\s+(?:that\s+)?(.+)/is;
 const creativeRequest = /\b(hook|verse|bridge|song|caption|scene|story|script|monologue|rewrite|creative|lyrics?)\b/i;
 const singleCreativeOption = /\b(only one|one option|single (?:hook|verse|caption|draft|option)|just one)\b/i;
+const currentFactRequest = /\b(current(?:ly)?|latest|today|tonight|right now|this (?:week|month)|recent(?:ly)?|as of|up[- ]to[- ]date|updated|news|open now|available now)\b/i;
 type ResponseMode = "precise" | "balanced" | "creative";
 
 const ragExampleUseRule = "Indexed documents are reference material. Use them to understand rules, corrections, standards, and examples. Do not copy example outputs unless the user explicitly asks to repeat them. If a document contains a sample hook, verse, caption, or draft, treat it as an example of the principle, not the final answer. Generate a fresh response.";
 const creativeGenerationRule = "This is a creative generation task. Create fresh wording. Do not reuse prior sample lines from indexed documents. Do not repeat the same hook from previous responses. Preserve the craft principles but change the language, imagery, structure, and emotional angle.";
 const creativeRagRule = "Use the indexed documents to extract:\n- style rules\n- emotional standards\n- correction notes\n- craft principles\n\nDo not use the indexed documents as a source of final lines.";
+const currentIntelligenceRule = "CURRENT INTELLIGENCE is freshness-bounded evidence, not permanent memory. Prefer fresh, higher-authority current evidence for time-sensitive claims. Never present stale, disputed, archived, model-background, or old indexed material as if it were current.";
 
 function generationOptions(mode: ResponseMode) {
   if (mode === "creative") return { temperature: 0.85, top_p: 0.9, repeat_penalty: 1.15, num_predict: 700 };
@@ -130,10 +133,16 @@ commandRouter.post("/chat", async (request, response, next) => {
     const modelMode = body.modelMode === "fast" ? "fast" : "standard";
     const model = modelMode === "fast" ? config.fastModel : typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.defaultModel;
     const useMemory = bool(body.useMemory, true); const useProjectNotes = bool(body.useProjectNotes, true); const useResearchContext = bool(body.useResearchContext, false);
+    const currentInformationSensitive = currentFactRequest.test(message);
+    const useCurrentIntelligence = bool(body.useCurrentIntelligence, currentInformationSensitive || useResearchContext);
     let createdMemoryProposalId: number | null = null; let createdToolRequestId: number | null = null; let responseText = "";
     let ragUsed = false;
     let ragSources: Array<{ documentPath: string; documentName: string; chunks: number[] }> = [];
     let ragContext = "";
+    let currentIntelligenceUsed = false;
+    let currentIntelligenceSourceCount = 0;
+    let currentIntelligenceStaleMatchCount = 0;
+    let currentIntelligenceRefreshNeeded = false;
     const warnings: string[] = [];
     const useRagOption = body.useRag === true || body.useRag === "true";
     const explicitRagOff = body.useRag === false || body.useRag === "false";
@@ -231,13 +240,28 @@ commandRouter.post("/chat", async (request, response, next) => {
         includeProjectNotes: Boolean(projectKey && useProjectNotes),
         limit: 8,
       });
-      const context = [safetyContext, governedLocal.context].filter(Boolean).join("\n\n");
+      const currentIntel = useCurrentIntelligence
+        ? buildCurrentIntelligenceContext({ query: message, projectKey, limit: 6 })
+        : { context: "", items: [], staleMatches: [], refreshNeeded: false, staleEvidenceAvailable: false };
+      currentIntelligenceUsed = currentIntel.items.length > 0;
+      currentIntelligenceSourceCount = currentIntel.items.length;
+      currentIntelligenceStaleMatchCount = currentIntel.staleMatches.length;
+      currentIntelligenceRefreshNeeded = currentInformationSensitive && currentIntel.refreshNeeded;
+      if (currentIntelligenceRefreshNeeded) {
+        warnings.push(currentIntel.staleEvidenceAvailable
+          ? "Matching Current Intelligence exists but is stale. Fresh research or verification is required before treating the claim as current."
+          : "No fresh matching Current Intelligence is available. Fresh research or verification is required before treating the answer as current.");
+      }
+      const context = [safetyContext, governedLocal.context, currentIntel.context].filter(Boolean).join("\n\n");
+      const currentnessGap = currentIntelligenceRefreshNeeded
+        ? "CURRENTNESS GAP: This request appears time-sensitive, but no fresh matching Current Intelligence is available. Do not present model background, stale evidence, old research, memory, or indexed documents as current fact. State that fresh research or verification is required for current claims. You may still provide stable background if you label it clearly as background."
+        : "";
       const memoryStatus = store().getMemoryStatus(); const projectStatus = store().getProjectStatus(); const tools = registry().listTools();
       const liveStatus = `LIVE FREEOS STATUS\n- Phase: ${getSystemStatus().phase}\n- API: online\n- Ollama model: ${model}\n- Approved memories: ${memoryStatus.approvedMemories}\n- Pending memory proposals: ${memoryStatus.pendingProposals}\n- Projects: ${projectStatus.projectCount}\n- Project notes: ${projectStatus.notesCount}\n- Registered tools: ${tools.length}\n- Pending tool requests: ${count("SELECT COUNT(*) AS count FROM tool_requests WHERE status='pending'")}\n- Dangerous actions: off\n- High-risk tools: blocked\n- Paid API keys required: no\n- Cloud providers: off\n- Always-listening microphone: off\n- CPU, RAM, disk, security scans, network state, and user sessions: not measured by this endpoint`;
       let research = "";
       if (useResearchContext) {
         const rows = db().prepare("SELECT title, query FROM research_sessions ORDER BY id DESC LIMIT 5").all() as Array<{ title: string; query: string }>;
-        research = `RECENT RESEARCH SESSIONS\n${rows.map((row) => `- ${row.title}: ${row.query}`).join("\n")}`;
+        research = `RECENT RESEARCH SESSION HISTORY\nSession titles are history, not proof of current facts. Use CURRENT INTELLIGENCE for freshness-bounded claims.\n${rows.map((row) => `- ${row.title}: ${row.query}`).join("\n")}`;
       }
       if (process.env.NODE_ENV !== "production") {
         console.debug("[FREEOS] /command/chat RAG payload", { useRagOption, explicitRagRequested, effectiveUseRag, ragModeUsed, ragTopKFinal });
@@ -348,7 +372,7 @@ commandRouter.post("/chat", async (request, response, next) => {
           ? `AVOID REPEATING THESE RECENT ASSISTANT OUTPUTS OR THEIR DISTINCTIVE PHRASES:\n${recentAssistantResponses.map((item, index) => `[Recent ${index + 1}] ${item}`).join("\n\n")}`
           : "";
         const ragInstructions = ragUsed ? [ragExampleUseRule, creativeMode ? creativeRagRule : ""].filter(Boolean).join("\n\n") : "";
-        const promptParts = [systemPrompt, `RESPONSE MODE: ${responseMode}.`, creativeMode ? creativeGenerationRule : "", freshVariationsRule, liveStatus, context, research, ragInstructions, avoidRepeating, ragContext, createdMemoryProposalId ? "A pending memory proposal was created; tell the user it still requires approval." : "", createdToolRequestId ? "A tool request was created; tell the user it requires approval and a separate Run click." : ""].filter(Boolean);
+        const promptParts = [systemPrompt, `RESPONSE MODE: ${responseMode}.`, creativeMode ? creativeGenerationRule : "", freshVariationsRule, currentIntelligenceRule, currentnessGap, liveStatus, context, research, ragInstructions, avoidRepeating, ragContext, createdMemoryProposalId ? "A pending memory proposal was created; tell the user it still requires approval." : "", createdToolRequestId ? "A tool request was created; tell the user it requires approval and a separate Run click." : ""].filter(Boolean);
         try {
           responseText = await generateWithOllama({
             model,
@@ -386,7 +410,12 @@ commandRouter.post("/chat", async (request, response, next) => {
               creativeMode,
               exampleCopyBlocked: creativeMode && ragUsed,
               responseMode,
-              ragUsedAs: creativeMode && ragUsed ? "craft_reference" : undefined,
+              currentIntelligenceRequested: useCurrentIntelligence,
+              currentInformationSensitive,
+              currentIntelligenceUsed,
+              currentIntelligenceSourceCount,
+              currentIntelligenceStaleMatchCount,
+              currentIntelligenceRefreshNeeded,
               warnings: [...warnings, "Local Ollama generation exceeded the configured timeout."],
             });
             return;
@@ -397,6 +426,6 @@ commandRouter.post("/chat", async (request, response, next) => {
     }
     const speech = body.speak === true ? await synthesizeSpeech(responseText) : null;
     const result = db().prepare(`INSERT INTO command_chat_sessions (message,response,project_key,model,used_memory,used_project_notes,used_research_context,created_memory_proposal_id,created_tool_request_id,audio_output_path) VALUES (?,?,?,?,?,?,?,?,?,?)`).run(message, responseText, projectKey ?? null, model, useMemory ? 1 : 0, projectKey && useProjectNotes ? 1 : 0, useResearchContext ? 1 : 0, createdMemoryProposalId, createdToolRequestId, speech?.outputPath ?? null);
-    response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null, memoryUsed: useMemory, projectNotesUsed: Boolean(projectKey && useProjectNotes), ragRequested: effectiveUseRag, ragUsed, ragSources: ragSources ?? [], ragMode: ragModeUsed, ragModeUsed: ragModeUsed, ragTopKUsed: ragTopKFinal, ragQueryUsed: message, blockedModelGuess, warnings, creativeMode, exampleCopyBlocked: creativeMode && ragUsed, responseMode, ragUsedAs: creativeMode && ragUsed ? "craft_reference" : undefined });
+    response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null, memoryUsed: useMemory, projectNotesUsed: Boolean(projectKey && useProjectNotes), currentIntelligenceRequested: useCurrentIntelligence, currentInformationSensitive, currentIntelligenceUsed, currentIntelligenceSourceCount, currentIntelligenceStaleMatchCount, currentIntelligenceRefreshNeeded, ragRequested: effectiveUseRag, ragUsed, ragSources: ragSources ?? [], ragMode: ragModeUsed, ragModeUsed: ragModeUsed, ragTopKUsed: ragTopKFinal, ragQueryUsed: message, blockedModelGuess, warnings, creativeMode, exampleCopyBlocked: creativeMode && ragUsed, responseMode, ragUsedAs: creativeMode && ragUsed ? "craft_reference" : undefined });
   } catch (error) { next(error); }
 });
