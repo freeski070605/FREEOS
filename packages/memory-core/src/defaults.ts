@@ -3,17 +3,52 @@ export const DEFAULT_PROJECTS = [
   {
     projectKey: "dfb-solutions",
     name: "DFB Solutions",
-    description: "Creative-tech studio, websites, content systems, apps, and business builds.",
+    description: "Creative-tech studio, websites, content systems, apps, AI automation, and business builds.",
+  },
+  {
+    projectKey: "dfb-ai-studio",
+    name: "DFB AI Studio",
+    description: "Local-first AI creative and virtual-production pipeline for image, video, animation, characters, and reusable production systems.",
+  },
+  {
+    projectKey: "dfb-social-os",
+    name: "DFB Social OS",
+    description: "Local-first content generation, packaging, approvals, distribution, and social operations infrastructure.",
   },
   {
     projectKey: "dfb-sounds",
     name: "DFB Sounds",
-    description: "Music rollout, artist strategy, streaming campaigns, content, and brand assets.",
+    description: "Drew Free music, Digital Drew Free, catalog, releases, rights, visuals, live opportunities, and artist business systems.",
   },
   {
     projectKey: "reemteam",
     name: "ReemTeam",
-    description: "Multiplayer card game and cash-table app ecosystem.",
+    description: "DFB-owned social card-game product, multiplayer platform, community, content, and gaming IP ecosystem.",
+  },
+  {
+    projectKey: "still-raising-drew",
+    name: "Still Raising Drew",
+    description: "DFB-owned animated dramedy centered on Drew, Lil Drew, single Black fatherhood, humor, emotion, and music.",
+  },
+  {
+    projectKey: "get-ya-5",
+    name: "Get Ya 5",
+    description: "DFB-owned AI-vs-AI 2K league and sports-entertainment media property with commentary, standings, storylines, and broadcasts.",
+  },
+  {
+    projectKey: "chester-world",
+    name: "Chester World",
+    description: "Long-horizon DFB-owned Chester-based interactive world and game IP with local geography, story, music, sports, and persistent systems.",
+  },
+  {
+    projectKey: "dfb-transportation",
+    name: "DFB Transportation",
+    description: "Cash-flow transportation service, group logistics, trip economics, recurring contracts, and transportation operations.",
+  },
+  {
+    projectKey: "client-builds",
+    name: "Client Builds",
+    description: "External client and partner systems, ownership boundaries, reusable DFB capability, delivery, support, and case-study governance.",
   },
   {
     projectKey: "signalflow",
@@ -28,7 +63,7 @@ export const DEFAULT_PROJECTS = [
   {
     projectKey: "business-ideas",
     name: "Business Ideas",
-    description: "Immediate revenue ideas, startup concepts, niche research, and monetization plans.",
+    description: "Immediate revenue ideas, startup concepts, niche research, experiments, validation, and monetization plans.",
   },
   {
     projectKey: "personal",
