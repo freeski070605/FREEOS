@@ -13,7 +13,8 @@ function Invoke-Npm([string[]]$Arguments) {
     $npmCmd = (Get-Command npm.cmd -ErrorAction Stop).Source
     & $npmCmd @Arguments
     if ($LASTEXITCODE -ne 0) {
-        throw "npm command failed with exit code $LASTEXITCODE: npm $($Arguments -join ' ')"
+        $commandText = $Arguments -join ' '
+        throw ("npm command failed with exit code {0}: npm {1}" -f $LASTEXITCODE, $commandText)
     }
 }
 
