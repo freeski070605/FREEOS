@@ -10,6 +10,7 @@ import { memoryRouter } from "./routes/memory.routes";
 import { learningRouter } from "./routes/learning.routes";
 import { experienceRouter } from "./routes/experience.routes";
 import { knowledgeRouter } from "./routes/knowledge.routes";
+import { currentIntelligenceRouter } from "./routes/currentIntelligence.routes";
 import { projectsRouter } from "./routes/projects.routes";
 import { systemRouter } from "./routes/system.routes";
 import { researchRouter } from "./routes/research.routes";
@@ -35,7 +36,7 @@ const scheduler = configureScheduler(new Scheduler(registry.database, {
     const run = await new ToolExecutor(registry).runReadOnlyTool(key, args);
     return { toolRunId: run.id, status: run.status };
   },
-  request: (key, args, title) => new ToolRequests(registry).createToolRequest({ toolKey: key, args, title, description: "Scheduled occurrence requires separate human approval.", requestedBy: "scheduler" }),
+  request: (key, args, title) => new ToolRequests(registry()).createToolRequest({ toolKey: key, args, title, description: "Scheduled occurrence requires separate human approval.", requestedBy: "scheduler" }),
 }));
 scheduler.start();
 
@@ -51,6 +52,7 @@ app.use("/memory", memoryRouter);
 app.use("/learning", learningRouter);
 app.use("/experience", experienceRouter);
 app.use("/knowledge", knowledgeRouter);
+app.use("/current-intelligence", currentIntelligenceRouter);
 app.use("/projects", projectsRouter);
 app.use("/research", researchRouter);
 app.use("/voice", voiceRouter);
