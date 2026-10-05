@@ -17,6 +17,10 @@ type GovernanceMeta = {
   governedScore: number;
 };
 
+type GovernanceLookup = Omit<GovernanceMeta, "governedScore"> & {
+  documentProjectKey: string | null;
+};
+
 type GovernedResult = RagSearchResult & { governance: GovernanceMeta };
 
 const confidenceBonus: Record<string, number> = {
@@ -56,7 +60,7 @@ export class RagService extends BaseRagService {
     return tableExists(this.#governanceDb, "knowledge_records") && tableExists(this.#governanceDb, "knowledge_baselines");
   }
 
-  private governanceFor(documentId: number, projectKey?: string) {
+  private governanceFor(documentId: number, projectKey?: string): GovernanceLookup {
     const row = this.#governanceDb.prepare(`
       SELECT
         rd.project_key AS document_project_key,
@@ -83,9 +87,10 @@ export class RagService extends BaseRagService {
     const authority = row?.authority == null ? "unapproved-draft" : String(row.authority);
     const status = row?.status == null ? "active" : String(row.status);
     const confidence = row?.confidence == null ? "moderate" : String(row.confidence);
-    const baselineRole = row?.baseline_role === "canonical" || row?.baseline_role === "supporting"
-      ? row.baseline_role
-      : null;
+    const baselineRole: GovernanceMeta["baselineRole"] =
+      row?.baseline_role === "canonical" || row?.baseline_role === "supporting"
+        ? row.baseline_role
+        : null;
 
     return {
       recordId: row?.record_id == null ? null : Number(row.record_id),
