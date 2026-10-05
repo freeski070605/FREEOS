@@ -39,6 +39,11 @@ function relevance(queryTokens: string[], title: string, content: string, tags: 
   return score;
 }
 
+function tableExists(name: string): boolean {
+  const row = knowledgeDb().prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name=?").get(name) as Row | undefined;
+  return Boolean(row?.ok);
+}
+
 function ensureGovernedLocalSources(projectKey?: string): void {
   const store = getMemoryStore();
   for (const memory of store.listApprovedMemories({ limit: 500 })) {
@@ -73,7 +78,7 @@ export interface GovernedLocalContextOptions {
 }
 
 export interface GovernedLocalItem {
-  kind: "memory" | "project-note";
+  kind: "memory" | "project-note" | "project-baseline";
   id: number;
   title: string;
   content: string;
@@ -129,6 +134,42 @@ export function buildGovernedLocalContext(options: GovernedLocalContextOptions) 
     }
   }
 
+  if (projectKey && queryTokens.length > 0 && tableExists("project_baseline_reviews")) {
+    const rows = db.prepare(`
+      SELECT
+        pbr.id,
+        (p.name || ' canonical project baseline') AS title,
+        pbr.baseline_text AS content,
+        pbr.project_key,
+        kr.authority, kr.authority_rank, kr.status, kr.confidence
+      FROM project_baseline_reviews pbr
+      JOIN projects p ON p.project_key = pbr.project_key
+      JOIN knowledge_records kr
+        ON kr.source_type = 'project-canonical-baseline'
+       AND kr.source_ref = ('project-baseline-review:' || pbr.id)
+      WHERE pbr.project_key = ?
+        AND pbr.status = 'approved'
+        AND kr.status = 'active'
+    `).all(projectKey) as Row[];
+
+    for (const row of rows) {
+      const score = relevance(queryTokens, String(row.title), String(row.content), "canonical project baseline");
+      if (score <= 0) continue;
+      candidates.push({
+        kind: "project-baseline",
+        id: Number(row.id),
+        title: String(row.title),
+        content: String(row.content),
+        projectKey: String(row.project_key),
+        authority: String(row.authority),
+        authorityRank: Number(row.authority_rank),
+        status: String(row.status),
+        confidence: String(row.confidence),
+        relevance: score,
+      });
+    }
+  }
+
   if (includeProjectNotes && projectKey && queryTokens.length > 0) {
     const rows = db.prepare(`
       SELECT
@@ -160,11 +201,12 @@ export function buildGovernedLocalContext(options: GovernedLocalContextOptions) 
     }
   }
 
+  const kindRank = (kind: GovernedLocalItem["kind"]): number => kind === "project-baseline" ? 0 : kind === "memory" ? 1 : 2;
   const items = candidates
     .sort((a, b) =>
       b.relevance - a.relevance ||
       b.authorityRank - a.authorityRank ||
-      (a.kind === "memory" ? -1 : 1),
+      kindRank(a.kind) - kindRank(b.kind),
     )
     .slice(0, limit);
 
@@ -179,7 +221,7 @@ export function buildGovernedLocalContext(options: GovernedLocalContextOptions) 
 
   const context = [
     "GOVERNED LOCAL KNOWLEDGE",
-    "Only ACTIVE governed local records are included. Higher authority wins on conflict. Project notes marked DRAFT-NOT-CONTROLLING may inform work but must not override owner instructions, canonical knowledge, or approved memory.",
+    "Only ACTIVE governed local records are included. Higher authority wins on conflict. Approved project baselines are canonical project knowledge. Project notes marked DRAFT-NOT-CONTROLLING may inform work but must not override owner instructions, canonical knowledge, or approved memory.",
     ...lines,
   ].join("\n");
 
