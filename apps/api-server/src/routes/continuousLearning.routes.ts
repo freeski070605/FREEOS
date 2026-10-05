@@ -8,6 +8,7 @@ import {
   runContinuousLearningScan,
   setLearningQueueStatus,
 } from "../services/continuousLearning.service";
+import { rankOpenProjectEducation } from "../services/learningPriority.service";
 
 export const continuousLearningRouter = Router();
 
@@ -49,6 +50,11 @@ continuousLearningRouter.get("/queue", (request, response, next) => {
       }),
     });
   } catch (error) { next(error); }
+});
+
+continuousLearningRouter.get("/project-priorities", (_request, response, next) => {
+  try { response.json(rankOpenProjectEducation()); }
+  catch (error) { next(error); }
 });
 
 continuousLearningRouter.post("/queue/:id/resolve", (request, response, next) => {
