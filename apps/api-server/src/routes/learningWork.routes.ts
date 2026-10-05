@@ -10,6 +10,7 @@ import {
   prepareNextLearningWork,
   reconcileLearningWork,
 } from "../services/learningWork.service";
+import { nextRankedProjectEducationQueueItemId, rankOpenProjectEducation } from "../services/learningPriority.service";
 
 export const learningWorkRouter = Router();
 
@@ -63,6 +64,21 @@ learningWorkRouter.post("/prepare-next", (_request, response, next) => {
   try {
     const prepared = prepareNextLearningWork();
     response.json({ prepared, nothingToPrepare: prepared === null });
+  } catch (error) { next(error); }
+});
+
+learningWorkRouter.post("/prepare-next-project", (_request, response, next) => {
+  try {
+    const queueItemId = nextRankedProjectEducationQueueItemId();
+    if (queueItemId == null) {
+      response.json({ prepared: null, nothingToPrepare: true, ranking: rankOpenProjectEducation() });
+      return;
+    }
+    response.json({
+      prepared: prepareLearningWork(queueItemId),
+      nothingToPrepare: false,
+      ranking: rankOpenProjectEducation(),
+    });
   } catch (error) { next(error); }
 });
 
