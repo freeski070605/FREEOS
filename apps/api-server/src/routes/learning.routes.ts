@@ -5,6 +5,7 @@ import {
   type MemoryProposal,
   type ProposalStatus,
 } from "@freeos/memory-core";
+import { registerApprovedMemory } from "../services/knowledgeGovernance.service";
 
 export const learningRouter = Router();
 
@@ -111,8 +112,6 @@ function metadataTags(input: {
     ...withoutMetadataTags(input.tags ?? []),
   ];
 
-  // Keep a very short observation hint in tags for audit/search while the full
-  // proposed durable knowledge remains in proposal.content.
   if (input.noticed) {
     const compact = input.noticed.replace(/\s+/g, " ").trim().slice(0, 120);
     if (compact) tags.push(`noticed:${compact}`);
@@ -255,8 +254,6 @@ learningRouter.post("/proposals", (request, response, next) => {
   }
 });
 
-// EDIT is intentionally implemented as an auditable supersession: the original
-// pending proposal is rejected and a revised pending proposal is created.
 learningRouter.post("/proposals/:id/revise", (request, response, next) => {
   try {
     const id = Number(request.params.id);
@@ -289,9 +286,11 @@ learningRouter.post("/proposals/:id/revise", (request, response, next) => {
 learningRouter.post("/proposals/:id/approve", (request, response, next) => {
   try {
     const result = store().approveProposal(Number(request.params.id));
+    const governance = registerApprovedMemory(result.memory.id);
     response.json({
       proposal: learningView(result.proposal),
       memory: result.memory,
+      governance,
       durableMemoryCreated: true,
     });
   } catch (error) { next(error); }
