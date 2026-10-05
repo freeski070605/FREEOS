@@ -95,16 +95,57 @@ function summarizeRows(input: Row[], fields: string[], limit = 12) {
   });
 }
 
+function governedProjectRagDocuments(database: Database, projectKey: string): Row[] {
+  if (!tableExists(database, "rag_documents") || !tableExists(database, "knowledge_records")) return [];
+  const chunkSelect = tableExists(database, "rag_chunks")
+    ? `(SELECT c.content FROM rag_chunks c WHERE c.document_id=d.id ORDER BY c.chunk_index LIMIT 1) AS first_chunk`
+    : `NULL AS first_chunk`;
+  return rows(database, `
+    SELECT d.id,d.file_name,d.file_path,d.title,d.status,d.indexed_at,
+           kr.id AS knowledge_record_id,kr.authority,kr.authority_rank,
+           kr.status AS governance_status,kr.confidence,kr.provenance,
+           ${chunkSelect}
+    FROM rag_documents d
+    JOIN knowledge_records kr
+      ON kr.source_type='rag-document'
+     AND kr.source_ref=d.file_path
+     AND kr.project_key=d.project_key
+    WHERE d.project_key=?
+      AND d.status='indexed'
+      AND kr.status='active'
+    ORDER BY kr.authority_rank DESC,d.indexed_at DESC,d.id DESC
+    LIMIT 100
+  `, projectKey);
+}
+
+function summarizeGovernedDocuments(input: Row[], limit = 12) {
+  return input.slice(0, limit).map((row) => ({
+    id: Number(row.id),
+    fileName: String(row.file_name ?? ""),
+    filePath: String(row.file_path ?? ""),
+    title: row.title == null ? null : String(row.title),
+    indexedAt: row.indexed_at == null ? null : String(row.indexed_at),
+    knowledgeRecordId: Number(row.knowledge_record_id),
+    authority: String(row.authority),
+    authorityRank: Number(row.authority_rank),
+    governanceStatus: String(row.governance_status),
+    confidence: String(row.confidence),
+    provenance: String(row.provenance ?? ""),
+    firstChunkExcerpt: row.first_chunk == null ? null : String(row.first_chunk).replace(/\s+/g, " ").trim().slice(0, 600),
+  }));
+}
+
 function inspectEvidence(projectKey: string) {
   const database = db();
   const project = database.prepare("SELECT * FROM projects WHERE project_key=?").get(projectKey) as Row | undefined;
   if (!project) throw new Error(`Project not found: ${projectKey}.`);
 
-  const memories = rows(database, "SELECT id,title,content,category,source,created_at,updated_at FROM memories WHERE project_key=? ORDER BY updated_at DESC LIMIT 50", projectKey);
+  const memories = rows(database, "SELECT id,title,content,category,source,created_at,updated_at FROM memories WHERE project_key=? AND status='approved' ORDER BY updated_at DESC LIMIT 50", projectKey);
   const notes = rows(database, "SELECT id,title,content,source,tags,created_at,updated_at FROM project_notes WHERE project_key=? ORDER BY updated_at DESC LIMIT 50", projectKey);
-  const ragDocuments = tableExists(database, "rag_documents")
-    ? rows(database, "SELECT id,file_name,file_path,title,status,indexed_at FROM rag_documents WHERE project_key=? ORDER BY indexed_at DESC,id DESC LIMIT 100", projectKey)
+  const rawRagDocuments = tableExists(database, "rag_documents")
+    ? rows(database, "SELECT id,file_name,file_path,title,status,indexed_at FROM rag_documents WHERE project_key=? AND status='indexed' ORDER BY indexed_at DESC,id DESC LIMIT 100", projectKey)
     : [];
+  const ragDocuments = governedProjectRagDocuments(database, projectKey);
   const baselines = tableExists(database, "knowledge_baselines") && tableExists(database, "knowledge_records")
     ? rows(database, `
         SELECT kb.role,kr.id,kr.title,kr.source_type,kr.source_ref,kr.authority,kr.status,kr.confidence,kr.provenance
@@ -139,7 +180,7 @@ function inspectEvidence(projectKey: string) {
   if (!ownershipExplicit) unknowns.push("Ownership classification is not explicitly established by project-specific approved evidence.");
   if (approvedSpecific === 0) unknowns.push("No project-specific approved memory currently establishes owner decisions, goals, or constraints.");
   if (notes.length === 0) unknowns.push("No project notes are registered for this project.");
-  if (ragDocuments.length === 0) unknowns.push("No project-scoped RAG documents are indexed for this project.");
+  if (ragDocuments.length === 0) unknowns.push("No active governed project-scoped RAG evidence is registered for this project.");
   if (activeCurrent === 0) unknowns.push("No fresh project-scoped Current Intelligence verifies the present operational state.");
   if (sourceRoots.length === 0) unknowns.push("No available real project source root is registered for read-only inspection.");
   if (canonicalBaselines.length === 0) unknowns.push("No active canonical project baseline exists yet.");
@@ -157,6 +198,7 @@ function inspectEvidence(projectKey: string) {
       approvedMemories: memories.length,
       projectNotes: notes.length,
       projectRagDocuments: ragDocuments.length,
+      projectRagDocumentsAll: rawRagDocuments.length,
       baselineLinks: baselines.length,
       canonicalBaselineLinks: canonicalBaselines.length,
       currentIntelligenceItems: currentIntelligence.length,
@@ -177,13 +219,18 @@ function inspectEvidence(projectKey: string) {
     })),
     approvedMemories: summarizeRows(memories, ["id", "title", "category", "source", "updated_at"]),
     projectNotes: summarizeRows(notes, ["id", "title", "source", "updated_at"]),
-    ragDocuments: summarizeRows(ragDocuments, ["id", "file_name", "file_path", "status", "indexed_at"]),
+    ragDocuments: summarizeGovernedDocuments(ragDocuments),
+    rawRagDocuments: summarizeRows(rawRagDocuments, ["id", "file_name", "file_path", "status", "indexed_at"]),
     baselines: summarizeRows(baselines, ["id", "role", "title", "authority", "status", "confidence", "source_type", "source_ref"]),
     currentIntelligence: summarizeRows(currentIntelligence, ["id", "topic", "status", "source_class", "confidence", "observed_at", "freshness_days"]),
     experienceEvents: summarizeRows(experiences, ["id", "title", "outcome", "status", "confidence", "created_at"]),
     researchSessions: summarizeRows(research, ["id", "title", "query", "status", "created_at"]),
     learningQueue: summarizeRows(queue, ["id", "signal_type", "title", "priority", "status", "updated_at"]),
   };
+
+  const governedEvidenceLines = ragDocuments.length
+    ? ragDocuments.slice(0, 12).map((row) => `- ${String(row.title ?? row.file_name)} [${String(row.authority)}/${String(row.confidence)}] (${String(row.file_name)})`)
+    : ["- None currently registered as active governed project RAG evidence."];
 
   const lines = [
     `# ${String(project.name)} — PROJECT BASELINE DRAFT`,
@@ -199,13 +246,17 @@ function inspectEvidence(projectKey: string) {
     "## Evidence Inventory",
     `- Approved project memories: ${memories.length}`,
     `- Project notes: ${notes.length}`,
-    `- Project-scoped indexed documents: ${ragDocuments.length}`,
+    `- Governed project-scoped indexed documents: ${ragDocuments.length}`,
+    `- Raw project-scoped indexed documents: ${rawRagDocuments.length}`,
     `- Available registered source roots: ${sourceRoots.length}`,
     `- Managed FREEOS knowledge folder available: ${managedFolder.exists ? "yes" : "no"}${managedFolder.starterOnly ? " (starter README only)" : ""}`,
     `- Baseline links: ${baselines.length} (${canonicalBaselines.length} active canonical)`,
     `- Current Intelligence: ${currentIntelligence.length} (${activeCurrent} current)`,
     `- Experience events: ${experiences.length}`,
     `- Research sessions: ${research.length}`,
+    "",
+    "## Governed Project Evidence",
+    ...governedEvidenceLines,
     "",
     "## Current State",
     activeCurrent > 0
@@ -214,7 +265,7 @@ function inspectEvidence(projectKey: string) {
     "",
     "## Goals / Constraints / Blockers / Roadmap",
     memories.length > 0 || notes.length > 0 || ragDocuments.length > 0
-      ? "- Evidence exists that may support these sections, but this deterministic inspection does not infer claims that are not explicitly established. Review the listed sources before canonicalization."
+      ? "- Governed evidence exists that may support these sections, but this deterministic inspection does not infer claims that are not explicitly established. Review the listed evidence before canonicalization."
       : sourceRoots.length > 0
         ? "- A real source root is available, but its contents have not yet been promoted into governed project evidence. Inspect/select evidence before making canonical claims."
         : "- UNKNOWN — no project-specific approved evidence is currently registered strongly enough to establish these fields.",
@@ -232,7 +283,7 @@ function inspectEvidence(projectKey: string) {
       ? "- Inspect the registered project source root and selectively register/index the strongest project evidence. Do not treat the existence of files as proof of a claim."
       : sourceRoots.length === 0 && ragDocuments.length === 0 && notes.length === 0 && memories.length === 0
         ? "- Register the project's real source root or project-specific evidence first. FREEOS should not fabricate a canonical baseline from the registry description alone."
-        : "- Review the listed project-specific evidence, resolve the UNKNOWNs, then submit the minimum project-specific baseline through the canonical approval workflow.",
+        : "- Review the active governed project evidence, resolve the remaining UNKNOWNs, then submit the minimum project-specific baseline through the canonical approval workflow.",
   ];
 
   return { project, evidence, unknowns, baselineDraft: lines.join("\n") };
@@ -294,7 +345,7 @@ export function inspectProjectFromLearningWork(workId: number) {
     canonicalWritePerformed: false,
     durableMemoryCreated: false,
     queueResolved: false,
-    rule: "Project inspection may read and prepare. It must not fabricate missing facts or silently make the draft canonical.",
+    rule: "Project inspection may read and prepare governed evidence. It must not fabricate missing facts or silently make the draft canonical.",
   };
 }
 
@@ -323,6 +374,6 @@ export function getProjectInspectionStatus() {
     prepared: count("status='prepared'"),
     canonicalWritesEnabled: false,
     durableMemoryCreatedAutomatically: false,
-    rule: "Project Inspection may assemble evidence and produce a draft baseline, but canonicalization remains a separate approved step.",
+    rule: "Project Inspection may assemble active governed evidence and produce a draft baseline, but canonicalization remains a separate approved step.",
   };
 }
