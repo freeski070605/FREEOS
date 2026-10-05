@@ -99,10 +99,10 @@ researchRouter.post("/results/:id/create-current-intelligence", (request, respon
       claim: text(input.claim),
       sourceClass: sourceClass && currentIntelligenceSourceClasses.includes(sourceClass as (typeof currentIntelligenceSourceClasses)[number])
         ? sourceClass as (typeof currentIntelligenceSourceClasses)[number]
-        : "reliable-secondary",
+        : "unverified",
       confidence: confidence && currentIntelligenceConfidences.includes(confidence as (typeof currentIntelligenceConfidences)[number])
         ? confidence as (typeof currentIntelligenceConfidences)[number]
-        : "moderate",
+        : "unverified",
       freshnessDays: Number.isFinite(Number(input.freshnessDays)) ? Number(input.freshnessDays) : undefined,
       observedAt: text(input.observedAt),
     });
