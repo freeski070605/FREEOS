@@ -136,6 +136,14 @@ export function rankOpenProjectEducation() {
 }
 
 export function nextRankedProjectEducationQueueItemId(): number | null {
+  const database = db();
   const ranked = rankOpenProjectEducation().items;
-  return ranked.length ? ranked[0].queueItemId : null;
+  if (!ranked.length) return null;
+  if (!tableExists(database, "learning_work_items")) return ranked[0].queueItemId;
+
+  for (const item of ranked) {
+    const work = database.prepare("SELECT status FROM learning_work_items WHERE queue_item_id=?").get(item.queueItemId) as Row | undefined;
+    if (!work || String(work.status) === "cancelled") return item.queueItemId;
+  }
+  return null;
 }
