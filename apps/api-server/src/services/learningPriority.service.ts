@@ -39,6 +39,22 @@ function count(database: Database, table: string, where: string, ...params: unkn
   return Number(row.count ?? 0);
 }
 
+function governedRagDocumentCount(database: Database, projectKey: string): number {
+  if (!tableExists(database, "rag_documents") || !tableExists(database, "knowledge_records")) return 0;
+  const row = database.prepare(`
+    SELECT COUNT(DISTINCT d.id) AS count
+    FROM rag_documents d
+    JOIN knowledge_records kr
+      ON kr.source_type='rag-document'
+     AND kr.source_ref=d.file_path
+     AND kr.project_key=d.project_key
+    WHERE d.project_key=?
+      AND d.status='indexed'
+      AND kr.status='active'
+  `).get(projectKey) as { count: number };
+  return Number(row.count ?? 0);
+}
+
 function portfolioScore(rank: number | null): number {
   if (rank == null) return 10;
   const scores: Record<number, number> = { 1: 100, 2: 90, 3: 80, 4: 70, 5: 60, 6: 50, 7: 40, 8: 30 };
@@ -60,7 +76,8 @@ function managedFolderAvailable(folderPath: string): boolean {
 function scoreEvidence(database: Database, projectKey: string, folderPath: string) {
   const approvedMemories = count(database, "memories", "project_key=? AND status='approved'", projectKey);
   const projectNotes = count(database, "project_notes", "project_key=?", projectKey);
-  const ragDocuments = count(database, "rag_documents", "project_key=? AND status='indexed'", projectKey);
+  const rawRagDocuments = count(database, "rag_documents", "project_key=? AND status='indexed'", projectKey);
+  const ragDocuments = governedRagDocumentCount(database, projectKey);
   const currentIntelligence = count(database, "current_intelligence_items", "project_key=? AND status='current'", projectKey);
   const experienceEvents = count(database, "experience_events", "project_key=?", projectKey);
   const researchSessions = count(database, "research_sessions", "project_key=?", projectKey);
@@ -80,7 +97,7 @@ function scoreEvidence(database: Database, projectKey: string, folderPath: strin
   return {
     score,
     band: readinessBand(score),
-    counts: { approvedMemories, projectNotes, ragDocuments, currentIntelligence, experienceEvents, researchSessions },
+    counts: { approvedMemories, projectNotes, ragDocuments, rawRagDocuments, currentIntelligence, experienceEvents, researchSessions },
     availableSourceRoots: availableSourceRoots.length,
     sourceRoots: availableSourceRoots.map((source) => ({ id: source.id, location: source.location, label: source.label })),
     managedKnowledgeFolderAvailable,
@@ -147,7 +164,7 @@ export function rankOpenProjectEducation() {
     items,
     weights: { strategicPriority: 0.55, evidenceReadiness: 0.45 },
     strategicSource: "docs/knowledge/08_DFB_EXECUTIVE_LAYER.md",
-    rule: "Rank project-education work by DFB strategic priority and substantive project evidence. Managed FREEOS project folders are not counted as evidence merely because their starter README exists.",
+    rule: "Rank project-education work by DFB strategic priority and substantive governed project evidence. Raw indexed documents do not increase readiness unless they are active in Knowledge Governance.",
   };
 }
 
