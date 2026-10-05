@@ -2,11 +2,17 @@ import { Router } from "express";
 import { checkSearxngStatus, getResearchService, readPublicPage, searchSearxng, summarizeWithOllama } from "@freeos/research-core";
 import { config } from "../config";
 import { getOllamaStatus } from "../services/ollama.service";
+import {
+  createCurrentIntelligenceFromResearch,
+  currentIntelligenceConfidences,
+  currentIntelligenceSourceClasses,
+} from "../services/currentIntelligence.service";
 
 export const researchRouter = Router();
 const service = () => getResearchService();
 const body = (value: unknown): Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const tags = (value: unknown): string[] => Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : typeof value === "string" ? value.split(",").map((v) => v.trim()).filter(Boolean) : [];
+const text = (value: unknown): string | undefined => typeof value === "string" && value.trim() ? value.trim() : undefined;
 
 researchRouter.get("/status", async (_request, response, next) => {
   try {
@@ -80,5 +86,26 @@ researchRouter.post("/results/:id/create-project-note", (request, response, next
     const input = body(request.body);
     const note = service().createProjectNoteFromResearch(Number(request.params.id), { title: typeof input.title === "string" ? input.title : undefined, projectKey: typeof input.projectKey === "string" ? input.projectKey : "", tags: tags(input.tags) });
     response.status(201).json({ note });
+  } catch (error) { next(error); }
+});
+
+researchRouter.post("/results/:id/create-current-intelligence", (request, response, next) => {
+  try {
+    const input = body(request.body);
+    const sourceClass = text(input.sourceClass);
+    const confidence = text(input.confidence);
+    const item = createCurrentIntelligenceFromResearch(Number(request.params.id), {
+      topic: text(input.topic),
+      claim: text(input.claim),
+      sourceClass: sourceClass && currentIntelligenceSourceClasses.includes(sourceClass as (typeof currentIntelligenceSourceClasses)[number])
+        ? sourceClass as (typeof currentIntelligenceSourceClasses)[number]
+        : "reliable-secondary",
+      confidence: confidence && currentIntelligenceConfidences.includes(confidence as (typeof currentIntelligenceConfidences)[number])
+        ? confidence as (typeof currentIntelligenceConfidences)[number]
+        : "moderate",
+      freshnessDays: Number.isFinite(Number(input.freshnessDays)) ? Number(input.freshnessDays) : undefined,
+      observedAt: text(input.observedAt),
+    });
+    response.status(201).json({ item, durableMemoryCreated: false });
   } catch (error) { next(error); }
 });
