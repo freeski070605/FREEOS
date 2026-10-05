@@ -9,6 +9,14 @@ function Write-Step([string]$Message) {
     Write-Host "`n=== $Message ===" -ForegroundColor Cyan
 }
 
+function Invoke-Npm([string[]]$Arguments) {
+    $npmCmd = (Get-Command npm.cmd -ErrorAction Stop).Source
+    & $npmCmd @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "npm command failed with exit code $LASTEXITCODE: npm $($Arguments -join ' ')"
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $repoRoot
 
@@ -52,16 +60,10 @@ Write-Host "[OK] Approved education corpus present ($($expectedFiles.Count) file
 Write-Host "Root: $knowledgeRoot"
 
 Write-Step 'INDEX APPROVED EDUCATION INTO FREEOS RAG'
-& npm run rag:index -- $knowledgeRoot
-if ($LASTEXITCODE -ne 0) {
-    throw "RAG indexing failed with exit code $LASTEXITCODE"
-}
+Invoke-Npm @('run', 'rag:index', '--', $knowledgeRoot)
 
 Write-Step 'RAG STATUS'
-& npm run rag:status
-if ($LASTEXITCODE -ne 0) {
-    throw "RAG status check failed with exit code $LASTEXITCODE"
-}
+Invoke-Npm @('run', 'rag:status')
 
 if (-not $SkipInventory) {
     $inventory = Join-Path $repoRoot 'tools\scripts\knowledge-inventory.ps1'
