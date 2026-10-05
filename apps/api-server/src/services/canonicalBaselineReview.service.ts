@@ -2,7 +2,6 @@ import { getToolRegistry } from "@freeos/tool-runner";
 import {
   getKnowledgeGovernanceStatus,
   knowledgeDb,
-  linkKnowledgeBaseline,
   supersedeKnowledge,
   upsertKnowledgeRecord,
 } from "./knowledgeGovernance.service";
@@ -84,6 +83,14 @@ function getReviewRow(id: number): Row {
   const row = db().prepare("SELECT * FROM project_baseline_reviews WHERE id=?").get(id) as Row | undefined;
   if (!row) throw new Error("Project baseline review not found.");
   return row;
+}
+
+function linkCanonicalBaseline(recordId: number, projectKey: string) {
+  knowledgeDb().prepare(`
+    INSERT INTO knowledge_baselines (project_key, knowledge_record_id, role)
+    VALUES (?, ?, 'canonical')
+    ON CONFLICT(project_key, knowledge_record_id) DO UPDATE SET role='canonical'
+  `).run(projectKey, recordId);
 }
 
 export function prepareProjectBaselineReview(draftId: number) {
@@ -193,7 +200,7 @@ export function approveProjectBaselineReview(id: number) {
     supersedeKnowledge(Number(row.id), record.id, `Superseded by owner-approved project baseline review #${review.id}.`);
   }
 
-  linkKnowledgeBaseline(record.id, review.projectKey, "canonical");
+  linkCanonicalBaseline(record.id, review.projectKey);
 
   database.transaction(() => {
     database.prepare(`
@@ -205,9 +212,13 @@ export function approveProjectBaselineReview(id: number) {
   })();
 
   const queueItemId = draft.queue_item_id == null ? null : Number(draft.queue_item_id);
+  let learningQueueResolved = false;
   if (queueItemId) {
     const queue = database.prepare("SELECT status FROM continuous_learning_queue WHERE id=?").get(queueItemId) as Row | undefined;
-    if (queue && String(queue.status) === "open") setLearningQueueStatus(queueItemId, "resolved");
+    if (queue && String(queue.status) === "open") {
+      setLearningQueueStatus(queueItemId, "resolved");
+      learningQueueResolved = true;
+    }
   }
 
   return {
@@ -215,7 +226,7 @@ export function approveProjectBaselineReview(id: number) {
     knowledgeRecord: record,
     canonicalWritePerformed: true,
     durableMemoryCreated: false,
-    learningQueueResolved: Boolean(queueItemId),
+    learningQueueResolved,
     governance: getKnowledgeGovernanceStatus(),
   };
 }
