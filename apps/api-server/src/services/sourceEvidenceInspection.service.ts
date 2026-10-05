@@ -41,8 +41,8 @@ type ExcludedSummary = {
 };
 
 const ignoredDirectories = new Set([
-  ".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", "coverage",
-  ".cache", "cache", "models", "outputs", "logs", "temp", "tmp",
+  ".git", ".github", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", "coverage",
+  ".cache", "cache", "models", "outputs", "logs", "temp", "tmp", "vendor", "third_party", "third-party",
 ]);
 
 const instructionFiles = new Set(["agents.md", "claude.md", "codex.md", "gemini.md"]);
@@ -112,6 +112,11 @@ function sensitiveName(fileName: string): boolean {
   return /(^|[._-])(secret|secrets|credential|credentials|token|tokens|password|passwd|private[_-]?key|api[_-]?key)([._-]|$)/i.test(lower);
 }
 
+function ignoredDirectoryName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return ignoredDirectories.has(lower) || lower.startsWith("_inactive_");
+}
+
 function classify(relativePath: string): Omit<EvidenceCandidate, "sourceId" | "relativePath" | "sizeBytes" | "contentSampled" | "previewTitle" | "previewExcerpt"> | null {
   const lower = relativePath.toLowerCase();
   const name = basename(lower);
@@ -146,8 +151,12 @@ function classify(relativePath: string): Omit<EvidenceCandidate, "sourceId" | "r
     return { category: "decision-history", priority: "high", reason: "Decision/history documentation can establish why important implementation choices were made." };
   }
 
-  if (ext === ".md" && (lower.startsWith("docs/") || lower.includes("/docs/"))) {
-    return { category: "documentation", priority: "high", reason: "Project documentation is a strong candidate for scoped institutional evidence." };
+  if (ext === ".md" && lower.startsWith("docs/")) {
+    return { category: "documentation", priority: "high", reason: "Top-level project documentation is a strong candidate for scoped institutional evidence." };
+  }
+
+  if (ext === ".md" && lower.includes("/docs/")) {
+    return { category: "documentation", priority: "medium", reason: "Nested component documentation may contain useful scoped evidence but should rank below project-native top-level docs." };
   }
 
   if (ext === ".md") {
@@ -155,19 +164,19 @@ function classify(relativePath: string): Omit<EvidenceCandidate, "sourceId" | "r
   }
 
   if (name === "package.json" || name === "pyproject.toml") {
-    return { category: "package-manifest", priority: "medium", reason: "Primary package manifest can verify project technologies, scripts, and package metadata." };
+    return { category: "package-manifest", priority: rootLevel ? "medium" : "low", reason: "Package manifest can verify project technologies, scripts, and package metadata." };
   }
 
   if (/^requirements.*\.txt$/i.test(name) || ["environment.yml", "environment.yaml", "poetry.lock", "pipfile"].includes(name)) {
-    return { category: "dependency-manifest", priority: "medium", reason: "Dependency manifest can verify important runtime/tooling dependencies." };
+    return { category: "dependency-manifest", priority: rootLevel ? "medium" : "low", reason: "Dependency manifest can verify important runtime/tooling dependencies." };
   }
 
   if (name === "dockerfile" || /^docker-compose.*\.ya?ml$/i.test(name)) {
-    return { category: "package-manifest", priority: "medium", reason: "Container manifest can verify runtime/service composition." };
+    return { category: "package-manifest", priority: rootLevel ? "medium" : "low", reason: "Container manifest can verify runtime/service composition." };
   }
 
   if (/^license(\..*)?$/i.test(name)) {
-    return { category: "license", priority: "medium", reason: "License metadata may matter for ownership, reuse, and third-party rights." };
+    return { category: "license", priority: rootLevel ? "medium" : "low", reason: "License metadata may matter for ownership, reuse, and third-party rights." };
   }
 
   if ([".ps1", ".bat", ".cmd", ".sh"].includes(ext) && /(install|setup|validate|check|update|start|run|repair)/i.test(name)) {
@@ -242,7 +251,7 @@ function scanSource(source: ReturnType<typeof availableLocalProjectSources>[numb
       if (entry.isSymbolicLink()) { excluded.symlink += 1; continue; }
       const fullPath = join(folder, entry.name);
       if (entry.isDirectory()) {
-        if (ignoredDirectories.has(entry.name.toLowerCase())) { excluded.ignoredDirectory += 1; continue; }
+        if (ignoredDirectoryName(entry.name)) { excluded.ignoredDirectory += 1; continue; }
         walk(fullPath, depth + 1);
         continue;
       }
@@ -275,6 +284,16 @@ function priorityValue(priority: CandidatePriority): number {
   return priority === "high" ? 0 : priority === "medium" ? 1 : 2;
 }
 
+function localityValue(relativePath: string): number {
+  const lower = relativePath.toLowerCase();
+  if (lower === "readme.md") return 0;
+  if (lower.startsWith("docs/")) return 1;
+  const depth = (relativePath.match(/\//g) ?? []).length;
+  if (depth === 0) return 2;
+  if (depth === 1) return 3;
+  return 4 + Math.min(depth, 4);
+}
+
 export function inspectProjectSourceEvidence(projectKey: string) {
   const clean = projectKey.trim();
   if (!clean) throw new Error("projectKey is required.");
@@ -295,6 +314,7 @@ export function inspectProjectSourceEvidence(projectKey: string) {
   const candidates = allCandidates
     .sort((a, b) =>
       priorityValue(a.priority) - priorityValue(b.priority) ||
+      localityValue(a.relativePath) - localityValue(b.relativePath) ||
       a.relativePath.localeCompare(b.relativePath),
     )
     .slice(0, 250);
@@ -361,6 +381,6 @@ export function getSourceEvidenceInspectionStatus() {
     secretLikeFilesReadAutomatically: false,
     maxDepth,
     maxFiles,
-    rule: "Inspect registered source roots for likely evidence while skipping secret-like files, heavy/generated directories, and automatic canonicalization.",
+    rule: "Inspect registered source roots for likely project-native evidence while skipping secret-like files, inactive/vendor trees, heavy/generated directories, and automatic canonicalization.",
   };
 }
