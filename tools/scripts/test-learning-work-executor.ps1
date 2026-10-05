@@ -29,6 +29,25 @@ $status | ConvertTo-Json -Depth 8
 if ($status.mode -ne "prepare-only") { throw "Learning Work Executor must remain prepare-only in v1." }
 if ($status.durableLearningRequiresApproval -ne $true) { throw "Durable learning approval gate is not active." }
 
+Write-Host "`n=== CLEAN ABORTED PRIOR VALIDATION SIGNALS ===" -ForegroundColor Cyan
+$priorExperiences = Invoke-FreeosJson -Method GET -Path "/experience?status=observed&projectKey=freeos&limit=200"
+$priorExperienceItems = @($priorExperiences.events | Where-Object { $_.sourceType -eq "learning-work-validation" })
+foreach ($item in $priorExperienceItems) {
+  Invoke-FreeosJson -Method POST -Path "/experience/$($item.id)/close" -Body @{} | Out-Null
+}
+
+$priorCurrent = Invoke-FreeosJson -Method GET -Path "/current-intelligence/items?projectKey=freeos&limit=250"
+$priorCurrentItems = @($priorCurrent.items | Where-Object { $_.sourceKey -like "learning-work-current-*" -and $_.status -ne "archived" })
+foreach ($item in $priorCurrentItems) {
+  Invoke-FreeosJson -Method POST -Path "/current-intelligence/items/$($item.id)/archive" -Body @{} | Out-Null
+}
+
+if ($priorExperienceItems.Count -gt 0 -or $priorCurrentItems.Count -gt 0) {
+  Invoke-FreeosJson -Method POST -Path "/continuous-learning/run" -Body @{ triggerType = "learning-work-prior-validation-cleanup" } | Out-Null
+  Invoke-FreeosJson -Method POST -Path "/learning-work/reconcile" -Body @{} | Out-Null
+}
+Write-Host "Closed $($priorExperienceItems.Count) prior experience signal(s) and archived $($priorCurrentItems.Count) prior Current Intelligence signal(s)."
+
 Write-Host "`n=== CREATE EXPERIENCE SIGNAL FOR EXPERIMENT PLANNING ===" -ForegroundColor Cyan
 $experience = Invoke-FreeosJson -Method POST -Path "/experience" -Body @{
   projectKey = "freeos"
