@@ -112,8 +112,6 @@ function classify(queue: Row): LearningWorkType {
 }
 
 function recipe(workType: LearningWorkType, queue: Row) {
-  const sourceEvidence = String(queue.evidence ?? "");
-  const recommended = String(queue.recommended_action ?? "");
   if (workType === "research-verification") {
     return {
       objective: `Obtain fresh evidence for: ${String(queue.title)}`,
@@ -226,7 +224,16 @@ export function prepareLearningWork(queueItemId: number) {
   }
 
   const row = database.prepare("SELECT * FROM learning_work_items WHERE queue_item_id = ?").get(queueItemId) as Row;
-  return { work: mapWork(row), queue: { id: Number(queue.id), signalType: String(queue.signal_type), sourceRef: String(queue.source_ref), priority: String(queue.priority), recommendedAction: recommended } };
+  return {
+    work: mapWork(row),
+    queue: {
+      id: Number(queue.id),
+      signalType: String(queue.signal_type),
+      sourceRef: String(queue.source_ref),
+      priority: String(queue.priority),
+      recommendedAction: String(queue.recommended_action ?? ""),
+    },
+  };
 }
 
 export function prepareNextLearningWork() {
