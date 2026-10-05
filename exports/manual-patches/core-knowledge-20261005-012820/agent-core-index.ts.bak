@@ -1,4 +1,4 @@
-﻿import type Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 
 export type AgentKind = "brand" | "content" | "growth" | "client" | "revenue" | "opportunity" | "operations" | "creative" | "coding" | "trading";
 export type AgentStatus = "queued" | "planning" | "waiting_approval" | "running" | "completed" | "failed" | "cancelled";
@@ -21,9 +21,7 @@ const templates: Array<[AgentKind,string,string,string[]]> = [
  ["trading","Trading Agent","Research markets, strategies, backtests, paper positions, journals, performance, risk, watchlists, and setups. Never place live trades or move money.",[]],
 ];
 export const AGENT_TEMPLATES = templates.map(([templateKey,name,mission,suggestedToolKeys]) => ({templateKey,name,mission,description:mission,suggestedToolKeys}));
-export function isAgentDocumentAllowed(projectKey:string,documentProjectKey:string|null):boolean {
-  return documentProjectKey===null || documentProjectKey===projectKey;
-}
+export function isAgentDocumentAllowed(projectKey:string,documentProjectKey:string|null):boolean { return documentProjectKey===projectKey; }
 export function isAgentMemoryAllowed(projectKey:string,memoryProjectKey:string|null):boolean { return memoryProjectKey===projectKey || memoryProjectKey===null; }
 const forbidden = /^(trade\.|purchase\.|credentials\.|files\.delete$|email\.send$|deploy\.|financial\.|gambling\.|account\.delete|password\.)/;
 const dangerousInteraction = /^(computer\.|browser\.(click|input|select|check|uncheck|form\.submit|download))/;
@@ -61,5 +59,3 @@ export class AgentStore {
  getRun(id:number):AgentRun { const row=this.db.prepare("SELECT * FROM agent_runs WHERE id=?").get(id); if(!row) throw new AgentError("Run not found.","not_found"); return this.syncRun(row); }
  listRuns(limit=100):AgentRun[] { return (this.db.prepare("SELECT * FROM agent_runs ORDER BY id DESC LIMIT ?").all(Math.min(Math.max(limit,1),500)) as any[]).map(row=>this.syncRun(row)); }
 }
-
-

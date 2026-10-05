@@ -62,4 +62,3 @@ export class AgentStore {
  listRuns(limit=100):AgentRun[] { return (this.db.prepare("SELECT * FROM agent_runs ORDER BY id DESC LIMIT ?").all(Math.min(Math.max(limit,1),500)) as any[]).map(row=>this.syncRun(row)); }
 }
 
-
