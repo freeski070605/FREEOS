@@ -7,5 +7,5 @@ export { chunkText, estimateTokens } from "./chunker";
 export { scanDirectory, scanAllowedRoots } from "./fileScanner";
 export { searchKeywords, searchKeywordsWithDebug, searchFts, setupFtsIndex } from "./keywordSearch";
 export { embedChunkWithOllama, checkOllamaModel, isOllamaAvailable } from "./ollamaEmbeddings";
-export { RagService } from "./ragService";
+export { RagService } from "./governedRagService";
 
