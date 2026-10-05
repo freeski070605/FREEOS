@@ -36,7 +36,7 @@ const scheduler = configureScheduler(new Scheduler(registry.database, {
     const run = await new ToolExecutor(registry).runReadOnlyTool(key, args);
     return { toolRunId: run.id, status: run.status };
   },
-  request: (key, args, title) => new ToolRequests(registry()).createToolRequest({ toolKey: key, args, title, description: "Scheduled occurrence requires separate human approval.", requestedBy: "scheduler" }),
+  request: (key, args, title) => new ToolRequests(registry).createToolRequest({ toolKey: key, args, title, description: "Scheduled occurrence requires separate human approval.", requestedBy: "scheduler" }),
 }));
 scheduler.start();
 
