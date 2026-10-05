@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { checkSearxngStatus, getResearchService } from "@freeos/research-core";
 import { getMemoryStore } from "@freeos/memory-core";
 import { getVoiceStatus, synthesizeSpeech } from "@freeos/voice-core";
@@ -8,6 +8,7 @@ import { config } from "../config";
 import { generateWithOllama, getOllamaStatus, isOllamaModelInstalled, LocalModelError } from "../services/ollama.service";
 import { getSystemStatus } from "../services/system.service";
 import { createBackup, getBackupStatus } from "../services/backup.service";
+import { buildGovernedLocalContext } from "../services/governedLocalContext.service";
 
 export const commandRouter = Router();
 getMemoryStore(); // Initializes additive Command Center tables before any command endpoint is called.
@@ -36,7 +37,6 @@ const record = (value: unknown): Record<string, unknown> => value && typeof valu
 const count = (sql: string, ...args: unknown[]) => Number((db().prepare(sql).get(...args) as { count: number }).count);
 const bool = (value: unknown, fallback: boolean) => typeof value === "boolean" ? value : fallback;
 const tags = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : typeof value === "string" ? value.split(",").map((item) => item.trim()).filter(Boolean) : [];
-
 
 commandRouter.get("/status", async (_request, response, next) => {
   try {
@@ -109,7 +109,7 @@ function generationOptions(mode: ResponseMode) {
 function normalizedCreativeLines(value: string): string[] {
   return value
     .split(/\r?\n/)
-    .map((line) => line.replace(/^\s*(?:[-*â€¢]|option\s+\d+[:.)-]?)\s*/i, "").trim().toLowerCase().replace(/[^a-z0-9'&\s]/g, " ").replace(/\s+/g, " "))
+    .map((line) => line.replace(/^\s*(?:[-*•]|option\s+\d+[:.)-]?)\s*/i, "").trim().toLowerCase().replace(/[^a-z0-9'&\s]/g, " ").replace(/\s+/g, " "))
     .filter((line) => line.length >= 24 && line.split(" ").length >= 5);
 }
 
@@ -214,7 +214,7 @@ commandRouter.post("/chat", async (request, response, next) => {
     }
 
     if (highRisk.test(message)) {
-      responseText = "I canâ€™t perform or queue that high-risk action. FREEOS keeps destructive actions, sending, purchases, trading, deployments, and credential access blocked. I can help with a safe plan or read-only review instead.";
+      responseText = "I can't perform or queue that high-risk action. FREEOS keeps destructive actions, sending, purchases, trading, deployments, and credential access blocked. I can help with a safe plan or read-only review instead.";
     } else {
       const memoryMatch = message.match(remember);
       if (memoryMatch?.[1]) createdMemoryProposalId = store().createProposal({ title: memoryMatch[1].trim().slice(0, 80), content: memoryMatch[1].trim(), category: projectKey ? "project" : "general", projectKey, source: "command-chat", reason: "Requested in local chat; awaiting approval." }).id;
@@ -223,7 +223,15 @@ commandRouter.post("/chat", async (request, response, next) => {
         if (match) createdToolRequestId = new ToolRequests(registry()).createToolRequest({ toolKey: match.toolKey, title: `Chat request: ${match.name}`, description: message, args: {}, requestedBy: "command-chat" }).id;
       }
 
-      const context = store().buildLocalContext({ projectKey, includeProjectNotes: Boolean(projectKey && useProjectNotes), memoryQuery: useMemory ? message : undefined, limit: 8 });
+      const safetyContext = store().buildLocalContext({ limit: 1 });
+      const governedLocal = buildGovernedLocalContext({
+        query: message,
+        projectKey,
+        includeMemory: useMemory,
+        includeProjectNotes: Boolean(projectKey && useProjectNotes),
+        limit: 8,
+      });
+      const context = [safetyContext, governedLocal.context].filter(Boolean).join("\n\n");
       const memoryStatus = store().getMemoryStatus(); const projectStatus = store().getProjectStatus(); const tools = registry().listTools();
       const liveStatus = `LIVE FREEOS STATUS\n- Phase: ${getSystemStatus().phase}\n- API: online\n- Ollama model: ${model}\n- Approved memories: ${memoryStatus.approvedMemories}\n- Pending memory proposals: ${memoryStatus.pendingProposals}\n- Projects: ${projectStatus.projectCount}\n- Project notes: ${projectStatus.notesCount}\n- Registered tools: ${tools.length}\n- Pending tool requests: ${count("SELECT COUNT(*) AS count FROM tool_requests WHERE status='pending'")}\n- Dangerous actions: off\n- High-risk tools: blocked\n- Paid API keys required: no\n- Cloud providers: off\n- Always-listening microphone: off\n- CPU, RAM, disk, security scans, network state, and user sessions: not measured by this endpoint`;
       let research = "";
@@ -362,7 +370,7 @@ commandRouter.post("/chat", async (request, response, next) => {
             });
             if (copiesReferenceLine(responseText, [ragContext, ...recentAssistantResponses, firstAttempt])) {
               warnings.push("FREEOS blocked a second response because it still repeated reference wording.");
-              responseText = "I couldnâ€™t produce a sufficiently fresh version without repeating the reference material. Try adding a new emotional angle, setting, or central image.";
+              responseText = "I couldn't produce a sufficiently fresh version without repeating the reference material. Try adding a new emotional angle, setting, or central image.";
             }
           }
         } catch (error) {
@@ -392,4 +400,3 @@ commandRouter.post("/chat", async (request, response, next) => {
     response.json({ id: Number(result.lastInsertRowid), response: responseText, model, localOnly: true, cloudProviderUsed: false, toolsExecuted: false, memoryApproved: false, createdMemoryProposalId, createdToolRequestId, audioOutputPath: speech?.outputPath ?? null, audioUrl: speech?.outputPath ? `/voice/outputs/${encodeURIComponent(speech.outputPath.split("/").pop()!)}` : null, memoryUsed: useMemory, projectNotesUsed: Boolean(projectKey && useProjectNotes), ragRequested: effectiveUseRag, ragUsed, ragSources: ragSources ?? [], ragMode: ragModeUsed, ragModeUsed: ragModeUsed, ragTopKUsed: ragTopKFinal, ragQueryUsed: message, blockedModelGuess, warnings, creativeMode, exampleCopyBlocked: creativeMode && ragUsed, responseMode, ragUsedAs: creativeMode && ragUsed ? "craft_reference" : undefined });
   } catch (error) { next(error); }
 });
-
