@@ -18,6 +18,14 @@ function Invoke-Npm([string[]]$Arguments) {
     }
 }
 
+function Invoke-PowerShellScript([string]$ScriptPath) {
+    $powershellExe = (Get-Command powershell.exe -ErrorAction Stop).Source
+    & $powershellExe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath
+    if ($LASTEXITCODE -ne 0) {
+        throw ("PowerShell script failed with exit code {0}: {1}" -f $LASTEXITCODE, $ScriptPath)
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $repoRoot
 
@@ -70,10 +78,9 @@ if (-not $SkipInventory) {
     $inventory = Join-Path $repoRoot 'tools\scripts\knowledge-inventory.ps1'
     if (Test-Path $inventory) {
         Write-Step 'KNOWLEDGE INVENTORY'
-        & $inventory
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Knowledge inventory returned exit code $LASTEXITCODE. RAG indexing already completed."
-        }
+        # Run in a fresh PowerShell process so this installer's StrictMode does not leak
+        # into the older inventory script, which intentionally tolerates scalar collections.
+        Invoke-PowerShellScript $inventory
     } else {
         Write-Warning "knowledge-inventory.ps1 not found; skipping inventory."
     }
