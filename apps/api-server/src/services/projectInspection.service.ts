@@ -1,5 +1,8 @@
 import { existsSync, readdirSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
+import { getMemoryStore } from "@freeos/memory-core";
 import { getToolRegistry } from "@freeos/tool-runner";
+import { availableLocalProjectSources } from "./projectSource.service";
 
 type Row = Record<string, unknown>;
 type Database = ReturnType<typeof getToolRegistry>["database"];
@@ -66,15 +69,21 @@ function rows(database: Database, sql: string, ...params: unknown[]): Row[] {
   return database.prepare(sql).all(...params) as Row[];
 }
 
-function folderSnapshot(folderPath: string) {
-  if (!folderPath || !existsSync(folderPath)) return { exists: false, folderPath, topLevelEntries: [] as string[] };
+function managedFolderSnapshot(folderPath: string) {
+  const resolvedPath = folderPath
+    ? (isAbsolute(folderPath) ? folderPath : resolve(getMemoryStore().rootDir, folderPath))
+    : "";
+  if (!resolvedPath || !existsSync(resolvedPath)) {
+    return { exists: false, folderPath, resolvedPath, topLevelEntries: [] as string[], starterOnly: false };
+  }
   try {
-    const entries = readdirSync(folderPath, { withFileTypes: true })
+    const entries = readdirSync(resolvedPath, { withFileTypes: true })
       .slice(0, 100)
       .map((entry) => `${entry.isDirectory() ? "dir" : "file"}:${entry.name}`);
-    return { exists: true, folderPath, topLevelEntries: entries };
+    const substantive = entries.filter((entry) => entry.toLowerCase() !== "file:readme.md");
+    return { exists: true, folderPath, resolvedPath, topLevelEntries: entries, starterOnly: substantive.length === 0 };
   } catch {
-    return { exists: true, folderPath, topLevelEntries: [] as string[] };
+    return { exists: true, folderPath, resolvedPath, topLevelEntries: [] as string[], starterOnly: false };
   }
 }
 
@@ -121,7 +130,8 @@ function inspectEvidence(projectKey: string) {
   const canonicalBaselines = baselines.filter((row) => String(row.role) === "canonical" && String(row.status) === "active");
   const approvedSpecific = memories.length;
   const activeCurrent = currentIntelligence.filter((row) => String(row.status) === "current").length;
-  const folder = folderSnapshot(String(project.folder_path ?? ""));
+  const managedFolder = managedFolderSnapshot(String(project.folder_path ?? ""));
+  const sourceRoots = availableLocalProjectSources(projectKey);
   const description = String(project.description ?? "").trim();
   const ownershipExplicit = /\bDFB[- ]owned\b/i.test(description) ? "DFB-owned" : null;
 
@@ -131,7 +141,7 @@ function inspectEvidence(projectKey: string) {
   if (notes.length === 0) unknowns.push("No project notes are registered for this project.");
   if (ragDocuments.length === 0) unknowns.push("No project-scoped RAG documents are indexed for this project.");
   if (activeCurrent === 0) unknowns.push("No fresh project-scoped Current Intelligence verifies the present operational state.");
-  if (!folder.exists) unknowns.push("The registered project folder is not currently available at its configured path.");
+  if (sourceRoots.length === 0) unknowns.push("No available real project source root is registered for read-only inspection.");
   if (canonicalBaselines.length === 0) unknowns.push("No active canonical project baseline exists yet.");
 
   const evidence = {
@@ -140,7 +150,7 @@ function inspectEvidence(projectKey: string) {
       name: String(project.name),
       description,
       status: String(project.status),
-      folderPath: String(project.folder_path ?? ""),
+      managedKnowledgeFolderPath: String(project.folder_path ?? ""),
       ownershipFromRegistryDescription: ownershipExplicit,
     },
     counts: {
@@ -154,8 +164,17 @@ function inspectEvidence(projectKey: string) {
       experienceEvents: experiences.length,
       researchSessions: research.length,
       learningQueueItems: queue.length,
+      registeredAvailableSourceRoots: sourceRoots.length,
     },
-    folder,
+    managedKnowledgeFolder: managedFolder,
+    projectSourceRoots: sourceRoots.map((source) => ({
+      id: source.id,
+      label: source.label,
+      location: source.location,
+      resolvedPath: source.resolvedPath,
+      available: source.available,
+      topLevelEntries: source.topLevelEntries,
+    })),
     approvedMemories: summarizeRows(memories, ["id", "title", "category", "source", "updated_at"]),
     projectNotes: summarizeRows(notes, ["id", "title", "source", "updated_at"]),
     ragDocuments: summarizeRows(ragDocuments, ["id", "file_name", "file_path", "status", "indexed_at"]),
@@ -181,11 +200,12 @@ function inspectEvidence(projectKey: string) {
     `- Approved project memories: ${memories.length}`,
     `- Project notes: ${notes.length}`,
     `- Project-scoped indexed documents: ${ragDocuments.length}`,
+    `- Available registered source roots: ${sourceRoots.length}`,
+    `- Managed FREEOS knowledge folder available: ${managedFolder.exists ? "yes" : "no"}${managedFolder.starterOnly ? " (starter README only)" : ""}`,
     `- Baseline links: ${baselines.length} (${canonicalBaselines.length} active canonical)`,
     `- Current Intelligence: ${currentIntelligence.length} (${activeCurrent} current)`,
     `- Experience events: ${experiences.length}`,
     `- Research sessions: ${research.length}`,
-    `- Registered folder available: ${folder.exists ? "yes" : "no"}`,
     "",
     "## Current State",
     activeCurrent > 0
@@ -195,7 +215,9 @@ function inspectEvidence(projectKey: string) {
     "## Goals / Constraints / Blockers / Roadmap",
     memories.length > 0 || notes.length > 0 || ragDocuments.length > 0
       ? "- Evidence exists that may support these sections, but this deterministic inspection does not infer claims that are not explicitly established. Review the listed sources before canonicalization."
-      : "- UNKNOWN — no project-specific approved evidence is currently registered strongly enough to establish these fields.",
+      : sourceRoots.length > 0
+        ? "- A real source root is available, but its contents have not yet been promoted into governed project evidence. Inspect/select evidence before making canonical claims."
+        : "- UNKNOWN — no project-specific approved evidence is currently registered strongly enough to establish these fields.",
     "",
     "## Existing Global / Supporting Knowledge",
     baselines.length > 0
@@ -206,9 +228,11 @@ function inspectEvidence(projectKey: string) {
     ...(unknowns.length ? unknowns.map((item) => `- ${item}`) : ["- None identified by the deterministic inspector."]),
     "",
     "## Recommended Next Step",
-    ragDocuments.length === 0 && notes.length === 0 && memories.length === 0
-      ? "- Locate or register the project's real source files/notes first. FREEOS should not fabricate a canonical baseline from the registry description alone."
-      : "- Review the listed project-specific evidence, resolve the UNKNOWNs, then submit the minimum project-specific baseline through the canonical approval workflow.",
+    sourceRoots.length > 0 && ragDocuments.length === 0 && notes.length === 0 && memories.length === 0
+      ? "- Inspect the registered project source root and selectively register/index the strongest project evidence. Do not treat the existence of files as proof of a claim."
+      : sourceRoots.length === 0 && ragDocuments.length === 0 && notes.length === 0 && memories.length === 0
+        ? "- Register the project's real source root or project-specific evidence first. FREEOS should not fabricate a canonical baseline from the registry description alone."
+        : "- Review the listed project-specific evidence, resolve the UNKNOWNs, then submit the minimum project-specific baseline through the canonical approval workflow.",
   ];
 
   return { project, evidence, unknowns, baselineDraft: lines.join("\n") };
