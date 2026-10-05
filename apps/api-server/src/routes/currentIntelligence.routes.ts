@@ -77,10 +77,10 @@ currentIntelligenceRouter.post("/from-research/:id", (request, response, next) =
       claim: text(input.claim),
       sourceClass: sourceClass && currentIntelligenceSourceClasses.includes(sourceClass as (typeof currentIntelligenceSourceClasses)[number])
         ? sourceClass as (typeof currentIntelligenceSourceClasses)[number]
-        : undefined,
+        : "unverified",
       confidence: confidence && currentIntelligenceConfidences.includes(confidence as (typeof currentIntelligenceConfidences)[number])
         ? confidence as (typeof currentIntelligenceConfidences)[number]
-        : undefined,
+        : "unverified",
       freshnessDays: Number.isFinite(Number(input.freshnessDays)) ? Number(input.freshnessDays) : undefined,
       observedAt: text(input.observedAt),
     });
