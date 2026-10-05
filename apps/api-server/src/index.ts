@@ -3,6 +3,7 @@ import express from "express";
 import { config } from "./config";
 import { errorHandler } from "./middleware/errorHandler";
 import { requestLogger } from "./middleware/requestLogger";
+import { learningCandidateMiddleware } from "./middleware/learningCandidate";
 import { healthRouter } from "./routes/health.routes";
 import { ollamaRouter } from "./routes/ollama.routes";
 import { memoryRouter } from "./routes/memory.routes";
@@ -56,7 +57,7 @@ app.use("/browser", browserRouter);
 app.use("/agents", agentsRouter);
 app.use("/scheduler", schedulerRouter);
 app.use("/automations", automationsRouter);
-app.use("/command", commandRouter);
+app.use("/command", learningCandidateMiddleware, commandRouter);
 app.use("/rag", ragRouter);
 
 app.use((_request, response) => {
