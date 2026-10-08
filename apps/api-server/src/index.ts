@@ -18,6 +18,7 @@ import { canonicalBaselineReviewRouter } from "./routes/canonicalBaselineReview.
 import { projectSourceRouter } from "./routes/projectSource.routes";
 import { sourceEvidenceInspectionRouter } from "./routes/sourceEvidenceInspection.routes";
 import { evidencePromotionRouter } from "./routes/evidencePromotion.routes";
+import { projectStateObservationRouter } from "./routes/projectStateObservation.routes";
 import { projectsRouter } from "./routes/projects.routes";
 import { systemRouter } from "./routes/system.routes";
 import { researchRouter } from "./routes/research.routes";
@@ -67,6 +68,7 @@ app.use("/project-baseline-review", canonicalBaselineReviewRouter);
 app.use("/project-sources", projectSourceRouter);
 app.use("/source-evidence", sourceEvidenceInspectionRouter);
 app.use("/evidence-promotion", evidencePromotionRouter);
+app.use("/project-state", projectStateObservationRouter);
 app.use("/projects", projectsRouter);
 app.use("/research", researchRouter);
 app.use("/voice", voiceRouter);
