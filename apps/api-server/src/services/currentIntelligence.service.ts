@@ -122,7 +122,7 @@ function map(row: Row) {
 }
 
 function registerKnowledge(item: ReturnType<typeof map>) {
-  return upsertKnowledgeRecord({
+  const record = upsertKnowledgeRecord({
     sourceType: "current-intelligence",
     sourceRef: `current-intel:${item.id}`,
     projectKey: item.projectKey,
@@ -137,6 +137,20 @@ function registerKnowledge(item: ReturnType<typeof map>) {
     freshnessDays: item.freshnessDays,
     notes: item.claim,
   });
+
+  // Re-observing an existing Current Intelligence source intentionally revives its
+  // governance record. The generic knowledge upsert preserves status by design,
+  // so this source-specific synchronization is required here.
+  knowledgeDb().prepare(`
+    UPDATE knowledge_records
+    SET status=?, updated_at=CURRENT_TIMESTAMP
+    WHERE source_type='current-intelligence' AND source_ref=?
+  `).run(knowledgeStatusFor(item.status), `current-intel:${item.id}`);
+
+  return {
+    ...record,
+    status: knowledgeStatusFor(item.status),
+  };
 }
 
 export function createCurrentIntelligence(input: {
