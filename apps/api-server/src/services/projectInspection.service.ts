@@ -135,11 +135,95 @@ function summarizeGovernedDocuments(input: Row[], limit = 12) {
   }));
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function excerptAround(content: string, needle: string, radius = 700): string | null {
+  const index = content.toLowerCase().indexOf(needle.toLowerCase());
+  if (index < 0) return null;
+  const start = Math.max(0, index - Math.floor(radius / 3));
+  const end = Math.min(content.length, index + radius);
+  return content.slice(start, end).replace(/\s+/g, " ").trim();
+}
+
+function canonicalSupportingContext(database: Database, projectKey: string, projectName: string) {
+  if (!["knowledge_baselines", "knowledge_records", "rag_documents", "rag_chunks"].every((name) => tableExists(database, name))) {
+    return { ownershipClassification: null as string | null, directionExcerpt: null as string | null, directionRecordId: null as number | null, support: [] as Record<string, unknown>[] };
+  }
+
+  const docs = rows(database, `
+    SELECT kb.role,kr.id AS knowledge_record_id,kr.title AS knowledge_title,kr.authority,kr.authority_rank,
+           kr.confidence,d.id AS document_id,d.file_name,d.file_path
+    FROM knowledge_baselines kb
+    JOIN knowledge_records kr ON kr.id=kb.knowledge_record_id
+    JOIN rag_documents d ON d.file_path=kr.source_ref
+    WHERE kb.project_key=?
+      AND kr.status='active'
+      AND kr.source_type='rag-document'
+      AND kr.authority_rank>=85
+      AND d.status='indexed'
+    ORDER BY kr.authority_rank DESC,CASE kb.role WHEN 'canonical' THEN 0 ELSE 1 END,kr.id
+  `, projectKey);
+
+  const support: Record<string, unknown>[] = [];
+  let ownershipClassification: string | null = null;
+  let directionExcerpt: string | null = null;
+  let directionRecordId: number | null = null;
+  const projectPattern = escapeRegex(projectName);
+
+  for (const doc of docs) {
+    const chunks = rows(database, "SELECT content FROM rag_chunks WHERE document_id=? ORDER BY chunk_index", Number(doc.document_id));
+    const content = chunks.map((row) => String(row.content ?? "")).join("\n");
+    if (!content.toLowerCase().includes(projectName.toLowerCase()) && !content.toLowerCase().includes(projectKey.toLowerCase())) continue;
+
+    if (!ownershipClassification) {
+      const classifications: Array<[string, string]> = [
+        ["Shared infrastructure", "DFB internal shared infrastructure"],
+        ["Owned IP / brands", "DFB-owned IP / brand"],
+        ["Service/cash-flow businesses", "DFB service/cash-flow business"],
+        ["Client / partner builds", "client / partner build; ownership not assumed"],
+        ["Business Ideas / incubation", "DFB incubation / exploratory opportunity"],
+      ];
+      for (const [heading, classification] of classifications) {
+        const pattern = new RegExp(`${escapeRegex(heading)}[\\s\\S]{0,1600}${projectPattern}`, "i");
+        if (pattern.test(content)) {
+          ownershipClassification = classification;
+          break;
+        }
+      }
+    }
+
+    if (!directionExcerpt) {
+      const sectionPattern = new RegExp(`###\\s+${projectPattern}\\s*\\n([\\s\\S]*?)(?=\\n###\\s+|$)`, "i");
+      const match = content.match(sectionPattern);
+      if (match?.[1]?.trim()) {
+        directionExcerpt = match[1].replace(/\s+/g, " ").trim().slice(0, 1400);
+        directionRecordId = Number(doc.knowledge_record_id);
+      }
+    }
+
+    support.push({
+      knowledgeRecordId: Number(doc.knowledge_record_id),
+      title: String(doc.knowledge_title),
+      role: String(doc.role),
+      authority: String(doc.authority),
+      authorityRank: Number(doc.authority_rank),
+      confidence: String(doc.confidence),
+      fileName: String(doc.file_name),
+      excerpt: excerptAround(content, projectName),
+    });
+  }
+
+  return { ownershipClassification, directionExcerpt, directionRecordId, support };
+}
+
 function inspectEvidence(projectKey: string) {
   const database = db();
   const project = database.prepare("SELECT * FROM projects WHERE project_key=?").get(projectKey) as Row | undefined;
   if (!project) throw new Error(`Project not found: ${projectKey}.`);
 
+  const projectName = String(project.name);
   const memories = rows(database, "SELECT id,title,content,category,source,created_at,updated_at FROM memories WHERE project_key=? AND status='approved' ORDER BY updated_at DESC LIMIT 50", projectKey);
   const notes = rows(database, "SELECT id,title,content,source,tags,created_at,updated_at FROM project_notes WHERE project_key=? ORDER BY updated_at DESC LIMIT 50", projectKey);
   const rawRagDocuments = tableExists(database, "rag_documents")
@@ -169,31 +253,52 @@ function inspectEvidence(projectKey: string) {
     : [];
 
   const canonicalBaselines = baselines.filter((row) => String(row.role) === "canonical" && String(row.status) === "active");
-  const approvedSpecific = memories.length;
-  const activeCurrent = currentIntelligence.filter((row) => String(row.status) === "current").length;
+  const activeCurrent = currentIntelligence.filter((row) => String(row.status) === "current");
+  const liveLocalState = activeCurrent.filter((row) => String(row.source_class) === "live-observation" && String(row.topic).toLowerCase() === "project local state");
   const managedFolder = managedFolderSnapshot(String(project.folder_path ?? ""));
   const sourceRoots = availableLocalProjectSources(projectKey);
   const description = String(project.description ?? "").trim();
-  const ownershipExplicit = /\bDFB[- ]owned\b/i.test(description) ? "DFB-owned" : null;
+  const ownershipFromRegistry = /\bDFB[- ]owned\b/i.test(description) ? "DFB-owned" : null;
+  const canonicalSupport = canonicalSupportingContext(database, projectKey, projectName);
+  const ownershipClassification = ownershipFromRegistry ?? canonicalSupport.ownershipClassification;
+  const ownerDirectionMemories = memories.filter((row) =>
+    String(row.category).toLowerCase() === "decision" ||
+    /\b(goal|goals|constraint|constraints|priority|priorities|direction|scope|decision)\b/i.test(`${String(row.title)} ${String(row.content ?? "")}`),
+  );
+  const ownerDirectionEstablished = Boolean(canonicalSupport.directionExcerpt) || ownerDirectionMemories.length > 0;
+  const governedEvidenceEstablished = ragDocuments.length > 0 || canonicalSupport.support.length > 0;
 
   const unknowns: string[] = [];
-  if (!ownershipExplicit) unknowns.push("Ownership classification is not explicitly established by project-specific approved evidence.");
-  if (approvedSpecific === 0) unknowns.push("No project-specific approved memory currently establishes owner decisions, goals, or constraints.");
-  if (notes.length === 0) unknowns.push("No project notes are registered for this project.");
-  if (ragDocuments.length === 0) unknowns.push("No active governed project-scoped RAG evidence is registered for this project.");
-  if (activeCurrent === 0) unknowns.push("No fresh project-scoped Current Intelligence verifies the present operational state.");
+  if (!ownershipClassification) unknowns.push("Ownership / organizational classification is not established by active controlling evidence.");
+  if (!ownerDirectionEstablished) unknowns.push("Owner-approved project direction (goals, scope, or constraints) is not established by active controlling evidence.");
+  if (!governedEvidenceEstablished) unknowns.push("No active governed evidence currently supports the project baseline.");
+  if (liveLocalState.length === 0) unknowns.push("No fresh live observation verifies the current local project state.");
   if (sourceRoots.length === 0) unknowns.push("No available real project source root is registered for read-only inspection.");
-  if (canonicalBaselines.length === 0) unknowns.push("No active canonical project baseline exists yet.");
+
+  const advisories: string[] = [];
+  if (memories.length === 0) advisories.push("No project-specific approved memory is registered; this is not a blocker when stronger controlling evidence establishes the needed facts.");
+  if (notes.length === 0) advisories.push("No project notes are registered; notes are optional working evidence, not a canonicalization requirement.");
+  if (canonicalBaselines.length === 0) advisories.push("No active canonical project baseline exists yet; this is expected before the first approval and is not itself an approval blocker.");
+  if (rawRagDocuments.length > ragDocuments.length) advisories.push(`${rawRagDocuments.length - ragDocuments.length} raw indexed project document(s) are not active governed project evidence and do not count as controlling support.`);
 
   const evidence = {
     project: {
       projectKey,
-      name: String(project.name),
+      name: projectName,
       description,
       status: String(project.status),
       managedKnowledgeFolderPath: String(project.folder_path ?? ""),
-      ownershipFromRegistryDescription: ownershipExplicit,
+      ownershipFromRegistryDescription: ownershipFromRegistry,
+      ownershipClassification,
     },
+    semanticSupport: {
+      ownershipClassification,
+      ownerDirectionEstablished,
+      directionExcerpt: canonicalSupport.directionExcerpt,
+      directionRecordId: canonicalSupport.directionRecordId,
+      canonicalSupportingRecords: canonicalSupport.support,
+    },
+    advisories,
     counts: {
       approvedMemories: memories.length,
       projectNotes: notes.length,
@@ -202,11 +307,13 @@ function inspectEvidence(projectKey: string) {
       baselineLinks: baselines.length,
       canonicalBaselineLinks: canonicalBaselines.length,
       currentIntelligenceItems: currentIntelligence.length,
-      currentIntelligenceCurrent: activeCurrent,
+      currentIntelligenceCurrent: activeCurrent.length,
+      currentIntelligenceLocalState: liveLocalState.length,
       experienceEvents: experiences.length,
       researchSessions: research.length,
       learningQueueItems: queue.length,
       registeredAvailableSourceRoots: sourceRoots.length,
+      canonicalSupportingRecords: canonicalSupport.support.length,
     },
     managedKnowledgeFolder: managedFolder,
     projectSourceRoots: sourceRoots.map((source) => ({
@@ -222,7 +329,7 @@ function inspectEvidence(projectKey: string) {
     ragDocuments: summarizeGovernedDocuments(ragDocuments),
     rawRagDocuments: summarizeRows(rawRagDocuments, ["id", "file_name", "file_path", "status", "indexed_at"]),
     baselines: summarizeRows(baselines, ["id", "role", "title", "authority", "status", "confidence", "source_type", "source_ref"]),
-    currentIntelligence: summarizeRows(currentIntelligence, ["id", "topic", "status", "source_class", "confidence", "observed_at", "freshness_days"]),
+    currentIntelligence: summarizeRows(currentIntelligence, ["id", "topic", "claim", "status", "source_class", "confidence", "observed_at", "freshness_days"]),
     experienceEvents: summarizeRows(experiences, ["id", "title", "outcome", "status", "confidence", "created_at"]),
     researchSessions: summarizeRows(research, ["id", "title", "query", "status", "created_at"]),
     learningQueue: summarizeRows(queue, ["id", "signal_type", "title", "priority", "status", "updated_at"]),
@@ -230,60 +337,70 @@ function inspectEvidence(projectKey: string) {
 
   const governedEvidenceLines = ragDocuments.length
     ? ragDocuments.slice(0, 12).map((row) => `- ${String(row.title ?? row.file_name)} [${String(row.authority)}/${String(row.confidence)}] (${String(row.file_name)})`)
-    : ["- None currently registered as active governed project RAG evidence."];
+    : ["- None currently registered as active governed project-scoped RAG evidence."];
+  const canonicalSupportLines = canonicalSupport.support.length
+    ? canonicalSupport.support.slice(0, 8).map((row) => `- ${String(row.title)} [${String(row.authority)}/${String(row.confidence)}; role=${String(row.role)}]${row.excerpt ? `: ${String(row.excerpt)}` : ""}`)
+    : ["- No active controlling baseline document explicitly mentions this project."];
+  const currentStateLine = liveLocalState.length > 0
+    ? `- ${String(liveLocalState[0].claim)} [live-observation/${String(liveLocalState[0].confidence)}; observed=${String(liveLocalState[0].observed_at)}]`
+    : "- UNKNOWN — no fresh live observation currently verifies the local project state.";
+  const directionLine = canonicalSupport.directionExcerpt
+    ? `- Approved supporting context: ${canonicalSupport.directionExcerpt}`
+    : ownerDirectionMemories.length > 0
+      ? `- ${ownerDirectionMemories.length} approved project decision/direction memory item(s) are available for review.`
+      : "- UNKNOWN — no active controlling evidence currently establishes owner-approved project direction.";
 
   const lines = [
-    `# ${String(project.name)} — PROJECT BASELINE DRAFT`,
+    `# ${projectName} — PROJECT BASELINE DRAFT`,
     "",
-    "> DRAFT — NOT CANONICAL. This document is generated from currently registered local evidence and must not be treated as approved institutional truth until the canonical review path is completed.",
+    "> DRAFT — NOT CANONICAL. This document is generated from currently registered governed evidence and must not be treated as approved institutional truth until the canonical review path is completed.",
     "",
     "## Identity / Scope",
     description ? `- Registry description: ${description}` : "- Registry description: UNKNOWN",
     `- Project key: ${projectKey}`,
     `- Registry status: ${String(project.status)}`,
-    `- Ownership: ${ownershipExplicit ?? "UNKNOWN"}`,
+    `- Organizational / ownership classification: ${ownershipClassification ?? "UNKNOWN"}`,
     "",
     "## Evidence Inventory",
     `- Approved project memories: ${memories.length}`,
     `- Project notes: ${notes.length}`,
     `- Governed project-scoped indexed documents: ${ragDocuments.length}`,
     `- Raw project-scoped indexed documents: ${rawRagDocuments.length}`,
+    `- Active controlling baseline documents that explicitly support this project: ${canonicalSupport.support.length}`,
     `- Available registered source roots: ${sourceRoots.length}`,
     `- Managed FREEOS knowledge folder available: ${managedFolder.exists ? "yes" : "no"}${managedFolder.starterOnly ? " (starter README only)" : ""}`,
-    `- Baseline links: ${baselines.length} (${canonicalBaselines.length} active canonical)`,
-    `- Current Intelligence: ${currentIntelligence.length} (${activeCurrent} current)`,
+    `- Baseline links: ${baselines.length} (${canonicalBaselines.length} active project canonical)`,
+    `- Current Intelligence: ${currentIntelligence.length} (${activeCurrent.length} current; ${liveLocalState.length} live local-state observation)`,
     `- Experience events: ${experiences.length}`,
     `- Research sessions: ${research.length}`,
+    "",
+    "## Controlling Supporting Context",
+    ...canonicalSupportLines,
     "",
     "## Governed Project Evidence",
     ...governedEvidenceLines,
     "",
     "## Current State",
-    activeCurrent > 0
-      ? "- Fresh project-scoped Current Intelligence exists; review the evidence entries before promoting any current-state claim into canonical project knowledge."
-      : "- UNKNOWN — no fresh project-scoped Current Intelligence currently verifies operational state.",
+    currentStateLine,
     "",
-    "## Goals / Constraints / Blockers / Roadmap",
-    memories.length > 0 || notes.length > 0 || ragDocuments.length > 0
-      ? "- Governed evidence exists that may support these sections, but this deterministic inspection does not infer claims that are not explicitly established. Review the listed evidence before canonicalization."
-      : sourceRoots.length > 0
-        ? "- A real source root is available, but its contents have not yet been promoted into governed project evidence. Inspect/select evidence before making canonical claims."
-        : "- UNKNOWN — no project-specific approved evidence is currently registered strongly enough to establish these fields.",
+    "## Goals / Scope / Constraints",
+    directionLine,
     "",
     "## Existing Global / Supporting Knowledge",
     baselines.length > 0
-      ? `- ${baselines.length} governed baseline link(s) already apply. Link applicable global knowledge instead of duplicating it.`
+      ? `- ${baselines.length} governed baseline link(s) apply. Relevant approved supporting knowledge may establish project facts without being duplicated into lower-authority project notes.`
       : "- No governed baseline links are currently registered.",
     "",
-    "## Unresolved UNKNOWNs",
+    "## Advisories (Non-blocking)",
+    ...(advisories.length ? advisories.map((item) => `- ${item}`) : ["- None."]),
+    "",
+    "## Unresolved Semantic UNKNOWNs",
     ...(unknowns.length ? unknowns.map((item) => `- ${item}`) : ["- None identified by the deterministic inspector."]),
     "",
     "## Recommended Next Step",
-    sourceRoots.length > 0 && ragDocuments.length === 0 && notes.length === 0 && memories.length === 0
-      ? "- Inspect the registered project source root and selectively register/index the strongest project evidence. Do not treat the existence of files as proof of a claim."
-      : sourceRoots.length === 0 && ragDocuments.length === 0 && notes.length === 0 && memories.length === 0
-        ? "- Register the project's real source root or project-specific evidence first. FREEOS should not fabricate a canonical baseline from the registry description alone."
-        : "- Review the active governed project evidence, resolve the remaining UNKNOWNs, then submit the minimum project-specific baseline through the canonical approval workflow.",
+    unknowns.length === 0
+      ? "- Semantic evidence gaps are resolved. Prepare the baseline for explicit owner review; canonicalization still requires Drew's approval."
+      : "- Resolve only the remaining semantic evidence gaps, then prepare the baseline for explicit owner review. Do not create notes or memories merely to satisfy a storage-channel checklist.",
   ];
 
   return { project, evidence, unknowns, baselineDraft: lines.join("\n") };
@@ -334,7 +451,7 @@ export function inspectProjectFromLearningWork(workId: number) {
           updated_at=CURRENT_TIMESTAMP
       WHERE id=?
     `).run(
-      `Read-only project inspection completed for ${projectKey}; baseline draft #${draft.id} prepared with ${draft.unresolvedUnknowns.length} unresolved UNKNOWN(s).`,
+      `Read-only project inspection completed for ${projectKey}; baseline draft #${draft.id} prepared with ${draft.unresolvedUnknowns.length} unresolved semantic UNKNOWN(s).`,
       `project_inspection_draft_id=${draft.id}; canonicalWritePerformed=false; durableMemoryCreated=false`,
       workId,
     );
@@ -345,7 +462,7 @@ export function inspectProjectFromLearningWork(workId: number) {
     canonicalWritePerformed: false,
     durableMemoryCreated: false,
     queueResolved: false,
-    rule: "Project inspection may read and prepare governed evidence. It must not fabricate missing facts or silently make the draft canonical.",
+    rule: "Project inspection may read and prepare governed evidence. Only semantic evidence gaps block review; missing storage channels and the absence of a first canonical baseline are not blockers by themselves.",
   };
 }
 
@@ -370,10 +487,13 @@ export function getProjectInspectionStatus() {
   return {
     enabled: true,
     mode: "read-only-inspect-and-draft",
+    gapModel: "semantic-evidence-v2",
     total: count(),
     prepared: count("status='prepared'"),
     canonicalWritesEnabled: false,
     durableMemoryCreatedAutomatically: false,
-    rule: "Project Inspection may assemble active governed evidence and produce a draft baseline, but canonicalization remains a separate approved step.",
+    storageChannelAbsenceBlocksCanonicalReview: false,
+    missingFirstCanonicalBaselineBlocksCanonicalReview: false,
+    rule: "Project Inspection assembles active governed evidence and blocks only on unresolved semantic facts. Canonicalization remains a separate explicit owner-approved step.",
   };
 }
