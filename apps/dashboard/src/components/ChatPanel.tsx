@@ -287,7 +287,7 @@ export function ChatPanel({ projects, onApprovalCreated }: { projects: Project[]
         <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="eyebrow text-electric">FREEOS answer</p><h3 className="section-title text-lg">Result</h3></div><div className="flex flex-wrap gap-2"><span className="badge badge-safe">Skills auto</span>{responseDetails?.memoryUsed && <span className="badge">Memory on</span>}{responseDetails?.projectNotesUsed && <span className="badge">Project context on</span>}{responseDetails?.ragUsed && <span className="badge badge-ok">Indexed files used</span>}</div></div>
         <p className="mb-0 mt-5 whitespace-pre-wrap text-sm leading-7 text-slate-300">{responseText}</p>
 
-        {responseDetails?.warnings?.length ? <div className="mt-5 border border-amber-300/20 bg-amber-300/[.04] p-3 text-sm text-amber-200">{responseDetails.warnings.map((warning) => <p className="m-0 + mt-1" key={warning}>{warning}</p>)}</div> : null}
+        {responseDetails?.warnings?.length ? <div className="mt-5 border border-amber-300/20 bg-amber-300/[.04] p-3 text-sm text-amber-200">{responseDetails.warnings.map((warning) => <p className="m-0 mt-1" key={warning}>{warning}</p>)}</div> : null}
 
         {responseDetails && <details className="mt-5 border-t border-white/[.07] pt-4">
           <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[.14em] text-slate-500">Technical details</summary>
