@@ -1,0 +1,118 @@
+{
+  "packKey": "git-github-development-workflow-core-v1",
+  "title": "Git & GitHub Development Workflow Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/git-github-development-workflow/core-v1",
+  "domain": {
+    "key": "git-github-development-workflow",
+    "name": "Git & GitHub Development Workflow",
+    "description": "Practical Git and GitHub operation covering repository state, commits, branches, diffs, merges, rebases, remotes, pull requests, releases, CI awareness, authentication, secrets, and recovery.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "repository-state-history",
+      "name": "Repository State & History",
+      "description": "Read working tree, index, HEAD, commit history, tracked/untracked files, and repository metadata accurately.",
+      "purpose": "Know what will change before running commands that affect source history.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Git tracks snapshots through references","confidence":"high","content":"The working tree, staging index, current commit, branches, tags, and remotes represent different states. Understanding which layer a command changes prevents accidental data loss and confusing history."},
+        {"type":"procedure","title":"Repository inspection routine","confidence":"high","content":"Check current branch and status; inspect staged versus unstaged diff; review recent log and upstream relation; identify untracked/generated files; confirm repository root before any history-changing operation."},
+        {"type":"failure-mode","title":"State-reading failures","confidence":"high","content":"Avoid assuming a clean-looking editor means a clean repository, running commands from the wrong repository root, confusing staged with committed changes, and force-changing history before checking upstream or unpushed work."}
+      ],
+      "drills": [{"key":"repo-state-diagnosis","title":"Diagnose a confusing repository state","difficulty":"guided","prompt":"Given modified, staged, untracked, and ahead/behind indicators, explain what each means and the safest inspection order before making changes.","rubric":["Layers distinguished","Branch/upstream checked","Diffs inspected","Untracked files handled","No destructive shortcut"]}]
+    },
+    {
+      "key": "branches-commits",
+      "name": "Branches, Commits & Change Isolation",
+      "description": "Create focused commits and branches that isolate logical work and support safe rollback or review.",
+      "purpose": "Keep development history understandable and reduce the blast radius of mistakes.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Focused change workflow","confidence":"high","content":"Start from a known base; create or switch to the intended branch; make one coherent change; inspect diff; stage intentionally; write a commit message describing the change; verify status after commit; sync only after confirming the target remote/branch."},
+        {"type":"heuristic","title":"A commit should explain one logical change","confidence":"high","content":"Small coherent commits are easier to review, revert, cherry-pick, and debug than mixed commits containing unrelated refactors, generated files, and feature work."},
+        {"type":"failure-mode","title":"Branch/commit failures","confidence":"high","content":"Avoid committing generated artifacts without need, mixing secrets into commits, making large unrelated changes before creating a checkpoint, and committing directly to a protected or shared branch when a feature branch is expected."}
+      ],
+      "drills": [{"key":"split-mixed-change","title":"Split a mixed working tree into clean commits","difficulty":"guided","prompt":"A working tree contains a bug fix, formatting changes, and a new feature. Plan how to separate and commit them coherently.","rubric":["Diff reviewed","Logical commits separated","Staging intentional","Messages meaningful","Rollback remains possible"]}]
+    },
+    {
+      "key": "diff-review",
+      "name": "Diff Inspection & Code Review",
+      "description": "Read line, file, and commit diffs to understand intent, side effects, regressions, and review scope.",
+      "purpose": "Evaluate changes from evidence instead of trusting file names or summaries alone.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Diff review workflow","confidence":"high","content":"Start with changed-file list and stats; inspect high-risk files first; read each patch in context; distinguish generated from source changes; look for removed safeguards, config changes, secret exposure, dependency changes, and tests; compare against the stated intent."},
+        {"type":"heuristic","title":"Review behavior, not just syntax","confidence":"high","content":"A small textual change can have large runtime effects. Trace what inputs, outputs, permissions, state, or public contracts change rather than judging only code style."},
+        {"type":"failure-mode","title":"Review failures","confidence":"high","content":"Avoid reviewing only commit messages, skipping deleted lines, approving huge generated diffs without source validation, and assuming passing tests prove the requested behavior is fully covered."}
+      ],
+      "drills": [{"key":"review-risky-patch","title":"Review a risky patch","difficulty":"guided","prompt":"A pull request changes authentication middleware, environment configuration, and tests. Define a review order and evidence required before approval.","rubric":["Risk-first review","Deleted safeguards checked","Config/security considered","Tests mapped to behavior","Intent compared to diff"]}]
+    },
+    {
+      "key": "merge-rebase-conflicts",
+      "name": "Merges, Rebases & Conflict Resolution",
+      "description": "Integrate divergent history while preserving intended changes and avoiding accidental loss.",
+      "purpose": "Resolve collaboration conflicts with explicit evidence instead of blindly choosing one side.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"A conflict is a decision, not just a text marker","confidence":"high","content":"Conflicts mean Git cannot determine the intended combined result. Correct resolution requires understanding both change intents and the desired final behavior."},
+        {"type":"procedure","title":"Conflict-resolution workflow","confidence":"high","content":"Confirm operation and branch; inspect base, ours, and theirs where helpful; resolve one file at a time based on intended behavior; run tests or validation; stage resolved files; continue the operation; review final diff/history before pushing."},
+        {"type":"failure-mode","title":"Merge/rebase failures","confidence":"high","content":"Avoid choosing ours/theirs for an entire file without reading both changes, rebasing shared history casually, force-pushing after a rebase without confirming remote expectations, and resolving syntax while breaking behavior."}
+      ],
+      "drills": [{"key":"conflicting-service-edit","title":"Resolve a behavioral conflict","difficulty":"guided","prompt":"Two branches change the same service: one adds validation and the other changes persistence. Explain how to resolve without dropping either intent.","rubric":["Both intents identified","Base/context inspected","Final behavior explicit","Tests required","History operation understood"]}]
+    },
+    {
+      "key": "remotes-sync",
+      "name": "Remotes, Fetch, Pull & Push",
+      "description": "Synchronize local and remote repositories while understanding upstream branches and divergence.",
+      "purpose": "Avoid accidental pushes, stale local work, and hidden remote-history rewrites.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Fetch updates knowledge; integration changes history","confidence":"high","content":"Fetching remote references is different from merging or rebasing them into the current branch. Separating discovery from integration makes synchronization safer and easier to reason about."},
+        {"type":"procedure","title":"Safe synchronization","confidence":"high","content":"Confirm remote URL and current branch; fetch; inspect ahead/behind or log graph; choose fast-forward, merge, or rebase based on team policy; resolve and validate if needed; push only the intended branch; verify remote state afterward."},
+        {"type":"failure-mode","title":"Remote failures","confidence":"high","content":"Avoid pulling blindly into a dirty tree, pushing to the wrong remote or branch, force-pushing without lease or confirmation, and assuming origin always points to the repository you intend."}
+      ],
+      "drills": [{"key":"ahead-behind-sync","title":"Safely sync a diverged branch","difficulty":"guided","prompt":"A local branch is two commits ahead and three behind its upstream. Plan the inspection and integration steps before push.","rubric":["Remote verified","Fetch precedes integration","Policy choice justified","Dirty-tree risk handled","Push target verified"]}]
+    },
+    {
+      "key": "issues-pull-requests",
+      "name": "GitHub Issues, Pull Requests & Collaboration",
+      "description": "Use issues, branches, pull requests, reviews, comments, and status checks as a controlled delivery workflow.",
+      "purpose": "Connect requested outcomes, implementation evidence, review, and merge decisions.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Pull-request workflow","confidence":"high","content":"Define issue/outcome; create a focused branch; implement and validate; push branch; open PR with scope, test evidence, risks, and screenshots/logs where useful; respond to review; update branch; ensure checks pass; merge using the repository's chosen history policy."},
+        {"type":"heuristic","title":"A PR should make verification easy","confidence":"high","content":"Good pull requests explain what changed, why, how it was tested, known limitations, and the risky areas reviewers should inspect. Review quality drops when reviewers must reconstruct intent themselves."},
+        {"type":"failure-mode","title":"Collaboration failures","confidence":"high","content":"Avoid giant PRs mixing unrelated work, merging with unresolved review concerns, treating CI as the only evidence, and closing issues without showing the requested outcome was actually delivered."}
+      ],
+      "drills": [{"key":"write-verifiable-pr","title":"Prepare a verifiable pull request","difficulty":"guided","prompt":"Create the structure for a PR that adds a new API route and dashboard panel, including scope, validation evidence, risks, and review notes.","rubric":["Intent clear","Files/scope bounded","Validation evidence included","Risks highlighted","Reviewer actions obvious"]}]
+    },
+    {
+      "key": "tags-releases-ci",
+      "name": "Tags, Releases & CI Awareness",
+      "description": "Use version tags, release artifacts, changelogs, and CI results to create traceable delivery points.",
+      "purpose": "Know exactly what code was delivered, built, tested, and recoverable.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"A release should point to an immutable source state","confidence":"high","content":"Tags and release records create a durable link between source history and shipped artifacts. Release notes should describe user-visible changes and operational risks, not just repeat commit messages."},
+        {"type":"procedure","title":"Release preparation","confidence":"high","content":"Choose the exact commit; confirm required checks; review version/changelog; create or verify tag according to policy; build artifacts from that source state; capture hashes or metadata where useful; publish release notes; preserve rollback reference."},
+        {"type":"failure-mode","title":"Release failures","confidence":"high","content":"Avoid tagging an unverified commit, rebuilding artifacts later from a different state under the same version, ignoring failing CI without documented justification, and publishing releases with no rollback reference."}
+      ],
+      "drills": [{"key":"release-candidate","title":"Prepare a release candidate","difficulty":"guided","prompt":"Define the evidence and Git/GitHub steps required to release a known-good version of FREEOS from main.","rubric":["Exact commit identified","Checks required","Version/tag policy stated","Artifacts traceable","Rollback reference preserved"]}]
+    },
+    {
+      "key": "auth-secrets-recovery",
+      "name": "Authentication, Secrets & Git Recovery",
+      "description": "Handle credentials, secret exposure, reflog/revert/reset choices, and history recovery with appropriate caution.",
+      "purpose": "Recover from source-control mistakes without expanding security or data-loss risk.",
+      "riskLevel": "elevated",
+      "units": [
+        {"type":"concept","title":"Removing a secret from the latest commit does not revoke it","confidence":"high","content":"Once a credential has been committed or pushed, treat it as exposed. Rotate or revoke the credential first; history cleanup is a separate containment and hygiene task."},
+        {"type":"procedure","title":"Recovery decision workflow","confidence":"high","content":"Stop further writes; inspect status, log, reflog, and remote state; choose non-destructive revert when shared history should remain intact; use reset/rebase/history rewrite only with explicit understanding of unpublished versus shared commits; back up uncertain work before destructive recovery."},
+        {"type":"failure-mode","title":"Recovery/security failures","confidence":"high","content":"Avoid force-pushing to erase evidence before rotating leaked secrets, using hard reset as the first recovery tool, pasting tokens into remote URLs or logs, and rewriting shared history without coordinating downstream clones."}
+      ],
+      "drills": [{"key":"secret-commit-response","title":"Respond to a committed secret","difficulty":"guided","prompt":"A credential was accidentally committed and pushed. Define the immediate security response, source-history cleanup decision, and validation steps.","rubric":["Credential revoked/rotated first","Remote exposure acknowledged","History cleanup separated","Shared-history risk considered","Final scan/verification included"]}]
+    }
+  ]
+}
