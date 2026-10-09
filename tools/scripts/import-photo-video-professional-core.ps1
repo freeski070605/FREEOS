@@ -13,7 +13,7 @@ if (-not (Test-Path -LiteralPath $packPath -PathType Leaf)) {
 }
 
 $pack = Get-Content -LiteralPath $packPath -Raw | ConvertFrom-Json
-$pack.ownerApproved = [bool]$OwnerApproved
+$pack | Add-Member -NotePropertyName ownerApproved -NotePropertyValue ([bool]$OwnerApproved) -Force
 
 Write-Host "`n=== PHOTO / VIDEO TEACHING PACK ===" -ForegroundColor Cyan
 Write-Host "Pack:        $($pack.title)"
