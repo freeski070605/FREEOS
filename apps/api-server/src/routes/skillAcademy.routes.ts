@@ -8,6 +8,7 @@ import {
   importTeachingPack,
   listPracticeSessions,
 } from "../services/skillAcademy.service";
+import { buildSkillTeachingContext } from "../services/skillTeachingContext.service";
 
 export const skillAcademyRouter = Router();
 
@@ -27,6 +28,20 @@ skillAcademyRouter.get("/status", (_request, response, next) => {
 skillAcademyRouter.get("/catalog", (request, response, next) => {
   try { response.json({ domains: getSkillCatalog(text(request.query.domainKey)) }); }
   catch (error) { next(error); }
+});
+
+skillAcademyRouter.get("/context", (request, response, next) => {
+  try {
+    const query = text(request.query.query);
+    if (!query) {
+      response.status(400).json({ error: "query is required." });
+      return;
+    }
+    response.json(buildSkillTeachingContext({
+      query,
+      limit: Math.min(Math.max(Number(request.query.limit) || 8, 1), 30),
+    }));
+  } catch (error) { next(error); }
 });
 
 skillAcademyRouter.post("/bootstrap", (_request, response, next) => {
