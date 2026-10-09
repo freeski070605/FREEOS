@@ -1,0 +1,118 @@
+{
+  "packKey": "digital-asset-pipeline-interchange-core-v1",
+  "title": "Digital Asset Pipeline & Interchange Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/digital-asset-pipeline-interchange/core-v1",
+  "domain": {
+    "key": "digital-asset-pipeline-interchange",
+    "name": "Digital Asset Pipeline & Interchange",
+    "description": "Cross-program 3D asset pipeline skills for units, coordinates, file formats, naming, versioning, mesh/runtime preparation, textures, rigs, animation transfer, engine validation, automation, and quality control.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "units-coordinates-scale",
+      "name": "Units, Coordinates & Scale Conventions",
+      "description": "Control real-world scale, up-axis, handedness, origins, pivots, and coordinate conventions across tools.",
+      "purpose": "Prevent systematic placement and export errors between DCCs, GIS sources, and game engines.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Coordinate mismatches compound across a pipeline","confidence":"high","content":"Meters versus centimeters, Y-up versus Z-up, local versus world space, handedness, and pivot conventions can each create correct-looking single assets that fail when assembled together."},
+        {"type":"procedure","title":"Coordinate contract","confidence":"high","content":"Define authoritative units, world origin policy, up-axis, forward direction, pivot rules, and geographic offset if relevant; document conversions per tool; test with a reference cube or known-distance asset before exporting a full batch."},
+        {"type":"failure-mode","title":"Coordinate failures","confidence":"high","content":"Avoid fixing every imported asset with ad hoc scale multipliers, changing world origin after placement, mixing centered and placement-ready pivots without labels, and assuming two tools interpret forward/up identically."}
+      ],
+      "drills": [{"key":"cross-tool-scale-test","title":"Validate a cross-tool scale contract","difficulty":"guided","prompt":"Design a reference test that proves a Blender asset, Unity import, and Unreal import all agree on dimensions, pivot, up axis, and forward direction.","rubric":["Known measurement used","Axes explicit","Pivot behavior checked","Both engines validated","Conversion documented"]}]
+    },
+    {
+      "key": "formats-export-import",
+      "name": "3D Formats, Export & Import",
+      "description": "Choose and validate FBX, glTF/GLB, OBJ, USD-family, image, cache, and related interchange formats based on asset needs.",
+      "purpose": "Preserve the data that matters while avoiding unsupported assumptions during transfer.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"File formats preserve different kinds of truth","confidence":"high","content":"Geometry, materials, hierarchy, animation, cameras, lights, units, custom attributes, and instancing are preserved differently by each interchange format. The best format depends on the production contract, not familiarity alone."},
+        {"type":"procedure","title":"Format selection workflow","confidence":"high","content":"List required data; identify target-tool support; choose simplest format that preserves those requirements; define export presets; import a small representative asset; compare scale, normals, materials, hierarchy, animation, and metadata before batch transfer."},
+        {"type":"failure-mode","title":"Interchange failures","confidence":"high","content":"Avoid assuming materials transfer perfectly, changing export settings asset by asset, using OBJ when rigs or hierarchy are required, and batch-exporting before testing a representative complex asset."}
+      ],
+      "drills": [{"key":"format-choice","title":"Choose an interchange format","difficulty":"guided","prompt":"Select a transfer strategy for a static environment kit, an animated character, and a scene that must preserve hierarchy and metadata.","rubric":["Required data identified","Format tradeoffs explained","Target support considered","Test import included","No one-format-fits-all assumption"]}]
+    },
+    {
+      "key": "naming-versioning-provenance",
+      "name": "Naming, Versioning & Asset Provenance",
+      "description": "Track stable asset IDs, source files, export versions, ownership, references, and derived outputs.",
+      "purpose": "Know where every runtime asset came from and which source should be edited.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Asset identity workflow","confidence":"high","content":"Assign stable asset name/ID; separate source, intermediate, and runtime outputs; include version or revision where appropriate; record creator/source/reference and licensing notes; preserve links from exported asset back to editable source; avoid overwriting approved runtime files without traceability."},
+        {"type":"heuristic","title":"Source of truth should be obvious","confidence":"high","content":"When two files look authoritative, people eventually edit the wrong one. Make editable source, generated output, and approved runtime artifact roles explicit in paths and naming."},
+        {"type":"failure-mode","title":"Provenance failures","confidence":"high","content":"Avoid final_final2 naming, duplicating source meshes into many folders with no ownership, overwriting exports manually without revision history, and losing the reference or license trail for downloaded assets."}
+      ],
+      "drills": [{"key":"asset-provenance-map","title":"Design an asset provenance map","difficulty":"guided","prompt":"Create naming and folder rules for a real-world building that has GIS source, photo references, Blender source, textures, and Unity/Unreal runtime exports.","rubric":["Source/runtime roles clear","Stable asset identity","Version path defined","References preserved","Engine outputs traceable"]}]
+    },
+    {
+      "key": "mesh-lod-collision-runtime",
+      "name": "Mesh, LOD, Collision & Runtime Preparation",
+      "description": "Prepare geometry for runtime use with appropriate topology, normals, LODs, instancing, collision, and bounds.",
+      "purpose": "Deliver assets that work efficiently and predictably in real-time engines.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Runtime mesh checklist","confidence":"high","content":"Validate scale and transforms; remove accidental hidden geometry; inspect normals/tangents; limit material slots; define LOD or simplification strategy; create collision appropriate to interaction; verify bounds/pivot; test repeated instances in target engine."},
+        {"type":"concept","title":"Collision and visual geometry solve different problems","confidence":"high","content":"Collision should represent gameplay/physics needs with the simplest reliable shape. Matching every visual triangle usually wastes runtime cost and may create unstable interaction."},
+        {"type":"failure-mode","title":"Runtime mesh failures","confidence":"high","content":"Avoid hero-detail geometry on distant repeated assets, convex collision that changes important walkable shape without testing, accidental material-slot multiplication, and LOD transitions that alter silhouette or collision unexpectedly."}
+      ],
+      "drills": [{"key":"street-kit-runtime-prep","title":"Prepare a street kit for runtime","difficulty":"guided","prompt":"Define runtime mesh, LOD, collision, and material-slot rules for repeated curbs, sidewalks, poles, walls, and storefront modules.","rubric":["Runtime budget considered","Collision simplified","LOD strategy defined","Material slots controlled","Target-engine validation included"]}]
+    },
+    {
+      "key": "textures-color-space-packing",
+      "name": "Textures, Color Space & Channel Packing",
+      "description": "Manage texture resolution, compression, linear versus color data, normal maps, packed channels, atlases, and memory budgets.",
+      "purpose": "Preserve surface meaning while reducing memory and transfer mistakes.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Not every texture is color","confidence":"high","content":"Base color/emissive images and numeric data such as roughness, metallic, AO, masks, height, and normal maps require different color-space and compression assumptions. Incorrect import settings alter material meaning."},
+        {"type":"procedure","title":"Texture delivery workflow","confidence":"high","content":"Define texture roles and naming; set target texel density/resolution; choose packing convention; export appropriate bit depth and color space; verify normal-map orientation; import with matching compression/data settings; inspect memory and visual result in target engine."},
+        {"type":"failure-mode","title":"Texture pipeline failures","confidence":"high","content":"Avoid treating packed masks as color, inconsistent channel conventions across assets, oversized unique textures for repeated props, and fixing color-space mistakes by changing shader values instead of correcting import/data interpretation."}
+      ],
+      "drills": [{"key":"texture-contract","title":"Define a shared texture contract","difficulty":"guided","prompt":"Create a texture naming, channel-packing, color-space, normal-map, and resolution policy for assets moving from Blender into Unity and Unreal.","rubric":["Roles named clearly","Color/data separated","Packing consistent","Normal convention explicit","Engine import settings considered"]}]
+    },
+    {
+      "key": "rig-animation-transfer",
+      "name": "Rig & Animation Transfer",
+      "description": "Transfer skeletons, skinning, clips, root motion, frame rates, and retargetable animation between authoring tools and engines.",
+      "purpose": "Preserve deformation and motion intent across application boundaries.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Animation export contract","confidence":"high","content":"Confirm rest pose and scale; identify deform bones; define root-motion policy; set frame range and frame rate; bake required constraints; export one known clip; validate bone orientation, animation curves, root behavior, and retargeting in target engine before batch export."},
+        {"type":"heuristic","title":"Skeleton consistency matters more than per-clip fixes","confidence":"high","content":"If each animation needs a unique import hack, the skeleton/export contract is likely inconsistent. Fix the shared root cause before expanding the animation library."},
+        {"type":"failure-mode","title":"Animation transfer failures","confidence":"high","content":"Avoid exporting control/helper bones unintentionally, mismatched rest poses, inconsistent frame rates, double-applied root motion, and batch-converting clips before validating one representative animation."}
+      ],
+      "drills": [{"key":"cross-engine-animation","title":"Validate an animation in two engines","difficulty":"guided","prompt":"Design a Blender export test that proves one skeletal clip preserves scale, skeleton, timing, and root behavior in both Unity and Unreal.","rubric":["Rest pose validated","Root policy explicit","Frame rate fixed","Single clip tested first","Both engines compared"]}]
+    },
+    {
+      "key": "engine-import-validation",
+      "name": "Engine Import & Validation",
+      "description": "Create repeatable import checks for scale, materials, normals, collision, animation, naming, dependencies, and performance.",
+      "purpose": "Catch transfer failures at the boundary before they multiply across many assets.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Import validation gate","confidence":"high","content":"Import into a designated test scene; verify scale and pivot against a known reference; inspect normals and materials; check texture assignments; test collision and animation; inspect bounds and LODs; place multiple instances; profile representative cost; accept or return with specific failure reason."},
+        {"type":"heuristic","title":"Validate a representative asset before a batch","confidence":"high","content":"A single complex asset containing the common edge cases reveals pipeline problems far more cheaply than discovering the same error across hundreds of exports."},
+        {"type":"failure-mode","title":"Validation failures","confidence":"high","content":"Avoid accepting assets based only on viewport appearance, skipping collision and scale tests, hiding bad normals with two-sided materials, and batch-fixing import settings manually with no shared preset."}
+      ],
+      "drills": [{"key":"import-gate","title":"Create an engine import gate","difficulty":"guided","prompt":"Define pass/fail checks for environment assets entering Unity or Unreal from Blender.","rubric":["Scale/pivot verified","Material/texture checked","Collision tested","Performance sampled","Pass/fail reasons explicit"]}]
+    },
+    {
+      "key": "automation-quality-control",
+      "name": "Pipeline Automation & Quality Control",
+      "description": "Automate validation, export, naming, conversion, and reporting while preserving source safety and traceability.",
+      "purpose": "Scale asset throughput without turning silent mistakes into mass-produced failures.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Safe pipeline automation","confidence":"high","content":"Automate only after the manual contract is known; validate inputs; operate on copies or generated outputs; emit deterministic names and logs; fail loudly on invalid assets; preserve source files; make reruns idempotent where practical; version automation with the project."},
+        {"type":"heuristic","title":"Automation should reject bad input, not normalize everything silently","confidence":"high","content":"Silent repairs hide upstream inconsistency. Validation should distinguish safe automatic normalization from conditions that require human review."},
+        {"type":"failure-mode","title":"Automation failures","confidence":"high","content":"Avoid batch scripts that overwrite sources, swallow errors, export partially valid assets, depend on active UI selection with no checks, and continue after a coordinate or naming contract fails."}
+      ],
+      "drills": [{"key":"batch-export-qc","title":"Design a batch export and QC tool","difficulty":"guided","prompt":"Plan an automation that validates Blender assets, exports engine-ready copies, writes a report, and stops safely on contract violations.","rubric":["Inputs validated","Source protected","Failures explicit","Logs produced","Rerun behavior considered"]}]
+    }
+  ]
+}
