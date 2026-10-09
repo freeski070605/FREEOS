@@ -1,0 +1,164 @@
+{
+  "packKey": "facilities-maintenance-core-v1",
+  "title": "Facilities, Repair & Maintenance Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/facilities-maintenance/core-v1",
+  "domain": {
+    "key": "facilities-maintenance",
+    "name": "Facilities, Repair & Maintenance",
+    "description": "Practical building inspection, cleaning, repair, preventive maintenance, basic plumbing/carpentry, tool safety, and electrical safety knowledge with clear escalation boundaries.",
+    "riskProfile": "elevated"
+  },
+  "competencies": [
+    {
+      "key": "work-order-triage",
+      "name": "Work-Order Triage",
+      "description": "Prioritize maintenance requests by safety, damage risk, service impact, urgency, and required trade expertise.",
+      "purpose": "Put the right problem first and avoid wasting time on low-impact work while urgent failures grow.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Triage sequence","confidence":"high","content":"Identify immediate hazards first; determine whether active water, electrical, fire, security, structural, or access risk exists; contain damage where safe; identify affected users and operations; classify urgency; gather photos and symptoms; assign the appropriate skill level or licensed trade; then define completion verification."},
+        {"type":"heuristic","title":"Stop damage before restoring convenience","confidence":"high","content":"An active leak, unsafe electrical condition, or spreading damage outranks cosmetic or comfort issues. Containment and safety come before permanent repair or appearance."},
+        {"type":"failure-mode","title":"Triage failures","confidence":"high","content":"Avoid first-come-first-served prioritization, vague tickets with no location or symptom, sending unqualified staff to hazardous work, closing work without verification, and treating repeat failures as independent one-off events."}
+      ],
+      "drills": [
+        {"key":"five-work-orders","title":"Prioritize five work orders","difficulty":"guided","prompt":"Rank these requests: active ceiling leak, burned-out hallway lamp, sticking office door, no heat in one room, and exposed damaged receptacle. Explain safety, containment, escalation, and sequencing.","rubric":["Prioritizes hazard correctly","Separates containment from repair","Uses appropriate escalation","Considers occupants","Defines verification"]}
+      ]
+    },
+    {
+      "key": "inspection-documentation",
+      "name": "Inspection & Documentation",
+      "description": "Inspect spaces systematically and document location, condition, severity, evidence, and follow-up clearly.",
+      "purpose": "Create reliable maintenance history and reduce missed defects, repeat visits, and unclear handoffs.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Room inspection route","confidence":"high","content":"Use a repeatable path: entry and security, ceiling, walls, doors/windows, fixtures, electrical covers, plumbing signs, floor, furniture/equipment, cleanliness, life-safety visibility, then environmental concerns. Record exact location, observed condition, photo, urgency, and next action."},
+        {"type":"heuristic","title":"Document what you observed, not what you assume","confidence":"high","content":"Write ‘water staining and active drip below northeast ceiling tile’ instead of ‘roof leak’ until the source is established. Good records separate observation from diagnosis."},
+        {"type":"failure-mode","title":"Documentation failures","confidence":"high","content":"Avoid unclear photos with no location, diagnosis written as fact without evidence, missing before/after condition, no asset identifier, and tickets closed with ‘fixed’ but no description of what changed."}
+      ],
+      "drills": [
+        {"key":"inspection-note","title":"Write a useful inspection note","difficulty":"guided","prompt":"Create a maintenance note for a restroom with loose faucet, stained ceiling tile, slow drain, damaged partition latch, and clean floor. Separate observation, urgency, and recommended action.","rubric":["Specific locations","Observation separate from diagnosis","Clear urgency","Useful handoff","Includes evidence needs"]}
+      ]
+    },
+    {
+      "key": "cleaning-sanitation",
+      "name": "Cleaning & Sanitation Systems",
+      "description": "Choose cleaning methods, sequence work, control cross-contamination, and verify results across common facility surfaces.",
+      "purpose": "Maintain safe, professional spaces without damaging surfaces or misusing chemicals.",
+      "riskLevel": "elevated",
+      "units": [
+        {"type":"procedure","title":"Clean from controlled to contaminated","confidence":"high","content":"Review product label and surface compatibility; use required PPE and ventilation; remove debris; work from cleaner/high areas toward dirtier/lower areas; use separate tools for restroom/high-contamination zones; honor disinfectant contact time when required; rinse where label requires; then dry and inspect."},
+        {"type":"heuristic","title":"Product label is the operating instruction","confidence":"high","content":"Concentration, dwell time, PPE, ventilation, incompatibilities, and approved surfaces are product-specific. Do not improvise chemical mixtures or assume stronger concentration means better cleaning."},
+        {"type":"failure-mode","title":"Cleaning failures","confidence":"high","content":"Never mix bleach with ammonia or acids. Avoid using one cloth across restroom and food/contact areas, spraying chemicals into electrical equipment, skipping contact time, damaging finishes with abrasive tools, and leaving wet floors unmarked."}
+      ],
+      "drills": [
+        {"key":"restroom-reset","title":"Plan a restroom reset","difficulty":"guided","prompt":"Plan a safe top-to-bottom restroom cleaning and disinfection sequence including tools, cross-contamination controls, wet-floor control, contact time, and final inspection.","rubric":["Safe chemical handling","Logical sequence","Cross-contamination control","Slip-risk control","Final verification"]}
+      ]
+    },
+    {
+      "key": "drywall-repair",
+      "name": "Drywall Repair",
+      "description": "Assess and repair common drywall holes, cracks, fastener pops, and damaged areas while recognizing moisture and structural red flags.",
+      "purpose": "Produce durable, paint-ready repairs instead of cosmetic patches that fail again.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Drywall repair decision","confidence":"high","content":"Confirm the cause before covering damage. For small defects, remove loose material, secure edges, fill in controlled layers, feather wider than the defect, dry fully, sand lightly, inspect with side light, prime repaired compound, then paint. Larger openings require supported patch material and proper joint treatment."},
+        {"type":"heuristic","title":"Recurring cracks need cause analysis","confidence":"high","content":"A crack that repeatedly returns may reflect movement, poor joint support, moisture, or substrate problems. Repeatedly adding compound without addressing cause is not a durable repair."},
+        {"type":"failure-mode","title":"Drywall failures","confidence":"high","content":"Avoid patching wet drywall before stopping moisture, filling deep damage in one thick coat, sanding into paper face, leaving unsupported patch edges, skipping primer over compound, and treating suspicious widespread cracks as purely cosmetic."}
+      ],
+      "drills": [
+        {"key":"door-handle-hole","title":"Repair a door-handle impact hole","difficulty":"guided","prompt":"Plan a durable repair for a hand-sized drywall hole caused by a door handle. Include cause prevention, patch support, compound stages, sanding, primer, and paint blend.","rubric":["Addresses cause","Uses supported repair","Uses layered finishing","Includes primer","Plans visual QC"]}
+      ]
+    },
+    {
+      "key": "painting-finishes",
+      "name": "Painting & Finish Repair",
+      "description": "Prepare, patch, prime, coat, and inspect common painted surfaces while controlling adhesion, sheen, and appearance.",
+      "purpose": "Produce durable, even finishes with fewer callbacks and visible patch marks.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Surface-prep workflow","confidence":"high","content":"Identify substrate and existing finish; correct moisture or adhesion problems; clean; remove loose material; patch; sand and dust; spot-prime stains or repairs; cut edges cleanly; apply compatible coats at recommended spread rate; maintain a wet edge; then inspect under normal and side lighting."},
+        {"type":"heuristic","title":"Preparation controls most finish quality","confidence":"high","content":"Paint will not hide poor patch feathering, grease, dust, unstable old coating, or water staining reliably. Spend effort creating a stable, clean, uniform substrate before the finish coat."},
+        {"type":"failure-mode","title":"Painting failures","confidence":"high","content":"Avoid painting over active moisture, mismatched sheen touch-ups on large visible walls, overworking drying paint, using incompatible coatings, skipping stain-blocking primer, and masking defects with excessively thick coats."}
+      ],
+      "drills": [
+        {"key":"patched-wall","title":"Blend a patched wall","difficulty":"guided","prompt":"Plan repair and repaint of a wall with two drywall patches, scuffs, and unknown existing sheen. Explain surface identification, priming, coat strategy, and when to repaint the full wall instead of spot touch-up.","rubric":["Prepares substrate","Handles unknown sheen","Uses primer appropriately","Explains blend decision","Includes final inspection"]}
+      ]
+    },
+    {
+      "key": "basic-plumbing",
+      "name": "Basic Plumbing Diagnosis",
+      "description": "Recognize common fixture, drain, supply, leak, and shutoff issues while respecting pressure, sanitation, hidden-damage, and licensed-work boundaries.",
+      "purpose": "Contain low-risk plumbing problems, diagnose basic causes, and escalate correctly before damage spreads.",
+      "riskLevel": "elevated",
+      "units": [
+        {"type":"procedure","title":"Leak-response sequence","confidence":"high","content":"Identify whether water is active and clean, waste, or unknown; protect people and property; locate an appropriate accessible shutoff if trained and safe; contain water; document source area; inspect nearby finishes for hidden spread; then determine whether the repair is a simple fixture service or requires a qualified plumber."},
+        {"type":"heuristic","title":"Water location is not source location","confidence":"high","content":"Water can travel along pipes, framing, ceilings, and surfaces. Trace upward and upstream rather than assuming the visible drip point is where the failure began."},
+        {"type":"failure-mode","title":"Plumbing failures","confidence":"high","content":"Avoid opening pressurized systems without isolation, using chemical drain cleaners as a universal fix, repeatedly tightening plastic fittings, ignoring sewage/backflow concerns, concealing wet materials before drying, and performing code-regulated work beyond qualification."}
+      ],
+      "drills": [
+        {"key":"sink-cabinet-leak","title":"Triage a sink-cabinet leak","difficulty":"guided","prompt":"A sink cabinet is wet after use. Build a safe diagnostic sequence for supply connections, faucet, drain, trap, overflow path, and countertop splash before deciding repair versus plumber escalation.","rubric":["Contains damage","Separates supply and drain tests","Traces source logically","Avoids over-tightening","Defines escalation boundary"]}
+      ]
+    },
+    {
+      "key": "electrical-safety",
+      "name": "Facility Electrical Safety",
+      "description": "Recognize electrical hazards, safe isolation needs, basic symptoms, and escalation boundaries without encouraging unsafe energized work.",
+      "purpose": "Prevent shock, arc, fire, and equipment damage while enabling responsible maintenance triage.",
+      "riskLevel": "safety-critical",
+      "units": [
+        {"type":"concept","title":"Electrical symptom versus safe action","confidence":"high","content":"Flicker, heat, odor, repeated breaker trips, damaged receptacles, exposed conductors, water near electrical equipment, and arcing are warning conditions. The correct maintenance response may be isolation and escalation rather than live diagnosis."},
+        {"type":"procedure","title":"Electrical hazard response","confidence":"high","content":"Keep people away from exposed or energized hazards; do not touch wet electrical equipment; use established facility isolation and lockout procedures only when trained and authorized; label and secure the area; document the condition; escalate mains, panel, circuit, and unknown-energy work to qualified electrical personnel."},
+        {"type":"failure-mode","title":"Electrical safety failures","confidence":"high","content":"Never bypass breakers or grounding, work live to save time, use damaged cords, reset a repeatedly tripping breaker without investigating cause, test unknown mains circuits casually, or assume a switched-off device is de-energized without approved verification procedure."}
+      ],
+      "drills": [
+        {"key":"hot-receptacle","title":"Respond to a hot receptacle","difficulty":"guided","prompt":"A wall receptacle is warm, intermittently crackles, and powers a space heater. Describe the safe facility response and what FREEOS should not instruct an unqualified person to do.","rubric":["Treats as hazard","Stops use","Defines isolation/escalation","Avoids live-work instructions","Preserves evidence"]}
+      ]
+    },
+    {
+      "key": "carpentry-fasteners",
+      "name": "Basic Carpentry & Fasteners",
+      "description": "Select fasteners and repair simple wood/fixture assemblies based on substrate, load path, alignment, and material condition.",
+      "purpose": "Make durable low-risk repairs instead of tightening into damaged or unsupported material.",
+      "riskLevel": "elevated",
+      "units": [
+        {"type":"concept","title":"Fastener strength depends on substrate and load","confidence":"high","content":"A screw is only as useful as its engagement, substrate condition, edge distance, direction of load, anchor type, and the material being joined. Larger hardware is not automatically a safe fix."},
+        {"type":"procedure","title":"Loose-fixture repair workflow","confidence":"high","content":"Unload the fixture; inspect movement and damage; identify actual substrate; determine whether the old hole or anchor is compromised; restore solid attachment or relocate to suitable support; align before final tightening; then test under expected low-risk load."},
+        {"type":"failure-mode","title":"Fastener failures","confidence":"high","content":"Avoid driving longer screws blindly into unknown walls, reusing stripped anchors, overtightening brittle materials, attaching load-bearing items only to finish material, ignoring rot or split wood, and treating structural repairs as ordinary handyman work."}
+      ],
+      "drills": [
+        {"key":"loose-wall-fixture","title":"Repair a loose wall fixture","difficulty":"guided","prompt":"A light-duty wall-mounted accessory has pulled loose from drywall. Explain how to identify substrate and choose between new anchor, stud attachment, relocation, or escalation.","rubric":["Identifies substrate","Considers load","Avoids blind long fasteners","Handles damaged hole","Defines escalation"]}
+      ]
+    },
+    {
+      "key": "floor-surface-care",
+      "name": "Floor & Surface Care",
+      "description": "Maintain common flooring and hard surfaces using compatible cleaning, protection, stain-response, and finish-care methods.",
+      "purpose": "Preserve appearance and service life while reducing slip, chemical, and abrasion damage.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Floor-care decision process","confidence":"high","content":"Identify material and finish first; remove dry soil; choose compatible cleaner and dilution; control wet-floor access; use the least aggressive method that works; rinse or recover residue as required; allow full drying; inspect traction and appearance; then document recurring damage patterns."},
+        {"type":"heuristic","title":"Treat the finish, not just the material","confidence":"high","content":"Two floors made from similar base materials can have different coatings, sealers, waxes, or factory finishes. Care method should account for the actual surface system, not only the generic floor name."},
+        {"type":"failure-mode","title":"Floor-care failures","confidence":"high","content":"Avoid over-wetting moisture-sensitive flooring, leaving detergent residue, abrasive pads on delicate finishes, unmarked wet areas, using acid on incompatible stone, and machine work without training or area control."}
+      ],
+      "drills": [
+        {"key":"unknown-floor","title":"Handle an unknown floor finish","difficulty":"guided","prompt":"A hallway floor is dull with black marks, but the exact finish is unknown. Create a conservative cleaning and identification plan before using aggressive chemicals or pads.","rubric":["Identifies surface first","Uses least aggressive method","Controls slip risk","Avoids incompatible chemistry","Includes test area"]}
+      ]
+    },
+    {
+      "key": "preventive-maintenance",
+      "name": "Preventive Maintenance",
+      "description": "Build repeatable inspection and service routines from failure consequence, wear, manufacturer guidance, and operating history.",
+      "purpose": "Find deterioration early and reduce emergency work, downtime, and repeat failures.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"PM program workflow","confidence":"high","content":"Inventory assets and critical systems; record manufacturer guidance where available; classify failure consequence; define observable condition indicators; set inspection/service intervals; assign ownership; record findings and work; adjust intervals based on actual failure and wear history."},
+        {"type":"heuristic","title":"Inspect more often where failure is costly or detectable","confidence":"high","content":"Preventive maintenance adds value when degradation can be detected before failure and the consequence justifies the effort. Do not create busywork calendars disconnected from actual failure modes."},
+        {"type":"failure-mode","title":"PM failures","confidence":"high","content":"Avoid generic checklists with no pass/fail criteria, servicing everything at the same frequency, ignoring repeated findings, missing asset IDs, closing inspections without corrective work, and performing regulated service outside qualification."}
+      ],
+      "drills": [
+        {"key":"small-building-pm","title":"Build a small-building PM plan","difficulty":"guided","prompt":"Create a preventive-maintenance structure for a small office covering doors, plumbing fixtures, filters, lighting, visible electrical condition, floors, fire/life-safety visual checks, and recurring leak signs.","rubric":["Prioritizes by consequence","Defines observable checks","Uses sensible intervals","Tracks findings","Respects trade boundaries"]}
+      ]
+    }
+  ]
+}
