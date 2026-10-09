@@ -12,6 +12,14 @@ const projectAliases: Record<string, string[]> = {
   "get-ya-5": ["Get Ya 5"],
 };
 
+const ownershipGroups: Array<[string, string]> = [
+  ["Shared infrastructure", "DFB internal shared infrastructure"],
+  ["Owned IP / brands", "DFB-owned IP / brand"],
+  ["Service/cash-flow businesses", "DFB service/cash-flow business"],
+  ["Client / partner builds", "client / partner build; ownership not assumed"],
+  ["Business Ideas / incubation", "DFB incubation / exploratory opportunity"],
+];
+
 let schemaReady = false;
 
 function db(): Database {
@@ -85,22 +93,54 @@ function extractDirection(content: string, aliases: string[]): string | null {
   return null;
 }
 
-function classifyOwnership(content: string, aliases: string[]): string | null {
-  const classifications: Array<[string, string]> = [
-    ["Shared infrastructure", "DFB internal shared infrastructure"],
-    ["Owned IP / brands", "DFB-owned IP / brand"],
-    ["Service/cash-flow businesses", "DFB service/cash-flow business"],
-    ["Client / partner builds", "client / partner build; ownership not assumed"],
-    ["Business Ideas / incubation", "DFB incubation / exploratory opportunity"],
-  ];
+function organizationMapSection(content: string): string | null {
+  const match = content.match(/##\s+DFB organization map\s*\n([\s\S]*?)(?=\n##\s+|$)/i);
+  return match?.[1] ?? null;
+}
 
-  for (const [heading, classification] of classifications) {
-    for (const alias of aliases) {
-      const pattern = new RegExp(`${escapeRegex(heading)}[\\s\\S]{0,1800}${escapeRegex(alias)}`, "i");
-      if (pattern.test(content)) return classification;
+function classifyOwnership(content: string, aliases: string[]): string | null {
+  const organizationMap = organizationMapSection(content);
+  if (organizationMap) {
+    let currentClassification: string | null = null;
+    for (const rawLine of organizationMap.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      for (const [heading, classification] of ownershipGroups) {
+        if (line.toLowerCase().includes(heading.toLowerCase())) {
+          currentClassification = classification;
+          break;
+        }
+      }
+
+      if (aliases.some((alias) => line.toLowerCase().includes(alias.toLowerCase()))) {
+        return currentClassification;
+      }
     }
   }
-  return null;
+
+  // Fallback only when the canonical organization map is unavailable. Require
+  // the category label and project alias to be very close so one portfolio
+  // section cannot bleed into another.
+  let best: { classification: string; distance: number } | null = null;
+  const lower = content.toLowerCase();
+  for (const [heading, classification] of ownershipGroups) {
+    const headingLower = heading.toLowerCase();
+    let headingIndex = lower.indexOf(headingLower);
+    while (headingIndex >= 0) {
+      for (const alias of aliases) {
+        const aliasLower = alias.toLowerCase();
+        let aliasIndex = lower.indexOf(aliasLower, headingIndex);
+        while (aliasIndex >= 0 && aliasIndex - headingIndex <= 500) {
+          const distance = aliasIndex - headingIndex;
+          if (!best || distance < best.distance) best = { classification, distance };
+          aliasIndex = lower.indexOf(aliasLower, aliasIndex + 1);
+        }
+      }
+      headingIndex = lower.indexOf(headingLower, headingIndex + 1);
+    }
+  }
+  return best?.classification ?? null;
 }
 
 function mapDraft(row: Row) {
