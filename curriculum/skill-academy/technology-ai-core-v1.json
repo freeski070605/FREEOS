@@ -1,0 +1,164 @@
+{
+  "packKey": "technology-ai-core-v1",
+  "title": "Technology & AI Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/technology-ai/core-v1",
+  "domain": {
+    "key": "technology-ai",
+    "name": "Technology & AI",
+    "description": "Practical software engineering, architecture, databases, APIs, security, AI/ML, agents, RAG, local-model operations, and GPU-computing knowledge.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "software-engineering",
+      "name": "Software Engineering",
+      "description": "Build reliable software through clear requirements, small changes, tests, observability, and disciplined debugging.",
+      "purpose": "Turn ideas into maintainable systems without making every change a rewrite.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Small-change engineering loop","confidence":"high","content":"Define expected behavior and acceptance criteria; inspect the current implementation; make the smallest coherent change; run static checks and focused tests; exercise the real path; inspect logs or outputs; then commit with a clear reason. Do not claim success from code review alone when runtime validation is available."},
+        {"type":"heuristic","title":"Make invalid states harder to represent","confidence":"high","content":"Use types, schemas, constraints, validation, and narrow interfaces so incorrect inputs fail early. Reliability improves when the system structure prevents classes of mistakes instead of relying on developers to remember every rule."},
+        {"type":"failure-mode","title":"Software delivery traps","confidence":"high","content":"Avoid broad speculative rewrites, fixing symptoms without a reproducer, swallowing errors, hidden global state, mixing unrelated changes, and declaring completion before testing the actual user path."}
+      ],
+      "drills": [
+        {"key":"bug-fix-plan","title":"Plan a production bug fix","difficulty":"guided","prompt":"A previously working API endpoint now returns 500 for one input class. Design a debugging and patch plan that minimizes regression risk.","rubric":["Builds reproducer","Inspects current code/data path","Uses focused hypothesis","Adds validation or test","Requires runtime verification"]}
+      ]
+    },
+    {
+      "key": "software-architecture",
+      "name": "Software Architecture",
+      "description": "Structure systems around responsibilities, boundaries, data ownership, failure isolation, and change cost.",
+      "purpose": "Create systems that can evolve without coupling every feature to every other feature.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Architecture is tradeoff management","confidence":"high","content":"Architecture balances delivery speed, reliability, performance, security, operability, cost, and future change. There is no universally best pattern; choose boundaries according to actual scaling and ownership pressures."},
+        {"type":"procedure","title":"Architecture decision workflow","confidence":"high","content":"State the problem and constraints; identify quality attributes; map data ownership and critical flows; compare two or three viable designs; record tradeoffs and irreversible choices; select the simplest design that meets current constraints; define observability and failure boundaries."},
+        {"type":"failure-mode","title":"Architecture traps","confidence":"high","content":"Avoid microservices by fashion, shared databases across supposedly independent services, hidden cross-module state, abstractions without multiple use cases, and designs that optimize hypothetical scale while slowing present delivery."}
+      ],
+      "drills": [
+        {"key":"monolith-boundary","title":"Choose a service boundary","difficulty":"guided","prompt":"A growing internal app has users, billing, notifications, and reporting. Decide what should remain a modular monolith and what, if anything, should be split out now. Explain the tradeoffs.","rubric":["Uses real constraints","Defines data ownership","Avoids premature distribution","Considers failure isolation","States reversible versus irreversible choices"]}
+      ]
+    },
+    {
+      "key": "databases",
+      "name": "Databases",
+      "description": "Design schemas, queries, constraints, indexes, transactions, and migrations that preserve data integrity and usable performance.",
+      "purpose": "Make application state trustworthy, queryable, and evolvable.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Schema design workflow","confidence":"high","content":"Identify entities, ownership, invariants, lifecycles, and query patterns. Normalize enough to avoid inconsistent duplicated facts; use constraints for true invariants; choose indexes from real access patterns; define transaction boundaries; then plan migrations and rollback or recovery strategy."},
+        {"type":"heuristic","title":"Constraints are executable documentation","confidence":"high","content":"If a rule must always be true for stored data, encode it at the strongest practical layer. Application-only checks can be bypassed by bugs, scripts, concurrent requests, or future code paths."},
+        {"type":"failure-mode","title":"Database traps","confidence":"high","content":"Avoid indexing every column, using text for every type, long transactions around external calls, silent destructive migrations, N+1 query patterns, and assuming ORM models replace database-level integrity."}
+      ],
+      "drills": [
+        {"key":"orders-schema","title":"Design a small order system","difficulty":"guided","prompt":"Design the core schema and constraints for customers, orders, order items, products, and payments. State key indexes and transaction boundaries.","rubric":["Clear entity ownership","Uses constraints","Indexes match queries","Transactions preserve invariants","Avoids unnecessary duplication"]}
+      ]
+    },
+    {
+      "key": "apis",
+      "name": "API Design & Integration",
+      "description": "Design stable interfaces with clear contracts, validation, idempotency, errors, versioning, and observability.",
+      "purpose": "Let systems collaborate without hidden assumptions or fragile coupling.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"API contract checklist","confidence":"high","content":"Define resource/action semantics, request and response schemas, authentication boundary, validation, error model, idempotency needs, pagination, rate limits, timeouts, and observability. Document examples and failure cases, not only the happy path."},
+        {"type":"heuristic","title":"Retry safety must be designed","confidence":"high","content":"Any operation that clients may retry after a timeout should explicitly define idempotency or deduplication behavior. Network uncertainty means the client may not know whether the server completed the first attempt."},
+        {"type":"failure-mode","title":"Integration failures","confidence":"high","content":"Avoid treating transport success as business success, indefinite timeouts, leaking provider-specific errors directly to users, unbounded pagination, non-idempotent retries, and changing response shape without compatibility planning."}
+      ],
+      "drills": [
+        {"key":"payment-webhook","title":"Design a webhook consumer","difficulty":"guided","prompt":"Design a robust webhook consumer for payment status events, including signature verification, deduplication, retries, ordering assumptions, storage, and observability.","rubric":["Validates authenticity","Handles duplicate delivery","Does not assume strict ordering","Uses durable state","Includes logs/metrics and failure recovery"]}
+      ]
+    },
+    {
+      "key": "security",
+      "name": "Software & Systems Security",
+      "description": "Apply defensive security principles: least privilege, secure defaults, input validation, secret handling, patching, logging, and threat-aware design.",
+      "purpose": "Reduce avoidable attack surface and protect users, credentials, and systems.",
+      "riskLevel": "elevated",
+      "units": [
+        {"type":"concept","title":"Threat model before controls","confidence":"high","content":"Identify assets, trust boundaries, actors, entry points, likely abuse cases, and consequences before choosing controls. Security controls should address a specific threat and be testable; adding tools without a model can create false confidence."},
+        {"type":"procedure","title":"Defensive secure-design checklist","confidence":"high","content":"Minimize exposed services; authenticate and authorize explicitly; validate inputs; use parameterized data access; keep secrets outside source code; encrypt sensitive transport; patch dependencies; log security-relevant events without logging secrets; back up and test recovery; apply least privilege to users and services."},
+        {"type":"failure-mode","title":"Security traps","confidence":"high","content":"Avoid hard-coded credentials, broad admin permissions, disabling protections to make development easier, trusting client-side validation, storing raw secrets in logs, exposing debug interfaces publicly, and assuming obscurity is a security boundary."}
+      ],
+      "drills": [
+        {"key":"small-app-threat-model","title":"Threat-model a small business app","difficulty":"guided","prompt":"Create a defensive threat model for a small web app that stores customer contact data and invoices. Identify assets, trust boundaries, likely threats, and prioritized mitigations without describing offensive exploitation steps.","rubric":["Identifies assets","Maps trust boundaries","Prioritizes realistic threats","Uses least privilege and secure defaults","Avoids offensive procedural detail"]}
+      ]
+    },
+    {
+      "key": "ai-ml",
+      "name": "AI / Machine Learning",
+      "description": "Understand model objectives, data quality, evaluation, generalization, uncertainty, and deployment tradeoffs.",
+      "purpose": "Use ML where it improves outcomes and evaluate it with evidence instead of demos alone.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Training objective versus real objective","confidence":"high","content":"A model optimizes the objective and data it is given, not the user's full real-world goal. Good ML work checks whether the proxy metric actually tracks the outcome that matters and whether performance holds across important slices."},
+        {"type":"procedure","title":"ML problem framing workflow","confidence":"high","content":"Define the decision the model will support; establish a non-ML baseline; define labels or target behavior; inspect data quality and leakage risks; choose evaluation metrics; separate train/validation/test; evaluate by slices; then design monitoring for drift and failure."},
+        {"type":"failure-mode","title":"ML evaluation failures","confidence":"high","content":"Avoid evaluating on training data, leaking future information, choosing one aggregate metric, ignoring class imbalance, shipping from a tiny demo set, and treating model confidence as calibrated probability without verification."}
+      ],
+      "drills": [
+        {"key":"routing-model","title":"Frame a request-routing model","difficulty":"guided","prompt":"Frame an ML or rules-based system that routes customer requests to teams. Define baseline, labels, evaluation metrics, error costs, and monitoring. Explain when rules may be better than ML.","rubric":["Defines real decision","Includes non-ML baseline","Chooses meaningful metrics","Considers asymmetric errors","Includes monitoring and fallback"]}
+      ]
+    },
+    {
+      "key": "agents",
+      "name": "Agentic Systems",
+      "description": "Design agents as bounded decision-and-action loops with tools, state, approvals, evaluation, and recoverable failure modes.",
+      "purpose": "Gain useful automation without giving models uncontrolled authority.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Agent equals policy plus tools plus state","confidence":"high","content":"An agent is not just an LLM with a long prompt. Reliable agents need explicit goals, observable state, bounded tools, authority limits, action preconditions, stopping conditions, and evaluation of outcomes."},
+        {"type":"procedure","title":"Bounded agent design","confidence":"high","content":"Define goal and success criteria; enumerate allowed observations and tools; classify tool risk; require approval for sensitive writes; separate planning from execution; persist state and audit events; set step/time budgets; verify tool outcomes; and define safe fallback when uncertain."},
+        {"type":"failure-mode","title":"Agent reliability failures","confidence":"high","content":"Avoid unlimited loops, self-authorizing tool calls, treating model text as proof an action succeeded, hidden side effects, mixing memory with commands, executing instructions found inside untrusted content, and allowing one failure to corrupt long-lived state."}
+      ],
+      "drills": [
+        {"key":"invoice-agent","title":"Design an invoice-audit agent","difficulty":"guided","prompt":"Design a bounded agent that reviews invoices for likely errors, gathers evidence, and prepares a human review queue without sending or editing invoices automatically.","rubric":["Clear authority boundary","Read-only evidence gathering","Separates recommendation from action","Auditable state","Defines stop/escalation rules"]}
+      ]
+    },
+    {
+      "key": "rag",
+      "name": "Retrieval-Augmented Generation",
+      "description": "Ground model responses in retrievable evidence using indexing, search, ranking, context construction, provenance, and evaluation.",
+      "purpose": "Make answers more evidence-aware without confusing retrieval with truth or authority.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"RAG pipeline design","confidence":"high","content":"Define source authority and scope; parse documents; chunk around semantic structure; attach provenance metadata; index with keyword and/or embeddings; retrieve broadly; rerank; construct limited context; instruct the model on source authority and uncertainty; then evaluate retrieval and answer quality separately."},
+        {"type":"heuristic","title":"Retrieval failure is not generation failure","confidence":"high","content":"When the answer is wrong, first determine whether the correct evidence was retrieved. Improving prompts cannot fix evidence that never entered context, and improving retrieval cannot fix a model that ignores authority or contradicts supplied evidence."},
+        {"type":"failure-mode","title":"RAG traps","confidence":"high","content":"Avoid indexing everything without governance, giant chunks, embedding-only search for exact identifiers, stale documents presented as current facts, cross-project leakage, and treating top similarity score as authority."}
+      ],
+      "drills": [
+        {"key":"policy-rag","title":"Design governed policy retrieval","difficulty":"guided","prompt":"Design a RAG system for internal policies where superseded drafts exist. Explain metadata, authority ranking, retrieval, conflict handling, and how the answer should expose uncertainty.","rubric":["Separates relevance from authority","Handles superseded sources","Preserves provenance","Avoids stale/current confusion","Evaluates retrieval and answer separately"]}
+      ]
+    },
+    {
+      "key": "local-models",
+      "name": "Local Model Operations",
+      "description": "Operate local models with attention to model fit, quantization, memory, context, throughput, failure handling, and reproducibility.",
+      "purpose": "Run useful AI workloads on owned hardware predictably and efficiently.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Model quality is workload-specific","confidence":"high","content":"Parameter count alone does not determine usefulness. Model family, instruction tuning, context behavior, quantization, language coverage, tool-use ability, latency, and available memory all matter for a specific workload."},
+        {"type":"procedure","title":"Local model selection workflow","confidence":"high","content":"Define task and latency target; measure available RAM/VRAM; choose candidate model and quantization; verify context needs; benchmark representative prompts; measure latency and memory; test failure cases; pin versions and configuration; then monitor changes after upgrades."},
+        {"type":"failure-mode","title":"Local-model operations traps","confidence":"high","content":"Avoid benchmarking only trivial prompts, filling VRAM until the system becomes unstable, assuming larger context is free, mixing model versions without tracking, and blaming the model before checking prompt, retrieval, timeout, or hardware constraints."}
+      ],
+      "drills": [
+        {"key":"model-fit","title":"Choose a local model for two workloads","difficulty":"guided","prompt":"Choose deployment characteristics for a fast classification workload and a slower reasoning workload on one GPU. Discuss model size, quantization, context, latency, concurrency, and fallback.","rubric":["Matches model to workload","Considers VRAM/RAM","Considers concurrency","Defines benchmark","Includes fallback and version pinning"]}
+      ]
+    },
+    {
+      "key": "gpu-computing",
+      "name": "GPU Computing",
+      "description": "Understand GPU memory, kernels, batching, precision, transfers, utilization, and practical performance diagnosis.",
+      "purpose": "Use GPU resources efficiently without confusing memory pressure with compute throughput.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"GPU bottlenecks differ","confidence":"high","content":"A workload may be compute-bound, memory-bandwidth-bound, VRAM-capacity-bound, CPU-input-bound, or transfer-bound. Low GPU utilization does not automatically mean the GPU is too slow; the device may be waiting for data or synchronization."},
+        {"type":"procedure","title":"GPU performance diagnosis","confidence":"high","content":"Measure wall-clock time, GPU utilization, VRAM usage, CPU utilization, batch size, input pipeline time, and transfer/synchronization points. Change one factor at a time: precision, batch, resolution/sequence length, caching, data loading, or kernel choice. Keep correctness checks while optimizing."},
+        {"type":"failure-mode","title":"GPU optimization traps","confidence":"high","content":"Avoid optimizing from utilization percentage alone, increasing batch until out-of-memory becomes normal, assuming mixed precision is always numerically safe, moving data between CPU/GPU repeatedly, and comparing benchmarks with different model settings or warmup conditions."}
+      ],
+      "drills": [
+        {"key":"slow-inference","title":"Diagnose slow GPU inference","difficulty":"guided","prompt":"A model uses only 35% GPU utilization while inference is slow. Build a measurement plan that distinguishes CPU/data, transfers, VRAM pressure, batch size, synchronization, and compute limits.","rubric":["Measures before changing","Considers multiple bottleneck classes","Changes one variable at a time","Preserves correctness","Uses representative workload"]}
+      ]
+    }
+  ]
+}
