@@ -1,0 +1,144 @@
+{
+  "packKey": "design-ux-brand-core-v1",
+  "title": "Design, UX & Brand Systems Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/design-ux-brand/core-v1",
+  "domain": {
+    "key": "design-ux-brand",
+    "name": "Design, UX & Brand Systems",
+    "description": "Practical visual design, interface design, user experience, brand systems, accessibility, responsive behavior, and conversion-focused design knowledge.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "visual-hierarchy",
+      "name": "Visual Hierarchy",
+      "description": "Direct attention through scale, contrast, spacing, grouping, alignment, and sequence.",
+      "purpose": "Make the most important information obvious before decorative detail competes for attention.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Hierarchy is an attention system","confidence":"high","content":"Every screen, page, frame, or graphic has an implicit reading order. Size, contrast, position, whitespace, grouping, and repetition influence that order. Strong hierarchy makes the intended first, second, and third actions obvious without requiring explanation."},
+        {"type":"procedure","title":"Hierarchy audit","confidence":"high","content":"Identify the primary user goal; squint or blur the design to reveal dominant shapes; rank what visually reads first through fifth; compare that order with the intended task; reduce competing emphasis; then re-check at mobile size and from a short viewing distance."},
+        {"type":"failure-mode","title":"Hierarchy failures","confidence":"high","content":"Avoid making every element bold, using too many accent colors, giving secondary actions equal weight to primary actions, placing unrelated items too close together, and relying on labels to compensate for weak visual ordering."}
+      ],
+      "drills": [{"key":"landing-page-hierarchy","title":"Repair a landing-page hierarchy","difficulty":"guided","prompt":"Given a landing page with a headline, three CTAs, pricing, testimonials, and feature blocks, define the intended reading order and explain which elements you would increase, reduce, group, or move.","rubric":["Clear reading order","Primary action is dominant","Secondary content is grouped","Whitespace supports hierarchy","Mobile view considered"]}]
+    },
+    {
+      "key": "typography",
+      "name": "Typography",
+      "description": "Use type to improve readability, hierarchy, personality, and consistency.",
+      "purpose": "Communicate clearly while supporting brand tone and information structure.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Type carries both language and tone","confidence":"high","content":"Typeface, weight, size, line length, line height, letter spacing, and contrast affect both readability and personality. A type system should define a small set of repeatable roles instead of styling every block independently."},
+        {"type":"procedure","title":"Build a practical type scale","confidence":"high","content":"Choose readable body text first; set line height and line length; establish heading roles relative to body size; assign weights with restraint; define labels and captions; test contrast and wrapping on narrow screens; then document the roles as reusable tokens."},
+        {"type":"failure-mode","title":"Typography failures","confidence":"high","content":"Avoid too many typefaces, tiny low-contrast body text, excessive centered paragraphs, long all-caps copy, inconsistent heading levels, arbitrary font sizes, and narrow line-height that harms scanning."}
+      ],
+      "drills": [{"key":"type-system","title":"Create a compact type system","difficulty":"guided","prompt":"Define body, small text, label, H3, H2, and H1 roles for a service-business website. Explain size relationships, weight, line height, and where each role should be used.","rubric":["Readable body text","Clear hierarchy","Limited roles","Responsive wrapping considered","Roles are reusable"]}]
+    },
+    {
+      "key": "layout-grid",
+      "name": "Layout & Grid Systems",
+      "description": "Organize content with alignment, spacing rhythm, grids, containers, and composition.",
+      "purpose": "Create predictable structure without making every page feel rigid or identical.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Alignment creates invisible structure","confidence":"high","content":"Users perceive relationships faster when edges, baselines, spacing increments, and container boundaries repeat. Grids are not decoration; they reduce arbitrary placement and make variation easier to control."},
+        {"type":"procedure","title":"Layout construction workflow","confidence":"high","content":"Choose a maximum content width; define outer gutters; establish a spacing scale; choose columns appropriate to the content; align major blocks to shared edges; use deliberate breaks only when they create emphasis; then test dense and sparse content states."},
+        {"type":"heuristic","title":"Spacing should explain relationships","confidence":"high","content":"Elements that belong together should be closer than elements that do not. Use spacing changes to communicate grouping before adding borders, boxes, or labels."}
+      ],
+      "drills": [{"key":"dashboard-grid","title":"Design a dashboard grid","difficulty":"guided","prompt":"Lay out a dashboard with navigation, four summary metrics, one main work area, one secondary panel, and a mobile state. Describe container, columns, gaps, and responsive collapse behavior.","rubric":["Consistent alignment","Clear grouping","Responsive collapse is sensible","Spacing scale is reused","Main task remains dominant"]}]
+    },
+    {
+      "key": "color-systems",
+      "name": "Color Systems",
+      "description": "Use color for hierarchy, identity, state, accessibility, and consistency.",
+      "purpose": "Build palettes that remain useful across interfaces, media, and states instead of relying on isolated color picks.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Color has jobs","confidence":"high","content":"Separate brand color, neutral surfaces, text roles, semantic states, and data colors. One color may serve multiple jobs only when those meanings do not conflict. Color should reinforce meaning rather than carry meaning alone."},
+        {"type":"procedure","title":"Build an interface palette","confidence":"high","content":"Start with background and text neutrals; define primary and secondary accents; define success, warning, and error states; verify text contrast; test disabled and hover states; then test grayscale to ensure hierarchy does not collapse without color."},
+        {"type":"failure-mode","title":"Color-system failures","confidence":"high","content":"Avoid low-contrast text, using the same accent for unrelated states, relying on red/green alone, adding new shades without tokens, oversaturating large surfaces, and treating brand color as the answer to every emphasis problem."}
+      ],
+      "drills": [{"key":"semantic-palette","title":"Design a semantic palette","difficulty":"guided","prompt":"Define color roles for a dark admin dashboard including background, panel, text, primary action, success, warning, error, and muted states. Explain how meaning survives for color-impaired users.","rubric":["Roles are distinct","Contrast considered","States do not rely on color alone","Palette is tokenizable","Large surfaces remain readable"]}]
+    },
+    {
+      "key": "brand-systems",
+      "name": "Brand Systems",
+      "description": "Translate identity into repeatable visual and verbal rules across touchpoints.",
+      "purpose": "Keep a brand recognizable while allowing different formats, campaigns, and products to feel related rather than copied.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"A brand system is more than a logo","confidence":"high","content":"Brand consistency comes from repeated decisions about typography, color, spacing, imagery, tone, motion, iconography, composition, and message hierarchy. The logo is one asset inside the larger system."},
+        {"type":"procedure","title":"Build a lightweight brand system","confidence":"high","content":"Define audience and positioning; capture three to five personality attributes; establish logo usage, color roles, type system, imagery direction, tone of voice, layout patterns, and prohibited uses; then test the system on at least three very different deliverables."},
+        {"type":"heuristic","title":"Consistency should preserve identity, not sameness","confidence":"high","content":"A strong brand can vary composition and content while remaining recognizable through repeated underlying rules. Do not force every asset into the same template when the medium requires different behavior."}
+      ],
+      "drills": [{"key":"brand-extension","title":"Extend a brand into three formats","difficulty":"guided","prompt":"Take one service brand and describe how its identity should translate into a website hero, Instagram post, and invoice without making all three visually identical.","rubric":["Core identity remains recognizable","Medium-specific choices are justified","Tone is consistent","Logo is not overused","System rules are reusable"]}]
+    },
+    {
+      "key": "ui-design",
+      "name": "Interface Design",
+      "description": "Design controls, states, forms, navigation, and content structures that make software understandable.",
+      "purpose": "Help users know where they are, what they can do, what happened, and what to do next.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Interface clarity checklist","confidence":"high","content":"For each screen, identify the primary task; make the current location visible; expose the primary action; label unfamiliar controls; show loading, empty, error, success, disabled, and destructive states; keep related actions together; and provide feedback immediately after user input."},
+        {"type":"heuristic","title":"Recognition beats recall","confidence":"high","content":"Prefer visible choices, labels, examples, defaults, and contextual help over forcing users to remember commands, hidden rules, or previous steps."},
+        {"type":"failure-mode","title":"Interface failures","confidence":"high","content":"Avoid equal-weight navigation for advanced and everyday features, icon-only controls with unclear meaning, silent failures, forms with no examples, destructive actions next to routine actions, and pages that expose system architecture instead of user goals."}
+      ],
+      "drills": [{"key":"settings-redesign","title":"Redesign a confusing settings screen","difficulty":"guided","prompt":"A settings screen has 25 controls in one flat list. Group and relabel the controls, define what belongs in advanced settings, and explain how you would expose defaults and consequences.","rubric":["Controls grouped by user goal","Advanced options separated","Labels use user language","Defaults visible","Consequences are clear"]}]
+    },
+    {
+      "key": "ux-flows",
+      "name": "User Flows & Task Design",
+      "description": "Design end-to-end paths that minimize confusion, dead ends, and unnecessary decisions.",
+      "purpose": "Make important tasks easy to start, complete, recover, and understand.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Design the task, not just the screens","confidence":"high","content":"A user flow includes entry point, required information, decisions, system feedback, exceptions, recovery, and completion. Screens are only checkpoints inside the task."},
+        {"type":"procedure","title":"Map a user flow","confidence":"high","content":"Write the user goal; identify starting contexts; list required decisions; remove decisions the system can safely infer; map success and failure branches; define confirmation; and test whether the user always knows the next available action."},
+        {"type":"failure-mode","title":"Flow failures","confidence":"high","content":"Avoid asking for information too early, repeating the same data entry, dead ends, hidden prerequisites, unclear completion states, forcing account creation before value is visible, and making users restart after recoverable errors."}
+      ],
+      "drills": [{"key":"booking-flow","title":"Design a service-booking flow","difficulty":"guided","prompt":"Map a booking flow from service selection through date/time, customer details, deposit, confirmation, reschedule, and cancellation. Minimize unnecessary decisions and define recovery states.","rubric":["Clear entry and completion","Unnecessary steps removed","Error recovery included","Confirmation is explicit","Policy information appears at the right time"]}]
+    },
+    {
+      "key": "responsive-design",
+      "name": "Responsive Design",
+      "description": "Adapt structure and interaction to different screen sizes and input modes.",
+      "purpose": "Preserve task priority and readability instead of merely shrinking desktop layouts.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Responsive means reprioritized","confidence":"high","content":"Small screens require content priority, touch targets, readable line lengths, simplified navigation, and sometimes different component behavior. Responsive design is not just percentage widths."},
+        {"type":"procedure","title":"Responsive adaptation workflow","confidence":"high","content":"Start with task priority; identify components that can stack, wrap, collapse, scroll, or disappear; preserve primary actions; test long labels and real content; verify touch targets; then test intermediate widths rather than only phone and desktop extremes."},
+        {"type":"failure-mode","title":"Responsive failures","confidence":"high","content":"Avoid tiny desktop layouts on mobile, horizontal overflow, hidden primary actions, hover-only interaction, fixed-height cards that clip content, unreadable tables, and navigation that expands beyond the viewport."}
+      ],
+      "drills": [{"key":"responsive-admin","title":"Adapt an admin page to mobile","difficulty":"guided","prompt":"Convert a desktop admin page with sidebar, filters, data table, and bulk actions into a usable mobile layout. Explain what stacks, collapses, scrolls, or moves.","rubric":["Primary task preserved","Touch interaction considered","Table strategy is usable","Navigation remains understandable","Intermediate widths considered"]}]
+    },
+    {
+      "key": "accessibility",
+      "name": "Accessible Interface Design",
+      "description": "Design interfaces usable with keyboard, assistive technology, varied vision, motor ability, and cognitive load.",
+      "purpose": "Make core tasks perceivable, operable, understandable, and robust for more users.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Accessibility review","confidence":"high","content":"Check semantic structure; keyboard order; visible focus; form labels and errors; text and control contrast; image alternatives; motion preferences; touch target size; heading order; status announcements; and whether color, hover, or sound is the only carrier of meaning."},
+        {"type":"heuristic","title":"Accessibility usually improves clarity for everyone","confidence":"high","content":"Clear labels, predictable navigation, visible focus, understandable errors, readable text, and sufficient target size benefit users broadly, not only users with declared disabilities."},
+        {"type":"failure-mode","title":"Accessibility failures","confidence":"high","content":"Avoid placeholder-only labels, keyboard traps, invisible focus rings, low-contrast text, autoplay motion without control, unlabeled icon buttons, error messages that only change color, and custom controls that lose native semantics."}
+      ],
+      "drills": [{"key":"form-accessibility","title":"Audit a checkout form","difficulty":"guided","prompt":"Audit a checkout form for labels, errors, keyboard navigation, focus, contrast, required fields, and screen-reader clarity. Prioritize the highest-impact fixes.","rubric":["Keyboard path considered","Labels and errors are explicit","Contrast considered","Native semantics preferred","Fixes prioritized by impact"]}]
+    },
+    {
+      "key": "conversion-design",
+      "name": "Conversion-Focused Design",
+      "description": "Use clarity, trust, evidence, friction reduction, and offer structure to help users take appropriate action.",
+      "purpose": "Improve conversion without deceptive patterns or sacrificing long-term trust.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Conversion is clarity plus motivation minus friction","confidence":"high","content":"Users convert when they understand the value, trust the claim, see a relevant next step, and face acceptable friction. Visual polish cannot rescue an unclear offer or weak proof."},
+        {"type":"procedure","title":"Conversion-page review","confidence":"high","content":"Clarify audience and promise; make the primary CTA obvious; surface proof near claims; answer major objections; reduce unnecessary form fields; make price or next-step expectations clear; test mobile flow; and measure behavior rather than relying only on taste."},
+        {"type":"failure-mode","title":"Conversion design failures","confidence":"high","content":"Avoid fake urgency, hidden fees, misleading button labels, testimonial walls without context, too many equal CTAs, long forms before value is established, and aggressive popups that interrupt the primary task."}
+      ],
+      "drills": [{"key":"service-page-conversion","title":"Improve a service page","difficulty":"guided","prompt":"Audit a service page that gets traffic but few inquiries. Diagnose offer clarity, proof, CTA hierarchy, objections, friction, and mobile behavior before recommending visual changes.","rubric":["Diagnoses before redesigning","CTA hierarchy is clear","Trust evidence is relevant","Friction is reduced ethically","Measurement plan included"]}]
+    }
+  ]
+}
