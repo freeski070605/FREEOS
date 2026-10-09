@@ -1,0 +1,118 @@
+{
+  "packKey": "blender-production-core-v1",
+  "title": "Blender Production Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/blender-production/core-v1",
+  "domain": {
+    "key": "blender-production",
+    "name": "Blender Production",
+    "description": "Program-specific Blender operation for scene organization, modeling, modifiers, materials, UVs, rigging, animation, lighting, rendering, Geometry Nodes, and Python automation. Version-sensitive UI details should be checked against current documentation when needed.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "editor-scene-organization",
+      "name": "Blender Editor & Scene Organization",
+      "description": "Navigate Blender's editors, modes, collections, object hierarchy, visibility, and scene data without losing context.",
+      "purpose": "Operate complex Blender files predictably and keep scenes understandable as they grow.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Blender is a data-block system","confidence":"high","content":"Objects reference meshes, materials, images, actions, collections, and other data blocks. Understanding what is linked versus unique prevents accidental edits and makes duplication, instancing, and cleanup more predictable."},
+        {"type":"procedure","title":"Scene setup workflow","confidence":"high","content":"Confirm units and frame rate; organize major asset groups into named collections; establish naming rules; check object versus edit mode; use Outliner hierarchy and viewport visibility deliberately; save an initial version before destructive restructuring."},
+        {"type":"failure-mode","title":"Scene-management failures","confidence":"high","content":"Avoid unnamed duplicates, mixing unrelated assets in one collection, editing linked data unintentionally, hidden objects affecting renders, and relying on viewport state instead of explicit scene organization."}
+      ],
+      "drills": [{"key":"organize-production-scene","title":"Organize a messy production scene","difficulty":"guided","prompt":"A Blender file contains imported buildings, cameras, lights, duplicated materials, hidden helpers, and unnamed objects. Design a cleanup and organization plan before editing geometry.","rubric":["Uses collections intentionally","Separates linked and unique data","Defines naming rules","Checks hidden/render state","Preserves a rollback point"]}]
+    },
+    {
+      "key": "transforms-origins-coordinates",
+      "name": "Transforms, Origins & Coordinate Systems",
+      "description": "Control location, rotation, scale, origins, local/global axes, snapping, and dimensional accuracy.",
+      "purpose": "Prevent scale, pivot, export, rigging, and placement errors across Blender and downstream engines.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Object transforms and mesh coordinates are different layers","confidence":"high","content":"An object can be scaled, rotated, or moved while its underlying mesh remains unchanged. Modifiers, parenting, physics, export, and shading can behave differently depending on whether transforms are applied or intentionally preserved."},
+        {"type":"procedure","title":"Transform validation","confidence":"high","content":"Confirm scene units; inspect dimensions and transform values; set or move origin intentionally; choose local, global, normal, or custom orientation; use snapping for exact placement; apply transforms only when the downstream operation benefits from baked values."},
+        {"type":"failure-mode","title":"Transform failures","confidence":"high","content":"Avoid negative or nonuniform scale without checking consequences, arbitrary origins on modular assets, applying transforms blindly to rigs or animated objects, and exporting assets before unit and axis conventions are verified."}
+      ],
+      "drills": [{"key":"modular-building-transforms","title":"Prepare modular building pieces","difficulty":"guided","prompt":"Prepare wall, door, trim, and corner modules for repeated placement and engine export. Define unit scale, origins, dimensions, snapping, and transform policy.","rubric":["Units are explicit","Origins support placement","Dimensions are consistent","Transform application is justified","Export axes considered"]}]
+    },
+    {
+      "key": "modeling-topology",
+      "name": "Blender Modeling & Topology",
+      "description": "Use mesh modeling tools and topology decisions appropriate to static, deforming, hard-surface, and environment assets.",
+      "purpose": "Create geometry that edits cleanly, shades correctly, and serves its production role.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Model from blockout to production mesh","confidence":"high","content":"Start from reference and known scale; block silhouette and proportions; choose primitive, extrusion, inset, loop, bevel, knife, or boolean workflows as appropriate; refine topology around deformation and shading needs; inspect normals, nonmanifold areas, and duplicate geometry before detail polish."},
+        {"type":"heuristic","title":"Topology should solve a production problem","confidence":"high","content":"Use edge flow for deformation, support edges for controlled shading, and lower density for static background assets. Clean topology is not an aesthetic goal by itself; it should improve editability, deformation, shading, or runtime cost."},
+        {"type":"failure-mode","title":"Modeling failures","confidence":"high","content":"Avoid adding subdivision before proportions work, keeping accidental internal faces, using booleans without cleanup where shading matters, creating needless density, and ignoring face orientation or normal artifacts."}
+      ],
+      "drills": [{"key":"street-prop-blender","title":"Build a production-ready street prop","difficulty":"guided","prompt":"Plan a Blender workflow for a reference-based street prop from blockout through topology, normals, and export readiness.","rubric":["Reference and scale defined","Silhouette prioritized","Topology fits use","Normals checked","Export readiness included"]}]
+    },
+    {
+      "key": "modifiers-procedural-modeling",
+      "name": "Modifiers & Non-Destructive Modeling",
+      "description": "Use modifier stacks and procedural construction to preserve editability and create reusable assets.",
+      "purpose": "Build flexible geometry systems that can be revised without rebuilding from scratch.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Modifier order changes the result","confidence":"high","content":"Mirror, Array, Boolean, Bevel, Solidify, Subdivision, Shrinkwrap, Weighted Normal, and other modifiers operate in sequence. The stack should reflect the intended construction logic rather than accumulate fixes randomly."},
+        {"type":"procedure","title":"Design a modifier stack","confidence":"high","content":"Define the repeated or editable behavior first; set clean base geometry; add modifiers in a deliberate dependency order; expose dimensions through object transforms or parameters; test edge cases; apply only when downstream requirements demand frozen geometry."},
+        {"type":"failure-mode","title":"Modifier-stack failures","confidence":"high","content":"Avoid applying modifiers just to make the viewport look simpler, stacking compensating fixes with unclear dependencies, booleans on unstable geometry, and arrays whose offsets depend on accidental scale values."}
+      ],
+      "drills": [{"key":"procedural-facade","title":"Build a reusable facade system","difficulty":"guided","prompt":"Design a non-destructive Blender facade with repeating windows, floor height control, thickness, and adjustable width.","rubric":["Modifier order explained","Parameters stay editable","Scale behavior is predictable","Repetition is reusable","Apply/freeze point is defined"]}]
+    },
+    {
+      "key": "uv-materials-texturing",
+      "name": "UVs, Materials & Texturing in Blender",
+      "description": "Prepare UVs, image textures, shader nodes, color spaces, and reusable material systems.",
+      "purpose": "Create surfaces that remain consistent from Blender through rendering or engine export.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"UV and material workflow","confidence":"high","content":"Apply scale when appropriate; mark logical seams; unwrap and inspect distortion; normalize intentional texel density; pack with padding; build shader nodes from physical surface roles; connect texture channels with correct color-space assumptions; test under neutral lighting before artistic lighting."},
+        {"type":"concept","title":"Shader data has different meanings","confidence":"high","content":"Color textures, roughness, metallic, normal, height, opacity, and masks should not all be treated as display color. Data textures require correct interpretation so values are not unintentionally transformed."},
+        {"type":"failure-mode","title":"Texturing failures","confidence":"high","content":"Avoid painting before checker-testing UVs, inconsistent texel density without reason, unnecessary unique materials, incorrect normal-map handling, and using lighting errors as excuses to distort base material values."}
+      ],
+      "drills": [{"key":"urban-material-kit","title":"Build an urban material kit","difficulty":"guided","prompt":"Plan UV and shader setup for brick, concrete, painted metal, glass, and signage across a modular neighborhood asset set.","rubric":["UV reuse considered","Texel density controlled","Color/data textures separated","Materials are parameterized","Engine/render transfer considered"]}]
+    },
+    {
+      "key": "rigging-animation",
+      "name": "Rigging & Animation in Blender",
+      "description": "Create armatures, constraints, weights, actions, keyframes, graph edits, and exportable animation.",
+      "purpose": "Produce controllable motion with stable deformation and clear downstream conventions.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Rigging and animation workflow","confidence":"high","content":"Confirm scale and rest pose; build or validate bone hierarchy; establish control versus deform roles; parent and weight carefully; test extremes; block key poses; refine timing in Dope Sheet and curves in Graph Editor; manage actions and root behavior before export."},
+        {"type":"heuristic","title":"Solve deformation before polishing motion","confidence":"high","content":"If weights, constraints, bone axes, or root behavior are unstable, animation polish will hide rather than solve the problem. Validate the rig under exaggerated poses early."},
+        {"type":"failure-mode","title":"Rigging and animation failures","confidence":"high","content":"Avoid uncontrolled scale in armatures, unclear constraint spaces, duplicate action ownership, foot sliding from inconsistent root motion, and exporting every helper bone when the target engine only needs deform bones."}
+      ],
+      "drills": [{"key":"engine-ready-character-animation","title":"Prepare an engine-ready animation","difficulty":"guided","prompt":"Plan a Blender workflow for a short character interaction animation including rig validation, blocking, curve polish, root behavior, and export.","rubric":["Rig validated first","Key poses readable","Root behavior explicit","Actions managed","Export skeleton policy defined"]}]
+    },
+    {
+      "key": "lighting-rendering",
+      "name": "Blender Lighting & Rendering",
+      "description": "Control cameras, lights, world environment, exposure, render engines, sampling, passes, and output settings.",
+      "purpose": "Produce predictable previews and final renders while understanding quality and performance tradeoffs.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Render settings are part of the scene contract","confidence":"high","content":"Camera, frame range, resolution, color management, light transport, sampling, denoising, transparency, passes, and output format determine whether a render is usable beyond the viewport."},
+        {"type":"procedure","title":"Render setup workflow","confidence":"high","content":"Define target output; choose render engine based on quality and speed needs; set camera and framing; establish broad lighting and exposure; configure color management; test low-cost samples; inspect noise and bottlenecks; then raise quality only where needed and verify output paths."},
+        {"type":"failure-mode","title":"Rendering failures","confidence":"high","content":"Avoid final rendering before checking output path and frame range, compensating for bad exposure with extreme material values, increasing samples before finding the noise source, and assuming viewport preview exactly matches final output."}
+      ],
+      "drills": [{"key":"product-render","title":"Set up a repeatable product render","difficulty":"guided","prompt":"Create a Blender render plan for a product asset with neutral lighting, branded hero lighting, transparent-background output, and repeatable camera framing.","rubric":["Output target defined","Exposure/color management considered","Lighting stages separated","Quality budget intentional","Output verification included"]}]
+    },
+    {
+      "key": "geometry-nodes-python-automation",
+      "name": "Geometry Nodes & Blender Python Automation",
+      "description": "Use node-based procedural geometry and Blender Python to automate repeatable scene and asset operations.",
+      "purpose": "Scale repetitive production while keeping procedural systems understandable and controllable.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Procedural systems need explicit inputs and outputs","confidence":"high","content":"Geometry Nodes and Python automation are most reusable when inputs, assumptions, data ownership, side effects, and outputs are clearly defined instead of hidden inside a one-off graph or script."},
+        {"type":"procedure","title":"Automation build loop","confidence":"high","content":"Identify the repeated manual operation; define accepted inputs and expected output; prototype on copies; expose user-facing parameters; add validation and naming rules; make reruns safe where possible; test on multiple assets; document version-sensitive API dependencies."},
+        {"type":"failure-mode","title":"Automation failures","confidence":"high","content":"Avoid scripts that destructively overwrite source scenes, Geometry Nodes graphs with unexplained hard-coded values, automation that depends on active selection without validation, and batch operations without logging or rollback copies."}
+      ],
+      "drills": [{"key":"batch-export-automation","title":"Automate batch asset preparation","difficulty":"guided","prompt":"Design a Blender automation that validates names/transforms, creates export copies, and batch-exports selected assets without modifying the source geometry destructively.","rubric":["Inputs validated","Source assets protected","Naming deterministic","Rerun behavior considered","Version/API dependencies documented"]}]
+    }
+  ]
+}
