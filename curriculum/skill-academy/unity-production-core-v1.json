@@ -1,0 +1,118 @@
+{
+  "packKey": "unity-production-core-v1",
+  "title": "Unity Production Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/unity-production/core-v1",
+  "domain": {
+    "key": "unity-production",
+    "name": "Unity Production",
+    "description": "Program-specific Unity operation covering editor workflow, assets, prefabs, scenes, C# scripting, physics, animation, UI, input, rendering, profiling, and builds. Version-sensitive package and UI details should be verified against current documentation when needed.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "editor-project-assets",
+      "name": "Unity Editor, Projects & Assets",
+      "description": "Navigate the Unity Editor, project structure, assets, packages, import settings, and serialized project data.",
+      "purpose": "Keep Unity projects understandable, portable, and resistant to accidental asset or configuration breakage.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Unity projects are asset databases plus serialized scene data","confidence":"high","content":"Assets, meta files, package configuration, project settings, scenes, and serialized object references work together. Moving or renaming files outside Unity without understanding metadata can break references even when the files still exist."},
+        {"type":"procedure","title":"Project setup workflow","confidence":"high","content":"Confirm editor/version expectations; establish folders for source, runtime, art, audio, scripts, scenes, prefabs, and third-party content; review package dependencies; inspect import settings for large assets; commit project and package settings alongside source assets."},
+        {"type":"failure-mode","title":"Project organization failures","confidence":"high","content":"Avoid deleting meta files, mixing generated build output into source folders, importing huge assets with default settings blindly, letting third-party content scatter across the project, and changing project-wide settings without recording why."}
+      ],
+      "drills": [{"key":"unity-project-cleanup","title":"Clean up a growing Unity project","difficulty":"guided","prompt":"A Unity project contains duplicated assets, scattered scripts, several packages, and unclear scene ownership. Design a safe cleanup plan.","rubric":["Preserves references","Defines folder roles","Reviews packages","Includes version control","Avoids destructive mass moves"]}]
+    },
+    {
+      "key": "gameobjects-components-prefabs",
+      "name": "GameObjects, Components & Prefabs",
+      "description": "Use Unity's composition model, transforms, hierarchy, prefab instances, variants, and reusable component structures.",
+      "purpose": "Build reusable runtime objects without fragile copy-paste scene construction.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Unity behavior is composed from components","confidence":"high","content":"A GameObject is a container for Transform and additional components. Reusable systems become easier to reason about when data and behavior are composed deliberately rather than concentrated in giant scripts."},
+        {"type":"procedure","title":"Prefab construction workflow","confidence":"high","content":"Define the object's responsibility; establish hierarchy and pivot; add only required components; expose configurable values; create prefab; test overrides; use variants for intentional specialization; keep scene-specific references out of generic prefabs when possible."},
+        {"type":"failure-mode","title":"Prefab failures","confidence":"high","content":"Avoid deep hierarchies with hidden dependencies, prefab overrides that accumulate accidentally, scripts that search the whole scene for required references, and duplicating objects instead of fixing the reusable prefab."}
+      ],
+      "drills": [{"key":"modular-interactive-prefab","title":"Build a modular interactive prefab","difficulty":"guided","prompt":"Design a reusable door or prop prefab with visuals, collider, interaction behavior, configurable audio, and clean scene integration.","rubric":["Responsibilities separated","Prefab reusable","Overrides intentional","References explicit","Hierarchy remains understandable"]}]
+    },
+    {
+      "key": "scenes-addressables-data",
+      "name": "Scenes, Asset Loading & Data Flow",
+      "description": "Organize scene boundaries, persistent systems, data assets, loading strategy, and runtime content references.",
+      "purpose": "Scale projects beyond one scene without hidden state and memory problems.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Scene boundaries are architectural decisions","confidence":"high","content":"Scenes can represent levels, zones, menus, lighting sets, or additive content. Persistent managers and runtime data should have explicit ownership so scene changes do not create duplicate systems or stale references."},
+        {"type":"procedure","title":"Scene and loading plan","confidence":"high","content":"Define persistent versus scene-local systems; identify additive or single-scene transitions; establish spawn and restore rules; choose direct references or managed runtime loading based on scale; test unload behavior and memory after repeated transitions."},
+        {"type":"failure-mode","title":"Scene/data failures","confidence":"high","content":"Avoid persistent singleton duplication, hard-coded scene names spread across scripts, loading large content synchronously without testing, using scene objects as long-term data stores, and assuming unloading a scene automatically frees every referenced asset."}
+      ],
+      "drills": [{"key":"multi-scene-world","title":"Plan a multi-scene project","difficulty":"guided","prompt":"Design scene ownership and loading for a lobby, gameplay environment, UI shell, and persistent player profile.","rubric":["Persistent ownership explicit","Transitions defined","References manageable","Memory/unload considered","Failure/recovery paths included"]}]
+    },
+    {
+      "key": "csharp-scripting-architecture",
+      "name": "Unity C# Scripting & Architecture",
+      "description": "Write Unity C# components, events, data containers, state logic, and maintainable runtime systems.",
+      "purpose": "Create behavior that is testable, debuggable, and less coupled to scene accidents.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Build a Unity behavior","confidence":"high","content":"Define responsibility and state; choose component, plain C# object, or data asset appropriately; serialize only configuration that needs editor access; cache required references; use explicit events/messages for cross-system communication; test lifecycle assumptions under enable, disable, reload, and scene change."},
+        {"type":"heuristic","title":"Prefer explicit dependencies over scene-wide searching","confidence":"high","content":"Inspector references, constructor-style setup in plain objects, and controlled service access are easier to debug than repeated Find-style discovery and hidden global state."},
+        {"type":"failure-mode","title":"Scripting failures","confidence":"high","content":"Avoid doing expensive work every frame by default, putting unrelated systems in one MonoBehaviour, relying on script execution order without documenting it, and changing serialized field names or types without considering existing scene and prefab data."}
+      ],
+      "drills": [{"key":"interaction-system","title":"Design a reusable interaction system","difficulty":"guided","prompt":"Plan a Unity C# interaction architecture that supports doors, pickups, seats, and prompts without one giant type-switch script.","rubric":["Responsibilities separated","Dependencies explicit","Events/interfaces considered","Per-frame work controlled","Serialization risks considered"]}]
+    },
+    {
+      "key": "physics-animation",
+      "name": "Physics & Animation in Unity",
+      "description": "Configure colliders, rigidbodies, physics timing, Animator state, clips, root motion, and runtime animation control.",
+      "purpose": "Produce stable interactions and character/object motion that behaves correctly at runtime.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Visual motion and physical motion are different systems","confidence":"high","content":"Transform animation, Animator root motion, Rigidbody simulation, CharacterController-style movement, and scripted motion can conflict when more than one system believes it owns position or rotation."},
+        {"type":"procedure","title":"Runtime motion setup","confidence":"high","content":"Decide who owns movement; configure collider shapes and layers; set Rigidbody mode and constraints if used; separate physics-timestep logic from frame rendering; validate Animator transitions and parameters; test collision at expected speeds and frame rates."},
+        {"type":"failure-mode","title":"Physics/animation failures","confidence":"high","content":"Avoid moving dynamic rigidbodies by arbitrary transform writes, using mesh colliders where simpler shapes suffice, transition webs with overlapping conditions, and combining root motion with another movement owner without a clear policy."}
+      ],
+      "drills": [{"key":"animated-physical-door","title":"Integrate animation and collision","difficulty":"guided","prompt":"Design a Unity door that animates, blocks players correctly, cannot be double-triggered, and remains stable under runtime interaction.","rubric":["Movement owner defined","Collider behavior correct","State prevents conflicts","Animation transitions clear","Runtime edge cases considered"]}]
+    },
+    {
+      "key": "ui-input",
+      "name": "Unity UI & Input",
+      "description": "Build responsive user interfaces, event-driven controls, navigation, and player input mappings.",
+      "purpose": "Create understandable interaction across keyboard, gamepad, touch, or other configured devices.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"UI and input workflow","confidence":"high","content":"Define user actions before bindings; map actions to gameplay intent; separate input reading from gameplay response; build UI with clear layout and state; support focus/navigation and disabled/loading states; test common resolutions and input methods."},
+        {"type":"heuristic","title":"Bind intent, not hardware, into gameplay logic","confidence":"high","content":"Gameplay systems should react to actions such as Interact, Submit, Move, or Cancel rather than knowing which key or controller button produced them."},
+        {"type":"failure-mode","title":"UI/input failures","confidence":"high","content":"Avoid hard-coding keys throughout gameplay scripts, UI elements that only work by mouse, input active during modal screens without intent, and layouts that depend on one resolution or aspect ratio."}
+      ],
+      "drills": [{"key":"cross-device-menu","title":"Build a cross-device menu flow","difficulty":"guided","prompt":"Plan a menu usable by mouse, keyboard, and controller with clear focus, back behavior, remapping considerations, and responsive layout.","rubric":["Actions abstracted from hardware","Focus navigation defined","Back/cancel behavior clear","Responsive layout considered","Modal input conflicts prevented"]}]
+    },
+    {
+      "key": "rendering-lighting-shaders",
+      "name": "Unity Rendering, Lighting & Shaders",
+      "description": "Work with render pipelines, materials, lighting, cameras, post effects, shader cost, and scene visual consistency.",
+      "purpose": "Achieve target visual quality while respecting platform performance constraints.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Render-pipeline choice affects the whole content contract","confidence":"high","content":"Materials, shader features, lighting workflows, post processing, compatibility, and performance differ across pipelines and target platforms. Pipeline choice should be intentional and recorded early."},
+        {"type":"procedure","title":"Scene look-development workflow","confidence":"high","content":"Confirm target pipeline and hardware; establish exposure and primary lighting; validate imported material channels; use shared materials and instances where possible; add post effects after base lighting works; profile expensive shaders, shadows, transparencies, and lights."},
+        {"type":"failure-mode","title":"Rendering failures","confidence":"high","content":"Avoid mixing incompatible shaders and pipelines, solving lighting with excessive realtime lights, stacking post effects before exposure is stable, and assuming editor Scene view represents final camera cost or appearance."}
+      ],
+      "drills": [{"key":"urban-night-unity","title":"Light and profile an urban night scene","difficulty":"guided","prompt":"Plan Unity lighting for a nighttime urban block with practical lights, readable navigation, reflections, and a defined performance target.","rubric":["Pipeline identified","Exposure hierarchy clear","Realtime costs considered","Materials validated","Profiling included"]}]
+    },
+    {
+      "key": "profiling-build-deployment",
+      "name": "Unity Profiling, Builds & Deployment",
+      "description": "Profile CPU/GPU/memory behavior, configure builds, test target platforms, and diagnose runtime-only failures.",
+      "purpose": "Turn an editor-working project into a stable deliverable on actual target hardware.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Build validation loop","confidence":"high","content":"Define target platform and quality budget; create a development build; test representative content outside the editor; use profiling data to locate CPU, GPU, memory, loading, or GC pressure; fix measured bottlenecks; verify player settings, scenes, dependencies, and output artifacts before release."},
+        {"type":"heuristic","title":"Profile builds, not only the editor","confidence":"high","content":"Editor overhead and tooling can distort timing and memory. Representative device or standalone builds provide stronger evidence for runtime decisions."},
+        {"type":"failure-mode","title":"Build failures","confidence":"high","content":"Avoid optimizing from frame rate alone, shipping with missing scenes or platform-specific permissions, relying on editor-only paths, and changing many performance variables at once without before/after measurements."}
+      ],
+      "drills": [{"key":"missed-frame-budget","title":"Diagnose a Unity performance miss","difficulty":"guided","prompt":"A Unity scene meets target in an empty area but drops badly on a dense street. Build a profiling and optimization plan before changing assets blindly.","rubric":["Target platform stated","Profiler categories used","Bottleneck measured first","One-variable comparison planned","Build validation required"]}]
+    }
+  ]
+}
