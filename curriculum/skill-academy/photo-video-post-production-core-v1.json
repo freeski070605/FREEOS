@@ -1,0 +1,164 @@
+{
+  "packKey": "photo-video-post-production-core-v1",
+  "title": "Photo & Video Post-Production Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/photo-video/post-production-core-v1",
+  "domain": {
+    "key": "photo-video",
+    "name": "Photo & Video Production",
+    "description": "Practical post-production knowledge for still-photo selection, Lightroom/Camera Raw, Photoshop, retouching, compositing, audio post, multicam, motion graphics, and delivery.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "photo-culling",
+      "name": "Photo Culling & Selection",
+      "description": "Select the strongest images efficiently while preserving story, variety, technical quality, and client priorities.",
+      "purpose": "Reduce large shoots to a coherent, high-value final set without wasting edit time on weak frames.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Three-pass culling workflow","confidence":"high","content":"Pass 1 removes obvious technical failures, accidental frames, duplicates, and closed-eye misses. Pass 2 compares near-duplicates for expression, timing, gesture, focus, and composition. Pass 3 checks the whole gallery for story coverage, people coverage, variety, transitions, and client must-haves before editing begins."},
+        {"type":"heuristic","title":"Select for the set, not only the single frame","confidence":"high","content":"The strongest isolated image is not always the best gallery choice. Favor a final set with useful variety in shot size, expression, moments, people, and sequence while protecting genuinely exceptional frames."},
+        {"type":"failure-mode","title":"Culling failures","confidence":"high","content":"Avoid editing every usable frame, keeping five nearly identical images, deleting all imperfect-but-emotionally-important moments, overvaluing sharpness while ignoring expression, and losing key people or event milestones from the final set."}
+      ],
+      "drills": [
+        {"key":"event-cull-plan","title":"Cull a large event set","difficulty":"guided","prompt":"Design a culling plan for 900 event photos that must become a strong 250-photo gallery. Explain pass criteria, duplicate handling, must-have coverage, and when an imperfect frame should survive.","rubric":["Uses multiple passes","Protects story coverage","Handles duplicates efficiently","Balances technical and emotional quality","Defines final-set review"]}
+      ]
+    },
+    {
+      "key": "lightroom-camera-raw",
+      "name": "Lightroom & Camera Raw Workflow",
+      "description": "Develop RAW still images efficiently with exposure, white balance, tone, color, masking, synchronization, and non-destructive organization.",
+      "purpose": "Create consistent batches quickly while preserving RAW flexibility and edit traceability.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"RAW development order","confidence":"high","content":"Confirm profile and lens corrections; set white balance; establish exposure and tonal range; shape contrast; control highlights and shadows; set color and skin carefully; apply local masks where needed; manage noise and sharpening; then synchronize only settings that are truly shared across similar frames."},
+        {"type":"heuristic","title":"Sync conditions, not assumptions","confidence":"high","content":"Batch syncing is powerful when lighting, camera, and scene are stable. Break synchronization when angle, flash distance, mixed light, skin exposure, or background brightness changes materially."},
+        {"type":"failure-mode","title":"RAW workflow failures","confidence":"high","content":"Avoid copying one white balance across mixed-light scenes, using global exposure to solve local face problems, over-recovering highlights until images look flat, sharpening noisy shadows aggressively, and exporting before checking crop and masks at full resolution."}
+      ],
+      "drills": [
+        {"key":"reception-batch","title":"Batch a mixed reception","difficulty":"guided","prompt":"Plan a Lightroom or Camera Raw workflow for 120 reception photos across flash-lit tables, dance-floor LEDs, and ambient portraits. Explain where synchronization should split.","rubric":["Uses non-destructive order","Groups by lighting condition","Protects skin","Uses local masks selectively","Defines QC before export"]}
+      ]
+    },
+    {
+      "key": "photoshop-retouching",
+      "name": "Photoshop Retouching",
+      "description": "Perform controlled pixel-level cleanup, repair, reshaping, object removal, and finishing without making images look artificial.",
+      "purpose": "Solve problems that RAW development cannot while protecting texture, anatomy, and visual credibility.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Retouching layer strategy","confidence":"high","content":"Work non-destructively with duplicated or empty layers where possible. Separate cleanup, tonal work, color work, and sharpening. Zoom out frequently to judge realism, and keep the original available for comparison."},
+        {"type":"heuristic","title":"Remove distractions before changing people","confidence":"high","content":"Fix sensor spots, background clutter, temporary blemishes, lint, and stray objects before reshaping faces or bodies. Preserve permanent features unless the job specifically calls for a different treatment."},
+        {"type":"failure-mode","title":"Retouching failures","confidence":"high","content":"Avoid plastic skin, repeated clone patterns, bent architecture from careless transforms, haloed object removal, distorted hands or limbs, over-white teeth and eyes, and destructive edits with no path back."}
+      ],
+      "drills": [
+        {"key":"portrait-cleanup","title":"Plan a natural portrait retouch","difficulty":"guided","prompt":"Describe a layer-by-layer Photoshop retouch for a close portrait with lint, temporary blemishes, flyaway hairs, uneven background tone, and mild under-eye darkness.","rubric":["Preserves skin texture","Uses non-destructive structure","Separates cleanup and tonal work","Avoids identity-changing edits","Includes zoomed-out realism check"]}
+      ]
+    },
+    {
+      "key": "skin-retouching",
+      "name": "Natural Skin Retouching",
+      "description": "Balance temporary blemish cleanup, texture preservation, tone, color, and flattering light without erasing real skin.",
+      "purpose": "Deliver polished portraits that still look like the person photographed.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Texture, tone, and color are different problems","confidence":"high","content":"Skin texture, luminosity variation, and color variation should be evaluated separately. Blurring texture to fix tonal unevenness creates artificial skin; global saturation changes rarely solve localized redness or cast issues cleanly."},
+        {"type":"procedure","title":"Natural skin workflow","confidence":"high","content":"Remove temporary distractions conservatively; correct local color casts; smooth only distracting tonal transitions using dodge/burn or restrained frequency separation; preserve pores and natural detail; then review at normal viewing size before sharpening."},
+        {"type":"failure-mode","title":"Skin-retouching failures","confidence":"high","content":"Avoid blurring the whole face, flattening all facial shape, whitening skin, removing permanent marks without direction, making eyes unnaturally bright, and judging only at 200 percent zoom."}
+      ],
+      "drills": [
+        {"key":"skin-balance","title":"Retouch without plastic skin","difficulty":"guided","prompt":"Explain how you would retouch uneven cheek tone and temporary blemishes while preserving pores, face shape, and natural complexion.","rubric":["Separates tone from texture","Preserves complexion","Uses local corrections","Avoids global blur","Checks at normal viewing size"]}
+      ]
+    },
+    {
+      "key": "masking-compositing",
+      "name": "Masking & Compositing",
+      "description": "Combine image elements convincingly using accurate masks, matched perspective, light, color, edge quality, and depth cues.",
+      "purpose": "Create believable composites and repairs that survive normal viewing and delivery resolution.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Composite matching workflow","confidence":"high","content":"Match perspective and scale first; refine subject mask and hair edges; match exposure and white balance; match contrast, saturation, and black level; reproduce light direction and softness; add contact shadow and environmental color spill; then match grain, sharpness, and depth-of-field."},
+        {"type":"heuristic","title":"Edges reveal the fake first","confidence":"high","content":"Before adding cinematic effects, inspect hair, hands, translucent fabric, reflected light, contact points, and hard-to-soft edge transitions. Small edge errors break realism faster than many global color differences."},
+        {"type":"failure-mode","title":"Composite failures","confidence":"high","content":"Avoid perfect cutout edges in soft-focus scenes, mismatched shadow direction, different noise structure, wrong focal-plane sharpness, missing contact shadows, impossible perspective, and color spill that does not match the environment."}
+      ],
+      "drills": [
+        {"key":"background-replacement","title":"Replace a portrait background","difficulty":"guided","prompt":"Plan a believable background replacement for a full-body portrait with loose hair and floor contact. Include mask, perspective, light, shadow, color spill, and grain matching.","rubric":["Handles edge complexity","Matches perspective","Creates believable contact shadow","Matches light/color","Matches sharpness and grain"]}
+      ]
+    },
+    {
+      "key": "photo-noise-sharpening",
+      "name": "Photo Noise Reduction & Sharpening",
+      "description": "Balance noise reduction, detail preservation, capture sharpening, creative sharpening, and output sharpening.",
+      "purpose": "Improve clarity without producing waxy texture, halos, crunchy edges, or amplified noise.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Noise reduction and sharpening interact","confidence":"high","content":"Noise reduction removes high-frequency variation while sharpening increases local contrast. Strong sharpening after aggressive denoise can create false texture; sharpening noisy files before denoise can exaggerate artifacts."},
+        {"type":"procedure","title":"Detail finishing workflow","confidence":"high","content":"Assess noise at representative zoom; reduce color noise first where needed; apply restrained luminance reduction; mask sharpening away from smooth areas; sharpen meaningful edges and texture; then apply output sharpening appropriate to final size and medium."},
+        {"type":"failure-mode","title":"Detail-processing failures","confidence":"high","content":"Avoid zero-noise targets, oversharpened eyelashes and pores, halos on contrast edges, sharpening backgrounds that should remain soft, and applying the same settings to high-ISO and low-ISO files."}
+      ],
+      "drills": [
+        {"key":"high-iso-event","title":"Finish a high-ISO event portrait","difficulty":"guided","prompt":"Describe a denoise and sharpening strategy for a high-ISO event portrait where skin texture matters but the background is noisy and out of focus.","rubric":["Protects skin texture","Treats color and luminance noise appropriately","Masks sharpening","Avoids background sharpening","Accounts for final output"]}
+      ]
+    },
+    {
+      "key": "multicam-editing",
+      "name": "Multicam Editing",
+      "description": "Synchronize and cut multi-camera footage while preserving continuity, performance timing, audio quality, and useful coverage.",
+      "purpose": "Turn multiple camera angles into a coherent edit without losing the strongest performance or event moment.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Multicam setup and cut workflow","confidence":"high","content":"Verify frame rates and timebase; synchronize with timecode, waveform, or clear sync points; choose and lock the primary audio source; build the multicam sequence; cut first for content and performance; then smooth visual continuity and remove angle changes that do not add value."},
+        {"type":"heuristic","title":"Audio continuity is the spine","confidence":"high","content":"A multicam edit can survive imperfect visual continuity more easily than broken dialogue or performance timing. Stabilize and protect the primary audio timeline before chasing camera changes."},
+        {"type":"failure-mode","title":"Multicam failures","confidence":"high","content":"Avoid drifting sync, switching angles on every beat, cutting to an angle with worse performance just for variety, mixing mismatched audio sources mid-sentence, and leaving camera color/exposure differences untreated."}
+      ],
+      "drills": [
+        {"key":"ceremony-multicam","title":"Cut a ceremony multicam","difficulty":"guided","prompt":"Plan a multicam workflow for three cameras plus a recorder at a ceremony. Explain sync, primary audio, angle priorities, and how you would handle a camera that briefly stops recording.","rubric":["Defines sync method","Protects primary audio","Uses angles with purpose","Handles missing coverage","Includes color matching"]}
+      ]
+    },
+    {
+      "key": "audio-post",
+      "name": "Audio Post-Production",
+      "description": "Edit dialogue, music, ambience, noise, dynamics, and loudness for clean, intelligible finished video.",
+      "purpose": "Make audio feel controlled, consistent, and intentional across speakers, scenes, and delivery platforms.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Dialogue-first mix workflow","confidence":"high","content":"Organize tracks; repair obvious clicks and gaps; reduce noise conservatively; shape dialogue with EQ; control peaks with compression or automation; build ambience and music around intelligibility; use meters for peak and loudness checks; then listen on headphones and ordinary speakers."},
+        {"type":"heuristic","title":"Fix with editing before heavy processing","confidence":"high","content":"Clip gain, fades, room tone, alternate takes, and selective repair often sound more natural than aggressive broadband denoise or extreme compression applied to the entire track."},
+        {"type":"failure-mode","title":"Audio-post failures","confidence":"high","content":"Avoid pumping denoise, clipped exports, inconsistent speaker level, music masking dialogue, hard cuts in room tone, excessive low-end rumble, and loudness decisions made on one playback device only."}
+      ],
+      "drills": [
+        {"key":"interview-mix","title":"Clean an interview mix","difficulty":"guided","prompt":"Plan an audio-post chain for an interview with HVAC rumble, occasional clothing noise, uneven speaking level, and background music.","rubric":["Uses editing before heavy processing","Protects intelligibility","Uses sensible EQ/dynamics","Controls music","Includes loudness and playback checks"]}
+      ]
+    },
+    {
+      "key": "motion-graphics-titles",
+      "name": "Motion Graphics & Titles",
+      "description": "Create readable, branded, well-timed lower thirds, titles, callouts, and simple motion systems.",
+      "purpose": "Add information and brand polish without distracting from the content.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Title-system workflow","confidence":"high","content":"Define hierarchy and safe margins; select a small type system; build reusable alignment rules; animate with clear entrance, hold, and exit timing; check readability over moving footage; test at actual delivery size; then package reusable templates where possible."},
+        {"type":"heuristic","title":"Motion should explain hierarchy","confidence":"high","content":"Use animation to guide attention or reveal information order. Movement that does not support hierarchy, brand, rhythm, or comprehension is usually decoration and should be reduced."},
+        {"type":"failure-mode","title":"Motion-graphics failures","confidence":"high","content":"Avoid tiny type, excessive easing tricks, every element moving differently, low-contrast text over footage, inconsistent padding, long animations that slow the edit, and brand systems that change from title to title."}
+      ],
+      "drills": [
+        {"key":"lower-third-system","title":"Design a lower-third system","difficulty":"guided","prompt":"Design a reusable lower-third system for interviews that includes name, role, long-name handling, safe margins, animation timing, and readability over varied footage.","rubric":["Clear hierarchy","Handles variable text","Readable over footage","Motion supports hierarchy","Reusable system"]}
+      ]
+    },
+    {
+      "key": "export-delivery-codecs",
+      "name": "Export, Codecs & Delivery",
+      "description": "Choose mezzanine, delivery, archival, and platform export settings based on quality, editability, file size, color, and playback requirements.",
+      "purpose": "Deliver files that look correct, play reliably, and remain useful for future revisions.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Codec choice follows the job","confidence":"high","content":"Editing intermediates prioritize quality and decode performance; delivery codecs prioritize size and compatibility; archival masters prioritize recoverable quality and future use. One export format should not automatically serve every purpose."},
+        {"type":"procedure","title":"Delivery QC workflow","confidence":"high","content":"Confirm resolution, frame rate, color space, audio channels, duration, filename/version, and target codec; export; watch beginning, middle, and end plus high-motion and dark scenes; check audio; inspect captions if present; verify file playback outside the editor; then preserve a high-quality master when warranted."},
+        {"type":"failure-mode","title":"Export failures","confidence":"high","content":"Avoid wrong frame rate, accidental variable scaling, clipped audio, crushed levels from color-range mistakes, duplicate generation loss from repeated transcodes, ambiguous filenames, and delivering only the compressed social copy with no master."}
+      ],
+      "drills": [
+        {"key":"delivery-matrix","title":"Build a delivery matrix","difficulty":"guided","prompt":"Create an export plan for a 4K event film that needs a high-quality master, YouTube upload, vertical social clips, and future revision capability.","rubric":["Separates master and delivery codecs","Maintains frame-rate intent","Accounts for social formats","Includes QC","Preserves revision path"]}
+      ]
+    }
+  ]
+}
