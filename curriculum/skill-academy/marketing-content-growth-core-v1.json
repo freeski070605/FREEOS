@@ -1,0 +1,118 @@
+{
+  "packKey": "marketing-content-growth-core-v1",
+  "title": "Marketing, Content & Growth Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/marketing-content-growth/core-v1",
+  "domain": {
+    "key": "marketing-content-growth",
+    "name": "Marketing, Content & Growth",
+    "description": "Practical audience strategy, positioning, content systems, campaigns, channel planning, measurement, and growth experiments.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "audience-research",
+      "name": "Audience Research",
+      "description": "Understand who the offer is for, what they care about, and how they describe the problem.",
+      "purpose": "Ground marketing decisions in customer reality instead of assumptions.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Audience research starts with behavior","confidence":"high","content":"Useful audience research looks for actual problems, triggers, alternatives, objections, language, and buying context rather than only demographic labels."},
+        {"type":"procedure","title":"Build an audience insight brief","confidence":"high","content":"Collect customer conversations, support questions, reviews, search language, sales notes, and observed behavior; cluster recurring needs; separate evidence from assumptions; then summarize jobs, pains, desired outcomes, objections, and proof requirements."},
+        {"type":"failure-mode","title":"Audience research failures","confidence":"high","content":"Avoid inventing personas from stereotypes, treating one loud customer as the market, confusing stated preference with behavior, and collecting data without connecting it to a decision."}
+      ],
+      "drills": [{"key":"service-audience-brief","title":"Build a service audience brief","difficulty":"guided","prompt":"Create an audience insight brief for a local creative service using customer questions, buying triggers, objections, desired outcomes, and evidence gaps.","rubric":["Uses behavioral evidence","Separates facts from assumptions","Identifies buying triggers","Captures customer language","Ends with decision-useful insights"]}]
+    },
+    {
+      "key": "positioning-messaging",
+      "name": "Positioning & Messaging",
+      "description": "Clarify who the offer serves, why it matters, and why it is meaningfully different.",
+      "purpose": "Make the market understand the value quickly and accurately.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Positioning is a choice about relevance","confidence":"high","content":"Strong positioning connects a specific audience, problem, promise, proof, and alternative. It is not a list of every capability."},
+        {"type":"procedure","title":"Positioning statement workflow","confidence":"high","content":"Define target user, urgent problem, current alternative, desired outcome, differentiator, and proof; write a plain-language statement; test whether a new viewer can explain what the offer is and why it matters."},
+        {"type":"failure-mode","title":"Positioning failures","confidence":"high","content":"Avoid generic claims like high quality or innovative, trying to appeal equally to everyone, leading with internal features instead of outcomes, and claiming differentiation without proof."}
+      ],
+      "drills": [{"key":"reposition-service","title":"Reposition a crowded service","difficulty":"guided","prompt":"A local media service sounds identical to competitors. Rewrite the positioning around a specific customer, urgent outcome, differentiated process, and credible proof.","rubric":["Audience is specific","Problem is concrete","Difference is meaningful","Proof is credible","Message is easy to repeat"]}]
+    },
+    {
+      "key": "content-strategy",
+      "name": "Content Strategy",
+      "description": "Build a repeatable system of content that serves audience needs and business goals.",
+      "purpose": "Move from random posting to intentional content with measurable roles.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Every content piece needs a job","confidence":"high","content":"Content can attract, educate, prove, convert, onboard, retain, or reactivate. A useful system balances these roles instead of asking every post to do everything."},
+        {"type":"procedure","title":"Content pillar planning","confidence":"high","content":"Define audience problems and business goals; create a small set of content pillars; map formats and channels; assign each idea a funnel role; establish production cadence; then review performance by objective rather than vanity metrics alone."},
+        {"type":"failure-mode","title":"Content strategy failures","confidence":"high","content":"Avoid trend chasing with no brand fit, posting without a conversion path, repeating one format until fatigue, and judging educational content only by immediate sales."}
+      ],
+      "drills": [{"key":"30-day-content-system","title":"Build a 30-day content system","difficulty":"guided","prompt":"Design a 30-day content plan for a service brand using attraction, education, proof, offer, and retention content across two channels.","rubric":["Content roles are balanced","Pillars map to audience needs","Cadence is realistic","Channels fit the format","Measurement matches objective"]}]
+    },
+    {
+      "key": "copywriting",
+      "name": "Marketing Copywriting",
+      "description": "Write clear persuasive copy that connects customer problems, outcomes, proof, and action.",
+      "purpose": "Increase understanding and response without hype or deception.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Problem-outcome-proof copy flow","confidence":"high","content":"Lead with a relevant problem or desired outcome; show why it matters; present the offer as a path; support claims with proof; address key objections; then state one clear next action."},
+        {"type":"heuristic","title":"Specific beats impressive","confidence":"high","content":"Concrete outcomes, constraints, timelines, and proof usually persuade better than adjectives such as premium, revolutionary, or unmatched."},
+        {"type":"failure-mode","title":"Copy failures","confidence":"high","content":"Avoid vague headlines, multiple competing calls-to-action, unsupported guarantees, jargon, buried pricing/process expectations, and copy that creates curiosity but not understanding."}
+      ],
+      "drills": [{"key":"landing-page-copy","title":"Write a service landing page outline","difficulty":"guided","prompt":"Create a landing-page copy structure for a service with headline, proof, process, objections, offer, and one primary CTA.","rubric":["Value is clear quickly","Proof supports claims","Objections are addressed","CTA is specific","No unsupported hype"]}]
+    },
+    {
+      "key": "social-platform-strategy",
+      "name": "Social Platform Strategy",
+      "description": "Match content, format, cadence, and interaction to the role of each social platform.",
+      "purpose": "Use platforms intentionally instead of cross-posting blindly.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Channels have different jobs","confidence":"high","content":"A platform may be best for discovery, trust, depth, community, direct response, or retention. The same brand can use different content behaviors without changing its core identity."},
+        {"type":"procedure","title":"Platform role map","confidence":"high","content":"Choose the audience and business goal; identify where discovery and trust happen; assign each platform a role; adapt hooks, length, format, and CTA; reuse underlying ideas while respecting native behavior."},
+        {"type":"failure-mode","title":"Platform strategy failures","confidence":"high","content":"Avoid using every platform the same way, copying trends with no audience fit, over-optimizing for reach with no downstream action, and changing brand voice so much that recognition disappears."}
+      ],
+      "drills": [{"key":"two-platform-plan","title":"Design a two-platform content strategy","difficulty":"guided","prompt":"Choose distinct roles for a short-form discovery platform and a long-form trust platform for the same business, including formats, CTA, cadence, and reuse rules.","rubric":["Platform roles differ intentionally","Formats fit behavior","Brand stays consistent","CTA matches stage","Reuse is efficient"]}]
+    },
+    {
+      "key": "campaign-planning",
+      "name": "Campaign Planning",
+      "description": "Plan coordinated marketing activity around an offer, launch, event, or objective.",
+      "purpose": "Align audience, message, channels, assets, timing, and measurement.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Campaign brief","confidence":"high","content":"Define objective, audience, offer, key message, proof, channels, assets, timeline, budget, owner, conversion path, and success metric before production begins."},
+        {"type":"heuristic","title":"One campaign, one dominant objective","confidence":"high","content":"A campaign can produce secondary benefits, but the main objective should determine the CTA, measurement, and creative emphasis."},
+        {"type":"failure-mode","title":"Campaign failures","confidence":"high","content":"Avoid launching before the conversion path is ready, changing the offer mid-campaign without tracking it, measuring only impressions, and producing assets without distribution ownership."}
+      ],
+      "drills": [{"key":"service-launch-campaign","title":"Plan a service launch campaign","difficulty":"guided","prompt":"Build a two-week campaign brief for a new premium service, including audience, message, proof, assets, distribution, CTA, and success criteria.","rubric":["Objective is explicit","Offer and proof align","Timeline is coherent","Distribution has owners","Metric matches objective"]}]
+    },
+    {
+      "key": "marketing-analytics",
+      "name": "Marketing Analytics",
+      "description": "Measure whether marketing activity creates qualified attention, leads, conversions, and profitable outcomes.",
+      "purpose": "Improve decisions using business-relevant evidence instead of vanity metrics.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Metrics belong to a funnel","confidence":"high","content":"Reach, engagement, clicks, leads, sales, retention, and margin answer different questions. A metric is useful only when tied to the stage and decision it represents."},
+        {"type":"procedure","title":"Campaign measurement review","confidence":"high","content":"Record spend and effort; track reach and qualified traffic; measure lead rate, conversion rate, revenue, margin, and retention where available; compare against baseline; then decide what to stop, continue, or test next."},
+        {"type":"failure-mode","title":"Analytics failures","confidence":"high","content":"Avoid celebrating reach when lead quality falls, treating correlation as causation, changing multiple variables at once without noting it, and ignoring creative or channel cost in return calculations."}
+      ],
+      "drills": [{"key":"campaign-diagnosis","title":"Diagnose a weak campaign","difficulty":"guided","prompt":"A campaign has strong views, low clicks, average leads, and weak sales. Identify likely funnel problems and the next measurement or test needed.","rubric":["Separates funnel stages","Does not overclaim causation","Prioritizes the main leak","Uses business metrics","Defines a next test"]}]
+    },
+    {
+      "key": "growth-experiments",
+      "name": "Growth Experiments",
+      "description": "Run bounded tests to improve acquisition, conversion, retention, or monetization.",
+      "purpose": "Learn quickly without confusing random changes with evidence.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Growth experiment design","confidence":"high","content":"State hypothesis, target metric, audience, change, baseline, duration, guardrail metrics, and success threshold before launching; change as few variables as practical; document result and confidence."},
+        {"type":"heuristic","title":"Test the bottleneck, not the easiest thing to change","confidence":"high","content":"Improving a metric that is not limiting the business can create activity without meaningful growth. Find the current constraint first."},
+        {"type":"failure-mode","title":"Experiment failures","confidence":"high","content":"Avoid declaring winners from tiny samples, stopping only when results look favorable, changing the offer and channel simultaneously, and running tests with no decision attached."}
+      ],
+      "drills": [{"key":"growth-test","title":"Design a conversion experiment","difficulty":"guided","prompt":"Design a test for a service booking page with traffic but weak inquiry conversion. Define hypothesis, one primary change, metric, guardrails, duration logic, and decision rule.","rubric":["Hypothesis is falsifiable","Primary variable is isolated","Metric matches bottleneck","Guardrails included","Decision rule is explicit"]}]
+    }
+  ]
+}
