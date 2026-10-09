@@ -7,10 +7,30 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+$baseUri = $null
+if (-not [uri]::TryCreate($BaseUrl, [System.UriKind]::Absolute, [ref]$baseUri) -or $baseUri.Scheme -notin @("http", "https")) {
+  throw "BaseUrl must be an absolute http/https URL. Received: $BaseUrl. When calling this script through powershell -File, pass multiple pack paths as one semicolon-delimited -PackPath string."
+}
+$BaseUrl = $BaseUrl.TrimEnd('/')
+
+# Windows PowerShell's -File argument binder does not reliably bind an inline @(...)
+# expression to a string[] script parameter. Support both native arrays and a single
+# semicolon-delimited string so batch calls remain copy/paste safe.
+$normalizedPackPaths = @()
+foreach ($rawPath in @($PackPath)) {
+  foreach ($candidate in ([string]$rawPath -split ';')) {
+    $trimmed = $candidate.Trim()
+    if ($trimmed) { $normalizedPackPaths += $trimmed }
+  }
+}
+if ($normalizedPackPaths.Count -eq 0) {
+  throw "At least one teaching-pack path is required."
+}
+
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $packs = @()
 
-foreach ($path in @($PackPath)) {
+foreach ($path in $normalizedPackPaths) {
   $resolved = if ([System.IO.Path]::IsPathRooted($path)) { $path } else { Join-Path $root $path }
   if (-not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
     throw "Teaching pack not found: $resolved"
@@ -50,11 +70,11 @@ $packs |
 $totalCompetencies = ($packs | Measure-Object -Property CompetencyCount -Sum).Sum
 $totalUnits = ($packs | Measure-Object -Property UnitCount -Sum).Sum
 $totalDrills = ($packs | Measure-Object -Property DrillCount -Sum).Sum
-Write-Host "Packs:         $($packs.Count)"
-Write-Host "Competencies:  $totalCompetencies"
+Write-Host "Packs:          $($packs.Count)"
+Write-Host "Competencies:   $totalCompetencies"
 Write-Host "Training units: $totalUnits"
 Write-Host "Drills:         $totalDrills"
-Write-Host "OwnerApproved: $([bool]$OwnerApproved)"
+Write-Host "OwnerApproved:  $([bool]$OwnerApproved)"
 
 if (-not $OwnerApproved) {
   Write-Host "`n=== PREVIEW ONLY ===" -ForegroundColor Yellow
