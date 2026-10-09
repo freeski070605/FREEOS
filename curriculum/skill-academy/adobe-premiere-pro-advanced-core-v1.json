@@ -1,0 +1,118 @@
+{
+  "packKey": "adobe-premiere-pro-advanced-core-v1",
+  "title": "Adobe Premiere Pro Advanced Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/adobe-premiere-pro-advanced/core-v1",
+  "domain": {
+    "key": "adobe-premiere-pro-advanced",
+    "name": "Adobe Premiere Pro Advanced",
+    "description": "Advanced editorial workflows, multicam, audio, graphics, color, relinking, performance, and delivery in Premiere Pro. Exact menu locations and version-specific UI details belong in Current Intelligence.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "project-media-organization",
+      "name": "Project & Media Organization",
+      "description": "Organize complex Premiere projects for speed, handoff, and recovery.",
+      "purpose": "Keep large edits understandable and resilient.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Project organization workflow","confidence":"high","content":"Create a deliberate bin structure, naming convention, sequence hierarchy, scratch/cache plan, and handoff notes before complexity grows."},
+        {"type":"heuristic","title":"Organize around retrieval","confidence":"high","content":"A good project structure minimizes the time needed to answer where an asset came from, which sequence is current, and what is safe to delete or archive."},
+        {"type":"failure-mode","title":"Project organization failures","confidence":"high","content":"Avoid ambiguous sequence names, mixed camera originals and exports, uncontrolled autosave locations, duplicate media with unknown provenance, and destructive cleanup before verification."}
+      ],
+      "drills": [{"key":"project-audit","title":"Audit a messy Premiere project","difficulty":"guided","prompt":"Given a project with duplicate sequences, mixed exports, missing media, and unlabeled versions, propose a cleanup and handoff plan.","rubric":["Current sequence identified","Media provenance preserved","Naming/version rules defined","No destructive cleanup before verification","Handoff notes included"]}]
+    },
+    {
+      "key": "advanced-editing-trim",
+      "name": "Advanced Editing & Trim Control",
+      "description": "Use trim, ripple/roll, replace, nesting, and sequence structure intentionally.",
+      "purpose": "Edit quickly without losing sync or story continuity.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Trims change relationships","confidence":"high","content":"Ripple, roll, slip, and slide edits change different relationships between clip content, neighboring cuts, and timeline duration; choose the operation that matches the intended story change."},
+        {"type":"procedure","title":"Precision trim workflow","confidence":"high","content":"Identify the exact storytelling problem, choose the least disruptive trim type, protect sync and linked audio, review around the edit, then confirm downstream timing and graphics."},
+        {"type":"failure-mode","title":"Trim failures","confidence":"high","content":"Avoid solving timing problems with unnecessary cuts, breaking sync, stacking fixes across nested sequences without tracing dependencies, and trimming before identifying which side of the edit should move."}
+      ],
+      "drills": [{"key":"trim-diagnosis","title":"Choose the correct trim operation","difficulty":"guided","prompt":"For several timeline problems, choose ripple, roll, slip, slide, replace, or no trim and explain the effect.","rubric":["Operation matches intent","Sync impact understood","Duration impact understood","Dependencies considered","Story consequence explained"]}]
+    },
+    {
+      "key": "multicam-sync",
+      "name": "Multicam & Multi-Source Editing",
+      "description": "Build and manage synchronized multicamera edits with reliable source relationships.",
+      "purpose": "Handle events, interviews, and performance coverage efficiently.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Multicam workflow","confidence":"high","content":"Verify camera/audio clocks and metadata where available; choose sync strategy; build or validate the multicam source; label angles; monitor audio source policy; cut for story first and polish angle timing second."},
+        {"type":"heuristic","title":"Audio can be the timeline spine","confidence":"high","content":"When picture sources drift or differ, a stable master audio recording can provide the most reliable editorial reference."},
+        {"type":"failure-mode","title":"Multicam failures","confidence":"high","content":"Avoid committing to bad sync, switching audio unintentionally with picture, ignoring drift on long recordings, and flattening multicam before the edit is truly stable."}
+      ],
+      "drills": [{"key":"multicam-event","title":"Build an event multicam plan","difficulty":"guided","prompt":"Design a multicam setup for three cameras plus external audio across a long event.","rubric":["Sync method defined","Drift considered","Audio policy explicit","Angle labeling planned","Flattening deferred"]}]
+    },
+    {
+      "key": "premiere-audio-mix",
+      "name": "Premiere Audio Mixing & Repair",
+      "description": "Edit dialogue, music, ambience, and effects into a controlled mix inside Premiere.",
+      "purpose": "Produce clear, balanced edits before specialist audio handoff when needed.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Editorial mix workflow","confidence":"high","content":"Set clip gain before heavy processing; clean dialogue conservatively; balance dialogue, music, ambience, and effects; use buses/submix logic where appropriate; automate changes; check peaks and loudness targets for the delivery context."},
+        {"type":"heuristic","title":"Fix source level before processor level","confidence":"high","content":"Normalize the gain structure before stacking compressors and limiters; processors behave better when the signal entering them is sensible."},
+        {"type":"failure-mode","title":"Audio mixing failures","confidence":"high","content":"Avoid solving every level problem with compression, over-noise-reducing speech, letting music mask dialogue, and judging the mix only on one playback system."}
+      ],
+      "drills": [{"key":"mix-commercial","title":"Mix a 60-second commercial","difficulty":"guided","prompt":"Plan dialogue, music, effects, gain staging, and loudness checks for a short ad.","rubric":["Dialogue remains intelligible","Gain staged logically","Music supports not masks","Automation used intentionally","Delivery loudness checked"]}]
+    },
+    {
+      "key": "graphics-mogrt",
+      "name": "Essential Graphics, MOGRT & Template Systems",
+      "description": "Use reusable graphic systems without turning edits into brittle one-off timelines.",
+      "purpose": "Scale titles, lower thirds, captions, and branded graphics consistently.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Templates separate design from instances","confidence":"high","content":"Reusable graphics should expose the few controls editors need while protecting core brand structure."},
+        {"type":"procedure","title":"Graphic template workflow","confidence":"high","content":"Define typography, spacing, motion, color, and editable fields; create or use a reusable template; test long/short content; verify safe areas and accessibility; document variant rules."},
+        {"type":"failure-mode","title":"Template failures","confidence":"high","content":"Avoid hard-coded text spacing, inaccessible contrast, animations tied to one exact duration, and dozens of manually copied title layers with inconsistent styling."}
+      ],
+      "drills": [{"key":"lower-third-system","title":"Design a reusable lower-third system","difficulty":"guided","prompt":"Specify a branded lower-third system with editable fields and edge cases.","rubric":["Brand rules protected","Editable fields minimal","Long-name case handled","Timing rule defined","Accessibility considered"]}]
+    },
+    {
+      "key": "premiere-color-workflow",
+      "name": "Premiere Color Workflow",
+      "description": "Perform editorial color correction and controlled looks while preserving a clean handoff path.",
+      "purpose": "Keep color decisions consistent without confusing correction, creative look, and display transforms.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Correction, look, and transform are different jobs","confidence":"high","content":"Exposure and balance, creative styling, and technical display/color-space transforms should be treated separately so problems can be diagnosed and handed off cleanly."},
+        {"type":"procedure","title":"Editorial color pass","confidence":"high","content":"Confirm source interpretation; normalize exposure and white balance; match shots; protect skin and key brand colors; apply creative look intentionally; review scopes; verify export color behavior."},
+        {"type":"failure-mode","title":"Color workflow failures","confidence":"high","content":"Avoid grading monitor appearance alone, stacking LUTs without knowing their role, correcting after an unintended transform, and using one global adjustment to hide shot-to-shot mismatches."}
+      ],
+      "drills": [{"key":"match-sequence","title":"Match a mixed-camera sequence","difficulty":"guided","prompt":"Plan an editorial color pass for mixed cameras under changing light.","rubric":["Source interpretation checked","Correction before look","Scopes used","Shot matching explicit","Export transform verified"]}]
+    },
+    {
+      "key": "relink-proxy-performance",
+      "name": "Relinking, Proxies & Performance",
+      "description": "Use proxies, cache, relinking, and media management without damaging source relationships.",
+      "purpose": "Keep demanding projects responsive and recoverable.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Proxy and relink workflow","confidence":"high","content":"Preserve original media paths and metadata; create proxies with reliable attachment rules; validate representative clips; relink by stable identifiers; keep cache disposable and source media authoritative."},
+        {"type":"heuristic","title":"Cache is disposable, provenance is not","confidence":"high","content":"Render files and cache can usually be rebuilt; original media identity, timecode, filenames, and verified relink relationships must be protected."},
+        {"type":"failure-mode","title":"Performance workflow failures","confidence":"high","content":"Avoid renaming originals mid-project without a plan, relinking by approximate filenames, treating cache as source, and transcoding away metadata required for conform."}
+      ],
+      "drills": [{"key":"offline-recovery","title":"Recover an offline project","difficulty":"guided","prompt":"Given moved media, stale proxies, and a new drive layout, build a safe relink sequence.","rubric":["Originals prioritized","Metadata used","Proxy relationship preserved","Cache treated as disposable","Representative clips verified"]}]
+    },
+    {
+      "key": "mastering-export-qc",
+      "name": "Mastering, Export & Delivery QC",
+      "description": "Create reliable masters and derivatives with deliberate codec, resolution, audio, caption, and verification choices.",
+      "purpose": "Deliver files that meet platform or client requirements and remain reusable.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Delivery workflow","confidence":"high","content":"Start from the approved sequence; identify master and derivative needs; set frame size/rate, codec, bitrate, color, audio, and caption requirements; export; inspect full metadata and spot-check picture/audio; archive the master and settings."},
+        {"type":"heuristic","title":"Make one trustworthy master before many derivatives","confidence":"high","content":"A verified high-quality master gives later platform encodes a stable source and simplifies troubleshooting."},
+        {"type":"failure-mode","title":"Export failures","confidence":"high","content":"Avoid guessing platform specs from old presets, exporting from an unapproved sequence, mixing frame-rate conversions casually, clipping audio, and delivering without opening the actual exported file."}
+      ],
+      "drills": [{"key":"delivery-set","title":"Plan a master and social derivative set","difficulty":"guided","prompt":"Define export and QC for a master plus vertical, square, and web derivatives.","rubric":["Master defined first","Frame-rate choice explicit","Audio/caption needs included","Derivative strategy efficient","Exports verified"]}]
+    }
+  ]
+}
