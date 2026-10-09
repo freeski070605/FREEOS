@@ -1,11 +1,16 @@
 param(
   [Parameter(Mandatory = $true)][string[]]$PackPath,
   [switch]$OwnerApproved,
-  [string]$BaseUrl = "http://127.0.0.1:3001"
+  [ValidatePattern('^https?://')][string]$BaseUrl = "http://127.0.0.1:3001"
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+if ($PackPath.Count -gt 1) {
+  Write-Host "`nNOTE: Multiple teaching packs detected. Explicit PowerShell array syntax is recommended:" -ForegroundColor Yellow
+  Write-Host '  -PackPath @("path1.json", "path2.json")' -ForegroundColor Yellow
+}
 
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $packs = @()
