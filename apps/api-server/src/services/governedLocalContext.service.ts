@@ -4,6 +4,7 @@ import {
   registerApprovedMemory,
   upsertKnowledgeRecord,
 } from "./knowledgeGovernance.service";
+import { buildSkillTeachingContext } from "./skillTeachingContext.service";
 
 type Row = Record<string, unknown>;
 
@@ -97,6 +98,7 @@ export function buildGovernedLocalContext(options: GovernedLocalContextOptions) 
   const includeProjectNotes = options.includeProjectNotes !== false;
   const limit = Math.min(Math.max(options.limit ?? 8, 1), 50);
   const queryTokens = tokens(query);
+  const skillTraining = buildSkillTeachingContext({ query, limit });
 
   ensureGovernedLocalSources(projectKey);
   const db = knowledgeDb();
@@ -210,20 +212,24 @@ export function buildGovernedLocalContext(options: GovernedLocalContextOptions) 
     )
     .slice(0, limit);
 
-  if (items.length === 0) {
-    return { context: "", items, query, projectKey: projectKey ?? null };
-  }
+  const governedContext = items.length === 0
+    ? ""
+    : [
+        "GOVERNED LOCAL KNOWLEDGE",
+        "Only ACTIVE governed local records are included. Higher authority wins on conflict. Approved project baselines are canonical project knowledge. Project notes marked DRAFT-NOT-CONTROLLING may inform work but must not override owner instructions, canonical knowledge, or approved memory.",
+        ...items.map((item) => {
+          const draftWarning = item.authority === "unapproved-draft" ? "; DRAFT-NOT-CONTROLLING" : "";
+          return `- [${item.kind}; authority=${item.authority}(${item.authorityRank}); confidence=${item.confidence}${draftWarning}] ${item.title}: ${item.content}`;
+        }),
+      ].join("\n");
 
-  const lines = items.map((item) => {
-    const draftWarning = item.authority === "unapproved-draft" ? "; DRAFT-NOT-CONTROLLING" : "";
-    return `- [${item.kind}; authority=${item.authority}(${item.authorityRank}); confidence=${item.confidence}${draftWarning}] ${item.title}: ${item.content}`;
-  });
+  const context = [governedContext, skillTraining.context].filter(Boolean).join("\n\n");
 
-  const context = [
-    "GOVERNED LOCAL KNOWLEDGE",
-    "Only ACTIVE governed local records are included. Higher authority wins on conflict. Approved project baselines are canonical project knowledge. Project notes marked DRAFT-NOT-CONTROLLING may inform work but must not override owner instructions, canonical knowledge, or approved memory.",
-    ...lines,
-  ].join("\n");
-
-  return { context, items, query, projectKey: projectKey ?? null };
+  return {
+    context,
+    items,
+    skillItems: skillTraining.items,
+    query,
+    projectKey: projectKey ?? null,
+  };
 }
