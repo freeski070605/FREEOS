@@ -1,0 +1,118 @@
+{
+  "packKey": "gis-photogrammetry-3d-worldbuilding-core-v1",
+  "title": "GIS, Photogrammetry & 3D Worldbuilding Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/gis-photogrammetry-3d-worldbuilding/core-v1",
+  "domain": {
+    "key": "gis-photogrammetry-3d-worldbuilding",
+    "name": "GIS, Photogrammetry & 3D Worldbuilding",
+    "description": "Practical geospatial and reconstruction skills for coordinate systems, GIS cleanup, terrain, footprints, photogrammetry, georeferencing, optimization, and GIS-to-Blender/Unity/Unreal pipelines.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "spatial-reference-coordinate-systems",
+      "name": "Spatial Reference & Coordinate Systems",
+      "description": "Understand geographic/projected coordinates, coordinate reference systems, transforms, origins, and local world offsets.",
+      "purpose": "Keep real-world data aligned when moving between GIS tools, Blender, and game engines.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Coordinates only have meaning with a reference system","confidence":"high","content":"Latitude/longitude, projected meters/feet, local engineering coordinates, and engine world coordinates are different representations. A dataset without its CRS and units can appear plausible while being spatially wrong."},
+        {"type":"procedure","title":"Coordinate-system workflow","confidence":"high","content":"Identify each dataset's CRS and units; select a project CRS appropriate to the area; reproject rather than relabel when conversion is needed; define a local origin/offset for 3D tools; record transformations; validate with known landmarks or distances."},
+        {"type":"failure-mode","title":"Coordinate failures","confidence":"high","content":"Avoid assigning a new CRS when data actually needs reprojection, mixing feet and meters, exporting huge world coordinates directly into floating-point-limited engines without a local origin strategy, and aligning layers by visual guess."}
+      ],
+      "drills": [{"key":"city-coordinate-contract","title":"Define a city-scale coordinate contract","difficulty":"guided","prompt":"Create a coordinate policy for GIS layers that must align in Blender and then enter Unity or Unreal without losing real-world relationships.","rubric":["CRS identified","Units explicit","Local origin defined","Transform documented","Known-point validation included"]}]
+    },
+    {
+      "key": "gis-data-cleaning",
+      "name": "GIS Data Cleaning & Layer Preparation",
+      "description": "Clean geometry, attributes, duplicates, invalid features, topology, and layer schemas for downstream 3D use.",
+      "purpose": "Prevent malformed source data from becoming expensive 3D cleanup.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"GIS cleaning workflow","confidence":"high","content":"Inventory layers and fields; remove or flag duplicates; validate geometry; repair invalid polygons where evidence supports it; standardize attribute names/types; clip to area of interest; preserve original source separately; export a cleaned derivative with documented assumptions."},
+        {"type":"heuristic","title":"Preserve source and transform derivatives","confidence":"high","content":"Raw authoritative data should remain unchanged. Cleaning, simplification, and 3D-specific modifications belong in reproducible derived layers so provenance is not lost."},
+        {"type":"failure-mode","title":"GIS cleaning failures","confidence":"high","content":"Avoid editing the only copy of raw data, dissolving features without preserving IDs, deleting unusual geometry because it looks wrong without checking source evidence, and simplifying boundaries before deciding required spatial accuracy."}
+      ],
+      "drills": [{"key":"building-layer-cleanup","title":"Prepare a building-footprint layer","difficulty":"guided","prompt":"A building layer contains overlaps, duplicates, invalid polygons, missing heights, and mixed attributes. Plan a cleanup pipeline for 3D extrusion.","rubric":["Raw source preserved","Geometry validation included","IDs retained","Missing data handled explicitly","Derived output documented"]}]
+    },
+    {
+      "key": "terrain-elevation",
+      "name": "Terrain & Elevation Processing",
+      "description": "Prepare DEM/elevation data, terrain meshes, contours, smoothing, tiling, and height transfer for real-time worlds.",
+      "purpose": "Build terrain that preserves important landform while remaining manageable in 3D applications.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Elevation resolution and terrain mesh density are separate choices","confidence":"high","content":"A detailed DEM can be resampled or tiled differently for visualization. Mesh density should reflect target scale, visible terrain variation, camera distance, and runtime budget rather than blindly matching every source sample."},
+        {"type":"procedure","title":"Terrain preparation workflow","confidence":"high","content":"Confirm elevation datum/units; clip to area; fill or inspect voids; choose resampling method; establish local elevation offset if needed; generate terrain/height output; validate known grades or elevations; simplify or tile according to engine budget."},
+        {"type":"failure-mode","title":"Terrain failures","confidence":"high","content":"Avoid vertical exaggeration without documenting it, mixing horizontal and vertical units, smoothing away important roads/banks, and importing a massive single terrain mesh when tiled streaming is required."}
+      ],
+      "drills": [{"key":"neighborhood-terrain","title":"Prepare neighborhood terrain","difficulty":"guided","prompt":"Plan terrain extraction and engine delivery for a neighborhood with modest elevation change, roads, and a few steep embankments.","rubric":["Vertical units checked","Resolution intentional","Local offset defined","Validation points used","Runtime tiling considered"]}]
+    },
+    {
+      "key": "building-footprints-extrusion",
+      "name": "Building Footprints & Procedural Massing",
+      "description": "Turn GIS footprints and attributes into accurate building massing and modular 3D starting points.",
+      "purpose": "Create city-scale base geometry quickly while preserving parcel/building identity for later refinement.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Footprint-to-building workflow","confidence":"high","content":"Validate footprint geometry and IDs; determine height source or clearly labeled estimate; extrude in correct vertical units; preserve building ID as metadata/name; create roofs or simple caps; group by block/zone; mark hero buildings for manual refinement rather than over-detailing every mass."},
+        {"type":"heuristic","title":"Use procedural massing for coverage and manual modeling for identity","confidence":"high","content":"City-scale completeness and landmark accuracy are different goals. Procedural rules should cover ordinary structures while high-visibility buildings receive reference-based refinement."},
+        {"type":"failure-mode","title":"Massing failures","confidence":"high","content":"Avoid inventing precise heights without labeling uncertainty, merging neighboring footprints that should remain separate, applying one roof style universally, and losing source IDs during export."}
+      ],
+      "drills": [{"key":"block-massing","title":"Generate a block of building massing","difficulty":"guided","prompt":"Design a pipeline that turns GIS footprints into Blender massing while keeping IDs, heights, coordinate alignment, and hero-building flags.","rubric":["Footprints validated","Height provenance explicit","IDs preserved","Coordinates retained","Hero refinement path defined"]}]
+    },
+    {
+      "key": "photogrammetry-capture-reconstruction",
+      "name": "Photogrammetry Capture & Reconstruction",
+      "description": "Plan photo capture and reconstruction for environments or objects using overlap, coverage, exposure, scale, and quality control.",
+      "purpose": "Generate useful 3D reference or assets from photographs instead of collecting images that cannot reconstruct reliably.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Reconstruction depends on repeatable visual correspondence","confidence":"high","content":"Photogrammetry works best with sharp, overlapping images, stable exposure, textured surfaces, sufficient viewpoint change, and minimal moving/reflection-heavy content. More photos do not fix poor coverage patterns automatically."},
+        {"type":"procedure","title":"Capture planning workflow","confidence":"high","content":"Define target accuracy and coverage; create overlapping paths at multiple heights/angles; lock or control exposure when practical; avoid motion blur; include scale references/control points where needed; capture difficult occlusions deliberately; inspect coverage before leaving the site."},
+        {"type":"failure-mode","title":"Capture failures","confidence":"high","content":"Avoid large viewpoint gaps, only front-facing images of a 3D subject, reflective or featureless areas with no mitigation, inconsistent focus, and assuming screenshots or compressed social images provide the same reconstruction quality as planned source photography."}
+      ],
+      "drills": [{"key":"street-capture-plan","title":"Plan a street photogrammetry capture","difficulty":"guided","prompt":"Create a photo plan for reconstructing a storefront and immediate sidewalk area with sufficient overlap, scale, and occlusion coverage.","rubric":["Coverage path defined","Overlap intentional","Scale reference included","Occlusions addressed","Quality check before exit"]}]
+    },
+    {
+      "key": "georeferencing-alignment",
+      "name": "Georeferencing & Multi-Source Alignment",
+      "description": "Align photogrammetry, GIS, imagery, CAD, and manually modeled assets using known points, transforms, and measurable error.",
+      "purpose": "Combine multiple imperfect sources into one defensible spatial model.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Alignment workflow","confidence":"high","content":"Select stable control points visible across sources; use more than one point and distribute them spatially; solve translation/rotation/scale as required; inspect residual error; separate global georeferencing from local artistic adjustment; document accepted tolerance."},
+        {"type":"concept","title":"Alignment quality should be measured, not eyeballed","confidence":"high","content":"One location can match while the rest of a dataset is rotated, scaled, or warped. Multiple control points and residual error expose these systematic problems."},
+        {"type":"failure-mode","title":"Alignment failures","confidence":"high","content":"Avoid aligning to moving/temporary features, using one control point for a scale/rotation problem, repeatedly hand-nudging layers without recording transforms, and forcing low-accuracy imagery to override higher-confidence survey/GIS sources."}
+      ],
+      "drills": [{"key":"photo-gis-alignment","title":"Align a reconstructed block to GIS","difficulty":"guided","prompt":"Design an alignment process for a photogrammetry mesh that must match building footprints and road geometry from GIS.","rubric":["Control points stable","Multiple points used","Residual error measured","Source authority considered","Transforms documented"]}]
+    },
+    {
+      "key": "optimization-tiling-lod",
+      "name": "Geospatial Optimization, Tiling & LOD",
+      "description": "Simplify and tile terrain, meshes, imagery, and city-scale assets for interactive performance while preserving spatial identity.",
+      "purpose": "Make real-world environments usable at scale without loading every source detail at once.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"World optimization workflow","confidence":"high","content":"Define camera/travel distances and target hardware; divide world into logical tiles/cells; establish LOD/HLOD or simplification policy; preserve silhouette and navigation-critical geometry; create lower-resolution distant textures/meshes; test streaming and memory on representative routes."},
+        {"type":"heuristic","title":"Preserve identity where users can perceive it","confidence":"high","content":"Optimization should protect landmarks, street silhouette, intersections, and navigation cues while aggressively simplifying hidden or distant detail that does not contribute to recognition."},
+        {"type":"failure-mode","title":"World-optimization failures","confidence":"high","content":"Avoid uniform simplification across hero and background areas, tile boundaries that create cracks or visible texture shifts, loading all source imagery at full resolution, and judging performance from a stationary editor camera only."}
+      ],
+      "drills": [{"key":"city-tile-strategy","title":"Design a city tiling strategy","difficulty":"guided","prompt":"Create a tile/LOD plan for a playable city area containing dense downtown blocks, ordinary neighborhoods, and distant background regions.","rubric":["Travel/camera use considered","Hero zones protected","Streaming cells defined","LOD policy varies by importance","Route-based performance test included"]}]
+    },
+    {
+      "key": "gis-blender-engine-pipeline",
+      "name": "GIS-to-Blender-to-Engine Pipeline",
+      "description": "Design repeatable transfer from geospatial source data through Blender refinement into Unity or Unreal runtime worlds.",
+      "purpose": "Combine real-world accuracy with art-directed, optimized engine-ready production.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"End-to-end geospatial pipeline","confidence":"high","content":"Preserve raw GIS; create cleaned/projected derivatives; define local origin; export terrain/footprints/points with stable IDs; build or refine in Blender without losing coordinate metadata; create engine export copies; import with known scale/pivot rules; validate landmarks and distances in engine."},
+        {"type":"heuristic","title":"Keep geospatial truth separate from artistic refinement","confidence":"high","content":"Maintain a traceable base layer representing source geography and layer visual detail on top. This makes corrections possible when better data arrives without rebuilding the entire world blindly."},
+        {"type":"failure-mode","title":"Pipeline failures","confidence":"high","content":"Avoid destructive edits to raw GIS, losing IDs during Blender conversion, moving assets off the shared local origin without recording it, and manually correcting every engine import because the interchange contract is inconsistent."}
+      ],
+      "drills": [{"key":"chester-block-pipeline","title":"Design a real-world block pipeline","difficulty":"guided","prompt":"Plan a GIS-to-Blender-to-engine workflow for one city block using footprints, roads, imagery/reference photos, modular architecture, and hero landmarks.","rubric":["Raw GIS preserved","Coordinate contract explicit","IDs/provenance retained","Blender refinement separated","Engine validation included"]}]
+    }
+  ]
+}
