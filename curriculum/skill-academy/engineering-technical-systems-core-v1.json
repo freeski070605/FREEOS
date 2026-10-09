@@ -1,0 +1,164 @@
+{
+  "packKey": "engineering-technical-systems-core-v1",
+  "title": "Engineering & Technical Systems Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/engineering/core-v1",
+  "domain": {
+    "key": "engineering",
+    "name": "Engineering & Technical Systems",
+    "description": "Practical systems, diagnostics, electrical/electronic/mechanical, networking, automation, reliability, CAD, and manufacturing knowledge with explicit safety boundaries.",
+    "riskProfile": "elevated"
+  },
+  "competencies": [
+    {
+      "key": "systems-thinking",
+      "name": "Systems Engineering Thinking",
+      "description": "Model systems as interacting functions, interfaces, constraints, states, and failure paths.",
+      "purpose": "Reason about whole-system behavior before optimizing isolated components.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"System boundaries and interfaces","confidence":"high","content":"Define the system boundary, external actors, inputs, outputs, interfaces, operating states, constraints, and success criteria before proposing solutions. Many failures blamed on components actually originate at interfaces between components, people, data, or procedures."},
+        {"type":"procedure","title":"Functional decomposition workflow","confidence":"high","content":"State the mission; decompose it into required functions; identify inputs, outputs, dependencies, and constraints for each function; map interfaces; identify single points of failure; then test whether each proposed component actually serves a required function."},
+        {"type":"heuristic","title":"Optimize the bottleneck, not the loudest problem","confidence":"high","content":"A visible problem may be downstream of the true constraint. Trace flow through the whole system and improve the limiting function first; local optimization can make global performance worse."}
+      ],
+      "drills": [
+        {"key":"service-system-map","title":"Map a service system","difficulty":"guided","prompt":"Map a small service business from lead intake through delivery and payment. Identify interfaces, bottlenecks, failure points, feedback loops, and one high-leverage redesign.","rubric":["Clear boundary and mission","Functions decomposed","Interfaces identified","Bottleneck justified","Redesign considers system effects"]}
+      ]
+    },
+    {
+      "key": "troubleshooting",
+      "name": "Structured Troubleshooting",
+      "description": "Diagnose faults by comparing expected and observed behavior while changing one variable at a time.",
+      "purpose": "Reduce guesswork, unnecessary replacement, and repeated failures.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Fault isolation loop","confidence":"high","content":"Define the symptom precisely; establish expected behavior; reproduce safely; identify the smallest testable subsystem; measure or inspect at boundaries; compare expected versus observed; form one falsifiable hypothesis; perform the least invasive discriminating test; then verify the repair under original conditions."},
+        {"type":"heuristic","title":"Bisect complex systems","confidence":"high","content":"When a signal, process, or dependency chain has many stages, test near the middle first. Each good test should eliminate a large portion of the possible fault space."},
+        {"type":"failure-mode","title":"Troubleshooting traps","confidence":"high","content":"Avoid parts-cannon replacement, changing multiple variables at once, trusting labels over measurements, testing only after disassembly, ignoring intermittent conditions, and declaring success before reproducing the original workload."}
+      ],
+      "drills": [
+        {"key":"intermittent-fault","title":"Diagnose an intermittent fault","difficulty":"guided","prompt":"A device works cold but fails after 20 minutes. Build a safe diagnostic plan that isolates thermal, power, software, connection, and load-related causes without replacing parts blindly.","rubric":["Defines symptom precisely","Uses discriminating tests","Changes one variable at a time","Considers intermittent conditions","Includes repair verification"]}
+      ]
+    },
+    {
+      "key": "electrical-fundamentals",
+      "name": "Electrical Fundamentals",
+      "description": "Understand voltage, current, resistance, power, series/parallel behavior, grounding, and measurement while respecting electrical hazards.",
+      "purpose": "Reason about low-voltage circuits and electrical behavior without encouraging unsafe live work.",
+      "riskLevel": "safety-critical",
+      "units": [
+        {"type":"concept","title":"Electrical quantities and relationships","confidence":"high","content":"Voltage is electrical potential difference, current is charge flow, resistance opposes current, and power is the rate of energy transfer. Ohm's law and power equations are useful within their assumptions; real sources and loads also have limits, tolerances, transients, and temperature effects."},
+        {"type":"procedure","title":"Safe measurement decision process","confidence":"high","content":"Identify circuit voltage class and hazards before measurement. Prefer de-energized continuity/resistance checks where valid. Verify meter category, leads, range, reference point, and expected value before connecting. For mains, high-energy systems, exposed conductors, or unknown equipment, FREEOS should recommend qualified-person procedures rather than direct live-work instructions."},
+        {"type":"failure-mode","title":"Electrical reasoning failures","confidence":"high","content":"Avoid measuring resistance on energized circuits, assuming ground is always zero potential, confusing open circuits with shorts, overlooking source current limits, exceeding connector or wire ratings, and treating nominal voltage as proof that a circuit can safely deliver required power."}
+      ],
+      "drills": [
+        {"key":"low-voltage-load","title":"Reason about a low-voltage load","difficulty":"guided","prompt":"A 12 V source powers a 24 ohm resistive load. Calculate ideal current and power, then explain what real-world source rating, wire, connector, and heat checks are still needed. Do not propose mains work.","rubric":["Correct ideal relationships","Distinguishes ideal from real system","Checks source and conductor limits","Mentions heat and connector limits","Respects safety boundary"]}
+      ]
+    },
+    {
+      "key": "electronics",
+      "name": "Electronics Fundamentals",
+      "description": "Reason about common electronic components, signals, power rails, logic, sensing, and board-level fault isolation.",
+      "purpose": "Understand and diagnose low-voltage electronic systems at a functional level.",
+      "riskLevel": "elevated",
+      "units": [
+        {"type":"concept","title":"Component function before part number","confidence":"high","content":"Understand what a resistor, capacitor, diode, transistor, regulator, sensor, and logic device is doing in the circuit before focusing on its exact part number. Functional role narrows expected signals and likely failure modes."},
+        {"type":"procedure","title":"Board-level diagnostic sequence","confidence":"high","content":"Start with visual inspection, connector integrity, supply input, protected rails, regulator outputs, reset/enable states, then signal path. Compare against known-good references or datasheets where available. Use current-limited bench methods for safe low-voltage testing when qualified to do so."},
+        {"type":"failure-mode","title":"Electronics diagnostic traps","confidence":"high","content":"Avoid probing without a reference ground, injecting power into unknown nodes, replacing ICs before checking rails and enables, interpreting one static voltage as proof of signal integrity, and ignoring thermal or connector-related faults."}
+      ],
+      "drills": [
+        {"key":"dead-controller","title":"Diagnose a dead low-voltage controller","difficulty":"guided","prompt":"A 5 V controller does not boot. Design a low-voltage diagnostic sequence covering input power, protection, regulator rails, reset/enable, clock or activity indicators, and when to stop for deeper board expertise.","rubric":["Checks power path first","Uses functional sequence","Avoids random replacement","Defines expected observations","Includes stop/escalation boundary"]}
+      ]
+    },
+    {
+      "key": "mechanical-fundamentals",
+      "name": "Mechanical Fundamentals",
+      "description": "Understand force, torque, friction, load paths, stiffness, motion, bearings, fasteners, and common mechanical failure modes.",
+      "purpose": "Reason about mechanical systems and diagnose low-risk faults without unsafe machinery intervention.",
+      "riskLevel": "elevated",
+      "units": [
+        {"type":"concept","title":"Load paths and constraints","confidence":"high","content":"For any mechanical assembly, trace where forces enter, how they travel through members and joints, where motion is constrained, and where stress concentrates. Geometry and boundary conditions matter as much as nominal material strength."},
+        {"type":"procedure","title":"Mechanical fault inspection","confidence":"high","content":"De-energize and secure moving equipment before hands-on inspection. Check looseness, wear, alignment, lubrication, interference, abnormal heat, vibration, fastener condition, and bearing play. Compare with expected motion before disassembly."},
+        {"type":"failure-mode","title":"Mechanical reasoning failures","confidence":"high","content":"Avoid tightening as a universal fix, using torque values without the correct fastener/material context, ignoring misalignment, operating guards removed, diagnosing rotating equipment by touch while energized, and replacing bearings without correcting the root load or lubrication issue."}
+      ],
+      "drills": [
+        {"key":"vibration-drive","title":"Analyze a vibrating drive","difficulty":"guided","prompt":"A belt-driven machine develops new vibration. Create a safe inspection plan for alignment, belt condition/tension, pulleys, bearings, mounts, and load before replacing parts.","rubric":["Starts with safe isolation","Traces likely load path","Checks alignment and wear","Avoids one-cause assumption","Includes post-repair verification"]}
+      ]
+    },
+    {
+      "key": "networking",
+      "name": "Computer Networking",
+      "description": "Understand layered communication, addressing, routing, switching, DNS, ports, latency, and systematic network diagnosis.",
+      "purpose": "Design and troubleshoot reliable local and service networks.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Layered network reasoning","confidence":"high","content":"Separate physical/link connectivity, IP addressing, routing, name resolution, transport ports, TLS, and application behavior. A working ping does not prove DNS, port access, authentication, or application health."},
+        {"type":"procedure","title":"Network troubleshooting ladder","confidence":"high","content":"Confirm interface/link; inspect address, subnet, gateway, and route; test local gateway; test a known IP; test DNS resolution; test target host and port; inspect TLS/application response; then inspect firewalls, proxies, or service logs. Record where expected behavior first diverges."},
+        {"type":"failure-mode","title":"Networking traps","confidence":"high","content":"Avoid changing DNS to fix a physical-link problem, disabling firewalls as a first step, assuming localhost and LAN binding are equivalent, ignoring IPv4 versus IPv6 path differences, and treating timeout, refusal, and name-resolution errors as the same failure."}
+      ],
+      "drills": [
+        {"key":"service-unreachable","title":"Diagnose an unreachable local service","difficulty":"guided","prompt":"A web service works on localhost but not from another device on the LAN. Build a troubleshooting sequence covering bind address, host firewall, route/subnet, port listening, and client testing.","rubric":["Uses layered sequence","Recognizes bind-address issue","Checks listening port","Checks firewall safely","Separates host and network causes"]}
+      ]
+    },
+    {
+      "key": "automation-control",
+      "name": "Automation & Control Systems",
+      "description": "Understand sensors, actuators, state, feedback, interlocks, sequencing, and failure-safe control design.",
+      "purpose": "Design bounded automation that behaves predictably under normal and abnormal conditions.",
+      "riskLevel": "elevated",
+      "units": [
+        {"type":"concept","title":"Open-loop versus closed-loop control","confidence":"high","content":"Open-loop control commands an action without measuring the result. Closed-loop control measures output and adjusts based on error. Feedback improves regulation but can introduce oscillation, delay sensitivity, noise amplification, or instability if poorly designed."},
+        {"type":"procedure","title":"Safe sequence design","confidence":"high","content":"Define states, allowed transitions, preconditions, sensor validation, actuator commands, timeouts, fault states, manual override, and recovery. Put interlocks and emergency behavior outside ordinary happy-path logic. Simulate or test at low consequence before connecting hazardous motion or energy."},
+        {"type":"failure-mode","title":"Automation design failures","confidence":"high","content":"Avoid assuming sensors cannot fail, allowing commands without state confirmation, using time delays where feedback is required, creating unrecoverable intermediate states, and letting software-only logic substitute for required physical safety interlocks."}
+      ],
+      "drills": [
+        {"key":"tank-control","title":"Design a bounded tank-control sequence","difficulty":"guided","prompt":"Design a conceptual fill-and-drain controller using level sensors, valves, timeout faults, sensor disagreement handling, and a safe stopped state. Keep it conceptual rather than wiring real equipment.","rubric":["Clear states and transitions","Uses feedback","Includes timeout/fault handling","Defines safe state","Does not bypass physical safety"]}
+      ]
+    },
+    {
+      "key": "reliability",
+      "name": "Reliability Engineering",
+      "description": "Improve uptime and repeatability through failure analysis, preventive actions, observability, redundancy, and verification.",
+      "purpose": "Reduce recurring failures and design systems that degrade predictably instead of chaotically.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Failure mode versus root cause","confidence":"high","content":"A failure mode describes how a system fails; a root cause explains why the conditions for that failure existed. Fixing the visible failed component without addressing the causal mechanism often creates recurrence."},
+        {"type":"procedure","title":"Reliability improvement loop","confidence":"high","content":"Capture failure context; classify failure mode; preserve evidence; identify contributing conditions; test likely causes; implement containment; implement corrective action; verify under realistic load; monitor recurrence; then update maintenance or design controls."},
+        {"type":"heuristic","title":"Design for detection before failure","confidence":"high","content":"Useful observability, thresholds, logs, wear indicators, and health checks turn surprise failures into planned interventions. Detection quality is part of reliability design."}
+      ],
+      "drills": [
+        {"key":"repeat-failure","title":"Break a repeat-failure cycle","difficulty":"guided","prompt":"A subsystem has failed three times in six months and the same part keeps being replaced. Design an investigation and corrective-action plan that separates failed part, failure mode, contributing conditions, and root cause.","rubric":["Separates symptom from cause","Preserves evidence","Tests hypotheses","Includes corrective action","Includes recurrence monitoring"]}
+      ]
+    },
+    {
+      "key": "cad-3d",
+      "name": "CAD & 3D Technical Modeling",
+      "description": "Create dimensionally controlled models that communicate design intent, interfaces, clearances, and manufacturable geometry.",
+      "purpose": "Use 3D models as engineering communication and verification artifacts, not only visual representations.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Parametric modeling workflow","confidence":"high","content":"Establish units and origin; define primary datums; sketch with constraints; dimension design intent rather than accidental geometry; build features in stable dependency order; model interfaces and clearances; then inspect mass, interference, and critical dimensions."},
+        {"type":"heuristic","title":"Constrain intent, not every coordinate","confidence":"high","content":"Good CAD constraints express relationships that should remain true when dimensions change. Over-constraining to current geometry makes future changes fragile."},
+        {"type":"failure-mode","title":"CAD failures","confidence":"high","content":"Avoid arbitrary origins, unconstrained sketches, circular dependencies, modeling cosmetic detail before interfaces, zero-clearance assemblies, and exporting meshes without confirming units, scale, normals, or tolerance needs."}
+      ],
+      "drills": [
+        {"key":"mounting-bracket","title":"Plan a mounting bracket model","difficulty":"guided","prompt":"Describe how you would model a bracket that must align two bolt patterns and clear a moving component. Define datums, constraints, critical dimensions, clearances, and verification checks.","rubric":["Uses stable datums","Captures design intent","Includes clearances","Plans interference checks","Keeps model editable"]}
+      ]
+    },
+    {
+      "key": "manufacturing-basics",
+      "name": "Manufacturing Fundamentals",
+      "description": "Understand process selection, tolerance, material behavior, workholding, inspection, and design-for-manufacture tradeoffs.",
+      "purpose": "Design parts and processes that can be made, measured, and repeated safely.",
+      "riskLevel": "elevated",
+      "units": [
+        {"type":"concept","title":"Process capability drives design detail","confidence":"high","content":"Machining, additive manufacturing, sheet fabrication, molding, casting, and hand fabrication have different achievable tolerances, surface finish, geometry limits, setup costs, and economics. Match tolerances and features to the process actually being used."},
+        {"type":"procedure","title":"Manufacturing planning checklist","confidence":"high","content":"Define function, material, quantity, critical dimensions, tolerance, surface needs, available processes, workholding or support strategy, inspection method, and safety controls. Prototype high-uncertainty interfaces before committing to expensive production."},
+        {"type":"failure-mode","title":"Manufacturing planning failures","confidence":"high","content":"Avoid specifying tight tolerances everywhere, ignoring tool access or print orientation, creating uninspectable critical dimensions, assuming nominal CAD equals finished part, bypassing guards/PPE, and using unfamiliar powered machinery without qualified supervision."}
+      ],
+      "drills": [
+        {"key":"process-selection","title":"Choose a manufacturing process","difficulty":"guided","prompt":"Compare CNC machining, FDM printing, and sheet fabrication for a low-volume bracket. Discuss geometry, tolerance, finish, strength direction, lead time, cost, and inspection.","rubric":["Compares process capabilities","Matches tolerance to need","Considers quantity and cost","Considers inspection","Includes safety/qualification boundary"]}
+      ]
+    }
+  ]
+}
