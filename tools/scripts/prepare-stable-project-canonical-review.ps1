@@ -1,5 +1,6 @@
 param(
   [Parameter(Mandatory = $true)][string]$ProjectKey,
+  [string]$ExpectedOwnershipClassification = "",
   [string]$BaseUrl = "http://127.0.0.1:3001"
 )
 
@@ -20,6 +21,7 @@ function Invoke-FreeosJson {
 }
 
 $ProjectKey = $ProjectKey.Trim()
+$ExpectedOwnershipClassification = $ExpectedOwnershipClassification.Trim()
 if (-not $ProjectKey) { throw "ProjectKey is required." }
 
 Write-Host "`n=== STABLE BASELINE INSPECTION STATUS ===" -ForegroundColor Cyan
@@ -75,6 +77,13 @@ if ($inspection.dynamicCurrentStateRequiredForApproval -ne $false) { throw "Stab
 Write-Host "`n=== SEMANTIC SUPPORT ===" -ForegroundColor Cyan
 $semantic = $draft.evidence.semanticSupport
 $semantic | Select-Object ownershipClassification,ownerDirectionEstablished,directionRecordId,@{Name='canonicalSupportingRecords';Expression={@($_.canonicalSupportingRecords).Count}} | Format-List
+
+if ($ExpectedOwnershipClassification) {
+  if ([string]$semantic.ownershipClassification -cne $ExpectedOwnershipClassification) {
+    throw "Ownership classification mismatch. Expected '$ExpectedOwnershipClassification' but inspection returned '$($semantic.ownershipClassification)'."
+  }
+  Write-Host "Ownership classification matches expected controlling category: $ExpectedOwnershipClassification" -ForegroundColor Green
+}
 
 Write-Host "`n=== NON-BLOCKING ADVISORIES ===" -ForegroundColor Cyan
 $advisories = @($draft.evidence.advisories)
