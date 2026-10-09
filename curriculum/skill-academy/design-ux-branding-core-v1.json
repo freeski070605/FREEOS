@@ -1,0 +1,164 @@
+{
+  "packKey": "design-ux-branding-core-v1",
+  "title": "Design, UX & Branding Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/design-ux-branding/core-v1",
+  "domain": {
+    "key": "design-ux-branding",
+    "name": "Design, UX & Branding",
+    "description": "Practical visual design, brand systems, interface design, user experience, accessibility, and conversion-focused communication.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "visual-hierarchy",
+      "name": "Visual Hierarchy",
+      "description": "Control attention using scale, contrast, spacing, alignment, grouping, position, and sequence.",
+      "purpose": "Make the most important information obvious before decorative detail competes with it.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Hierarchy is a priority system","confidence":"high","content":"Every screen, page, ad, or graphic communicates an order of importance whether intentional or not. Size, contrast, position, whitespace, repetition, and grouping should reinforce one priority structure instead of competing with each other."},
+        {"type":"procedure","title":"Hierarchy audit","confidence":"high","content":"State the single primary action or message; identify secondary and tertiary information; squint or zoom out to inspect attention order; reduce competing contrast; strengthen spacing groups; align related items; then test whether a new viewer can find the primary message in a few seconds."},
+        {"type":"failure-mode","title":"Hierarchy failures","confidence":"high","content":"Avoid everything being bold, multiple equally loud calls-to-action, random font sizes, weak spacing between unrelated groups, decorative elements stronger than the message, and layouts where reading order changes unpredictably across breakpoints."}
+      ],
+      "drills": [
+        {"key":"landing-page-hierarchy","title":"Fix a crowded landing page","difficulty":"guided","prompt":"A landing page has a headline, subhead, six benefits, two buttons, testimonials, and a hero image all competing for attention. Redesign the hierarchy and explain what gets stronger, weaker, grouped, or delayed.","rubric":["Defines primary goal","Creates clear reading order","Uses spacing and contrast intentionally","Reduces competition","Supports responsive reading"]}
+      ]
+    },
+    {
+      "key": "typography",
+      "name": "Typography Systems",
+      "description": "Choose, pair, size, space, and structure type for readability, hierarchy, tone, and consistency.",
+      "purpose": "Make written information legible and branded across interfaces, documents, and marketing assets.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Build a type scale","confidence":"high","content":"Choose a readable body face and sensible base size; define a limited heading scale; set line height by size and measure; control line length; define weight and emphasis roles; test uppercase and small text; then validate across mobile and desktop before adding extra typefaces."},
+        {"type":"heuristic","title":"Use fewer type decisions, more consistently","confidence":"high","content":"A strong system usually needs fewer families, weights, sizes, and special treatments than an early design suggests. Consistency creates sophistication faster than variety."},
+        {"type":"failure-mode","title":"Typography failures","confidence":"high","content":"Avoid long lines, tiny body text, low-contrast text, too many font weights, fake hierarchy created only with color, centered paragraphs that should scan quickly, and letter spacing that harms lowercase readability."}
+      ],
+      "drills": [
+        {"key":"service-page-type","title":"Design a service-page type system","difficulty":"guided","prompt":"Define a compact typography system for a service business website with hero headline, section headings, body copy, prices, labels, buttons, and testimonials.","rubric":["Limited coherent scale","Readable body text","Clear role definitions","Handles dense pricing content","Works on mobile"]}
+      ]
+    },
+    {
+      "key": "color-systems",
+      "name": "Color Systems",
+      "description": "Build usable color palettes for brand identity, hierarchy, states, accessibility, and cross-media consistency.",
+      "purpose": "Use color as a system rather than a collection of attractive swatches.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Brand color and interface color have different jobs","confidence":"high","content":"Brand colors express identity; interface colors must also communicate action, state, contrast, and readability. A beautiful brand palette may need neutral, semantic, and accessible companion colors for practical use."},
+        {"type":"procedure","title":"Palette construction workflow","confidence":"high","content":"Start with brand intent and key color; create neutral background and text scales; define primary action color; define success, warning, and error roles; test contrast; test on photography and dark/light backgrounds; document allowed combinations and misuse cases."},
+        {"type":"failure-mode","title":"Color-system failures","confidence":"high","content":"Avoid using color alone to convey state, unreadable brand colors for body text, too many accent colors, inconsistent semantic meanings, pure-black/pure-white contrast where softer neutrals fit better, and gradients that reduce legibility."}
+      ],
+      "drills": [
+        {"key":"brand-palette","title":"Build a practical brand palette","difficulty":"guided","prompt":"Create a color-role plan for a premium unisex beauty studio that needs a cream/black identity, booking CTAs, form errors, success states, and social graphics.","rubric":["Separates brand and semantic roles","Preserves identity","Includes neutrals","Accounts for contrast","Defines usage rules"]}
+      ]
+    },
+    {
+      "key": "layout-grid",
+      "name": "Layout, Grid & Spacing",
+      "description": "Use grid, alignment, proportion, rhythm, and responsive spacing to create coherent layouts.",
+      "purpose": "Make complex information feel organized and intentional across screen sizes.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Responsive layout workflow","confidence":"high","content":"Identify content priority; define container widths and breakpoints; choose a grid; establish spacing tokens; align repeated elements; design narrow/mobile flow first or alongside desktop; test long text, missing images, extra cards, and real content before polishing."},
+        {"type":"heuristic","title":"Alignment creates invisible structure","confidence":"high","content":"When unrelated edges nearly align, the layout feels accidental. Reuse meaningful alignment lines across headlines, cards, images, forms, and actions so the page reads as one system."},
+        {"type":"failure-mode","title":"Layout failures","confidence":"high","content":"Avoid arbitrary one-off margins, cards with inconsistent internal padding, desktop layouts simply squeezed onto mobile, orphaned buttons, uneven vertical rhythm, and grids that break under longer real-world content."}
+      ],
+      "drills": [
+        {"key":"pricing-layout","title":"Lay out a complex pricing page","difficulty":"guided","prompt":"Design a responsive structure for a pricing page containing service categories, starting prices, add-ons, notes, testimonials, and one primary booking action.","rubric":["Clear container/grid plan","Consistent spacing","Handles long content","Mobile flow is deliberate","Primary CTA remains obvious"]}
+      ]
+    },
+    {
+      "key": "brand-systems",
+      "name": "Brand Systems",
+      "description": "Translate strategy into repeatable visual and verbal rules across touchpoints.",
+      "purpose": "Make a brand recognizable without requiring every asset to look identical.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Brand is a system of choices","confidence":"high","content":"Logo alone is not the brand. Recognition comes from repeated choices in typography, color, imagery, layout, voice, motion, offers, and experience. The system should be specific enough to guide work but flexible enough for different formats."},
+        {"type":"procedure","title":"Brand-system definition","confidence":"high","content":"Clarify audience, promise, personality, and proof; define logo usage, palette, type, imagery, graphic devices, tone of voice, examples, and prohibited uses; test across website, social, invoice, signage, and small icon contexts before declaring the system complete."},
+        {"type":"failure-mode","title":"Brand-system failures","confidence":"high","content":"Avoid designing only a logo, relying on adjectives with no visual rules, changing style by platform, using trends that conflict with audience expectations, and creating guidelines too rigid for real content."}
+      ],
+      "drills": [
+        {"key":"service-brand-system","title":"Build a service brand system","difficulty":"guided","prompt":"Define a compact brand system for a service company that must look trustworthy, modern, and flexible across web, invoices, vans, social posts, and client galleries.","rubric":["Connects strategy to visuals","Includes verbal tone","Works across touchpoints","Defines repeatable rules","Includes misuse boundaries"]}
+      ]
+    },
+    {
+      "key": "logo-mark-design",
+      "name": "Logo & Mark Design",
+      "description": "Design marks that are distinctive, scalable, reproducible, and appropriate to the brand system.",
+      "purpose": "Create identifiers that remain clear from favicon to signage without carrying the whole brand strategy alone.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Logo development workflow","confidence":"high","content":"Start from brand idea and naming constraints; sketch multiple structural directions in black and white; test silhouette and small size; refine proportion and spacing; build horizontal, stacked, and small-mark variants only when necessary; then test on real applications before color polish."},
+        {"type":"heuristic","title":"Recognizable beats complicated","confidence":"high","content":"A logo does not need to explain every service. Strong marks usually carry one memorable idea clearly and let the broader identity communicate the rest."},
+        {"type":"failure-mode","title":"Logo failures","confidence":"high","content":"Avoid tiny details, stock-icon combinations with no distinction, gradients required for recognition, unreadable wordmarks at small size, forced symbolism, and marks that only work centered on a white square."}
+      ],
+      "drills": [
+        {"key":"logo-evaluation","title":"Evaluate three logo directions","difficulty":"guided","prompt":"Create evaluation criteria for three logo concepts for the same brand. Score distinction, relevance, scalability, reproducibility, small-size clarity, and fit with the wider identity.","rubric":["Uses objective criteria","Includes small-size test","Separates logo from full brand","Checks reproducibility","Explains tradeoffs"]}
+      ]
+    },
+    {
+      "key": "ui-design",
+      "name": "User Interface Design",
+      "description": "Design screens, components, states, controls, and visual feedback that make software understandable and efficient.",
+      "purpose": "Reduce user effort while preserving consistency, clarity, and safe action boundaries.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Interface design order","confidence":"high","content":"Start with user goal and task flow; define information hierarchy; choose interaction pattern; design default, loading, empty, error, success, and disabled states; establish reusable components; then add visual polish after behavior is understandable."},
+        {"type":"heuristic","title":"Hide complexity until it is needed","confidence":"high","content":"Most users should see the decision they need to make now, not every system capability. Put advanced settings behind progressive disclosure while keeping important safety state visible."},
+        {"type":"failure-mode","title":"UI failures","confidence":"high","content":"Avoid technical labels users must decode, buttons that do not describe outcomes, settings visible before the task, invisible loading states, destructive actions styled like ordinary actions, and dashboards that show metrics without telling users what to do next."}
+      ],
+      "drills": [
+        {"key":"ai-command-ui","title":"Simplify an AI command interface","difficulty":"guided","prompt":"Redesign a technical local-AI command screen so a nontechnical owner can ask for work, choose project context, understand what knowledge is used, and see when approval is required.","rubric":["Natural-language first","Progressive disclosure","Clear safety state","Clear project context","Technical details remain accessible"]}
+      ]
+    },
+    {
+      "key": "ux-flows",
+      "name": "UX Flows & Task Design",
+      "description": "Map user goals into clear flows with minimal unnecessary steps, understandable decisions, and recoverable errors.",
+      "purpose": "Make systems easier to learn and faster to operate without hiding important consequences.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Task-flow mapping","confidence":"high","content":"Define user, trigger, goal, required information, decisions, system actions, approvals, completion state, and recovery paths. Remove steps that do not change risk, understanding, or outcome. Combine repeated setup where safe."},
+        {"type":"heuristic","title":"Every step must earn its place","confidence":"high","content":"If a step does not reduce risk, collect necessary information, clarify a decision, or produce user value, it is probably friction and should be removed, combined, or automated."},
+        {"type":"failure-mode","title":"UX-flow failures","confidence":"high","content":"Avoid forcing users to understand system architecture before acting, repeated confirmations for low-risk choices, unclear completion states, dead ends after errors, and workflows that require remembering hidden state from earlier screens."}
+      ],
+      "drills": [
+        {"key":"approval-flow","title":"Simplify an approval workflow","difficulty":"guided","prompt":"Map a flow where an AI proposes a write action, the owner reviews it, approves it, runs it, and verifies the result. Remove unnecessary friction without merging approval and execution.","rubric":["Preserves approval boundary","Minimizes steps","Shows consequences","Supports recovery","Shows clear completion"]}
+      ]
+    },
+    {
+      "key": "accessibility",
+      "name": "Digital Accessibility",
+      "description": "Design interfaces that remain understandable and operable across visual, motor, cognitive, and assistive-technology needs.",
+      "purpose": "Improve usability for more people while reducing fragile interaction patterns.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Accessibility improves system clarity","confidence":"high","content":"Keyboard access, clear labels, semantic structure, adequate contrast, visible focus, predictable controls, text alternatives, and non-color-only states improve usability beyond formal compliance targets."},
+        {"type":"procedure","title":"Accessibility review","confidence":"high","content":"Check semantic headings and labels; keyboard order; visible focus; form instructions and errors; color contrast; zoom and text resizing; alt text where meaningful; motion reduction where appropriate; and whether state can be understood without color alone."},
+        {"type":"failure-mode","title":"Accessibility failures","confidence":"high","content":"Avoid placeholder-only labels, icon-only buttons with no accessible name, focus traps, low-contrast text, hover-only information, auto-playing disruptive motion, and forms that announce errors only through red color."}
+      ],
+      "drills": [
+        {"key":"form-audit","title":"Audit a booking form","difficulty":"guided","prompt":"Audit a service-booking form for keyboard use, labels, validation, error messaging, contrast, focus, field grouping, and confirmation state.","rubric":["Covers keyboard flow","Covers labels/errors","Checks contrast","Uses semantic grouping","Includes completion feedback"]}
+      ]
+    },
+    {
+      "key": "conversion-design",
+      "name": "Conversion-Focused Design",
+      "description": "Reduce uncertainty and friction around a valuable action without manipulating users or sacrificing trust.",
+      "purpose": "Help qualified users understand the offer, believe the proof, and complete the next step confidently.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Conversion follows clarity, value, trust, and friction","confidence":"high","content":"A strong page makes the offer understandable, demonstrates relevant proof, answers major objections, shows the next step, and removes unnecessary friction. Visual tricks cannot sustainably rescue a weak offer or missing trust."},
+        {"type":"procedure","title":"Conversion-page review","confidence":"high","content":"State audience and desired action; inspect first-screen clarity; verify offer and differentiation; place proof near claims; answer cost, process, risk, and fit objections; simplify forms; keep CTA language outcome-oriented; measure behavior before making large changes."},
+        {"type":"failure-mode","title":"Conversion-design failures","confidence":"high","content":"Avoid fake urgency, hidden fees, excessive popups, vague CTAs, social proof with no relevance, long forms before value is established, and optimizing click rate while harming lead quality or trust."}
+      ],
+      "drills": [
+        {"key":"service-conversion","title":"Improve a service landing page","difficulty":"guided","prompt":"Redesign the information order for a local service landing page with low inquiry conversion. Include offer clarity, proof, objections, CTA, pricing cues, and form friction.","rubric":["Clarifies offer","Uses relevant proof","Addresses objections","Reduces friction","Avoids manipulative tactics"]}
+      ]
+    }
+  ]
+}
