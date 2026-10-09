@@ -1,0 +1,157 @@
+{
+  "packKey": "communication-leadership-core-v1",
+  "title": "Communication & Leadership Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/communication-leadership/core-v1",
+  "domain": {
+    "key": "communication-leadership",
+    "name": "Communication & Leadership",
+    "description": "Practical listening, writing, feedback, delegation, meetings, conflict, persuasion, presentation, and decision communication skills.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "active-listening",
+      "name": "Active Listening",
+      "description": "Understand what a person is actually saying before solving, defending, or persuading.",
+      "purpose": "Improve accuracy, trust, and decision quality in conversations.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Listening loop","confidence":"high","content":"Let the speaker complete the thought; identify facts, feelings, constraints, and requests separately; reflect the core point in your own words; ask one clarifying question where ambiguity matters; then respond to what was actually said rather than the argument you expected."},
+        {"type":"heuristic","title":"Listen for the problem underneath the wording","confidence":"high","content":"People often describe symptoms, positions, or frustration before naming the underlying need. Do not assume the first stated solution is the real requirement; clarify the outcome they need."},
+        {"type":"failure-mode","title":"Listening failures","confidence":"high","content":"Avoid interrupting with solutions, preparing your rebuttal while the other person talks, repeating their words without understanding the meaning, treating emotion as irrelevant data, and asking leading questions that only confirm your first assumption."}
+      ],
+      "drills": [{"key":"client-frustration","title":"Handle a frustrated client explanation","difficulty":"guided","prompt":"A client says the project is 'taking too long' but also keeps requesting changes. Show how you would listen, summarize the real issues, and ask clarifying questions before proposing a solution.","rubric":["Separates facts from emotion","Reflects accurately","Clarifying questions are neutral","Does not jump to blame","Underlying need identified"]}]
+    },
+    {
+      "key": "clear-writing",
+      "name": "Clear Business Writing",
+      "description": "Write messages that make the purpose, context, action, ownership, and deadline easy to understand.",
+      "purpose": "Reduce back-and-forth, ambiguity, and avoidable errors.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Purpose-first writing","confidence":"high","content":"Lead with why the message exists; give only the context needed to act; state the request or decision plainly; identify owner and deadline where relevant; separate optional detail from required action; then remove wording that sounds precise but does not change what the reader should do."},
+        {"type":"heuristic","title":"Write for the next action","confidence":"high","content":"A clear message lets the reader answer: What happened? What matters? What do you need from me? By when? If those answers are buried, the writing is not finished."},
+        {"type":"failure-mode","title":"Business writing failures","confidence":"high","content":"Avoid long openings before the point, vague requests like 'circle back,' multiple unrelated asks in one paragraph, passive ownership, hidden deadlines, emotional over-explanation, and unnecessary jargon that obscures simple actions."}
+      ],
+      "drills": [{"key":"payment-followup","title":"Write a firm payment follow-up","difficulty":"guided","prompt":"Draft the structure of a concise payment follow-up that states the balance, prior agreement, requested payment date, and next step without sounding confused or needlessly hostile.","rubric":["Purpose appears immediately","Amount/status is clear","Request and date are explicit","Tone is firm and professional","No unnecessary argument"]}]
+    },
+    {
+      "key": "difficult-conversations",
+      "name": "Difficult Conversations",
+      "description": "Address tension, unmet expectations, boundaries, and performance issues directly without unnecessary escalation.",
+      "purpose": "Solve problems while preserving clarity and dignity.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Difficult-conversation structure","confidence":"high","content":"Name the observable issue; explain its impact; invite the other person's perspective; distinguish intent from effect; state the boundary or expected change; agree on the next action; and document material commitments when the situation affects work, money, safety, or delivery."},
+        {"type":"heuristic","title":"Describe behavior before judging character","confidence":"high","content":"Specific observable behavior is easier to discuss and change than labels about attitude, loyalty, professionalism, or personality."},
+        {"type":"failure-mode","title":"Conversation failures","confidence":"high","content":"Avoid storing resentment until the discussion explodes, using always/never language, arguing about motives you cannot know, bringing unrelated history into the issue, softening the message until the required change disappears, and threatening consequences you will not enforce."}
+      ],
+      "drills": [{"key":"scope-boundary","title":"Reset a crossed project boundary","difficulty":"guided","prompt":"A client repeatedly asks for work outside the agreed scope. Structure a conversation that acknowledges the relationship, names the pattern, explains the impact, and resets the scope or price.","rubric":["Behavior is specific","Impact is clear","Client perspective invited","Boundary is explicit","Next step is actionable"]}]
+    },
+    {
+      "key": "feedback-coaching",
+      "name": "Feedback & Coaching",
+      "description": "Give feedback that helps someone understand what to continue, change, and practice next.",
+      "purpose": "Improve performance without making feedback vague, personal, or impossible to use.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Actionable feedback loop","confidence":"high","content":"Identify the goal or standard; describe the specific observed behavior or output; explain the effect; identify what should continue or change; ask the person to interpret or respond; then agree on one or two next practices and when progress will be reviewed."},
+        {"type":"heuristic","title":"Feedback should be smaller than the person can act on","confidence":"high","content":"Do not dump every criticism at once. Prioritize the change with the highest impact and give enough context for the person to practice it deliberately."},
+        {"type":"failure-mode","title":"Feedback failures","confidence":"high","content":"Avoid personality labels, vague praise, feedback months after the event, corrections with no example, changing the standard after the fact, public embarrassment when private coaching would work, and giving ten improvements with no priority."}
+      ],
+      "drills": [{"key":"creative-review","title":"Coach a creative revision","difficulty":"guided","prompt":"A junior editor delivers a technically clean video that feels emotionally flat. Give feedback that protects what works, identifies the main pacing problem, and creates one concrete revision exercise.","rubric":["Standard is clear","Observed behavior is specific","Strengths preserved","Priority change identified","Practice next step is concrete"]}]
+    },
+    {
+      "key": "delegation",
+      "name": "Delegation",
+      "description": "Transfer ownership of work with enough context, authority, constraints, and checkpoints for success.",
+      "purpose": "Create leverage without turning delegation into constant rework or micromanagement.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Delegate outcomes, not just motions","confidence":"high","content":"Good delegation defines the desired result, why it matters, constraints, quality standard, authority, deadline, available resources, and escalation conditions. Task lists alone do not transfer judgment."},
+        {"type":"procedure","title":"Delegation brief","confidence":"high","content":"State the outcome; define done; explain critical context; identify decisions the assignee may make without asking; identify decisions that require approval; agree on checkpoints; confirm understanding; then avoid taking the task back at the first imperfection."},
+        {"type":"failure-mode","title":"Delegation failures","confidence":"high","content":"Avoid delegating without authority, giving hidden standards, requiring approval for every small choice, disappearing until the deadline, taking over instead of coaching, and assigning responsibility without access to the information or tools required."}
+      ],
+      "drills": [{"key":"event-delegation","title":"Delegate an event-production role","difficulty":"guided","prompt":"Delegate media-card management and file backup during an event. Define outcome, timing, naming/backup rules, decision authority, escalation conditions, and verification.","rubric":["Outcome is measurable","Authority is clear","Critical constraints included","Escalation conditions defined","Verification checkpoint included"]}]
+    },
+    {
+      "key": "meeting-facilitation",
+      "name": "Meeting Facilitation",
+      "description": "Run meetings that produce decisions, alignment, or useful information instead of consuming time by default.",
+      "purpose": "Make group time purposeful, bounded, and easy to follow up.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Decision-oriented meeting design","confidence":"high","content":"Define the meeting outcome before inviting people; include only participants needed for that outcome; send context in advance where possible; timebox topics; distinguish discussion from decision; capture decisions, owners, deadlines, and unresolved questions; then end when the outcome is reached."},
+        {"type":"heuristic","title":"If no interaction is needed, it may not need a meeting","confidence":"high","content":"Status information that does not require discussion, judgment, or coordination is often better delivered asynchronously."},
+        {"type":"failure-mode","title":"Meeting failures","confidence":"high","content":"Avoid agenda-less calls, unclear decision authority, reading documents aloud, letting one topic consume the whole meeting, ending with vague 'next steps,' inviting everyone just in case, and reopening settled decisions without new evidence."}
+      ],
+      "drills": [{"key":"launch-meeting","title":"Facilitate a project launch meeting","difficulty":"guided","prompt":"Design a 30-minute launch meeting for a client website project. Define objective, attendees, agenda, decisions required, artifacts, owners, and follow-up.","rubric":["Outcome is explicit","Attendees are necessary","Agenda is timeboxed","Decisions/owners captured","Follow-up artifact defined"]}]
+    },
+    {
+      "key": "stakeholder-communication",
+      "name": "Stakeholder Communication",
+      "description": "Adapt the same underlying truth to different audiences without changing the facts.",
+      "purpose": "Keep clients, collaborators, operators, and decision-makers aligned at the right level of detail.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Audience changes emphasis, not truth","confidence":"high","content":"Executives may need risk, outcome, cost, and decision; operators may need sequence, dependencies, and details; clients may need progress, impact, and next action. The facts should remain consistent even when the presentation changes."},
+        {"type":"procedure","title":"Stakeholder update structure","confidence":"high","content":"Start with status; state what changed since the last update; identify decisions or blockers; explain impact on scope, schedule, cost, or quality; name owner and next step; include detail only if it changes the reader's action or confidence."},
+        {"type":"failure-mode","title":"Stakeholder update failures","confidence":"high","content":"Avoid burying bad news, using technical detail to hide uncertainty, reporting activity instead of outcomes, changing the message between audiences, waiting until a deadline is missed to surface a risk, and sending updates with no requested action."}
+      ],
+      "drills": [{"key":"delay-update","title":"Communicate a project delay","difficulty":"guided","prompt":"A dependency will delay delivery by three days. Create separate update structures for the client and internal team while keeping the facts consistent.","rubric":["Facts stay consistent","Audience emphasis differs appropriately","Impact is explicit","Recovery plan included","Action/owner clear"]}]
+    },
+    {
+      "key": "conflict-resolution",
+      "name": "Conflict Resolution",
+      "description": "Move disagreements from positions toward interests, facts, tradeoffs, and workable commitments.",
+      "purpose": "Resolve useful conflict without forcing false agreement or allowing avoidable hostility.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Conflict-resolution loop","confidence":"high","content":"Define the disputed issue; let each side state facts and interests; identify points of agreement; separate values or preferences from objective constraints; generate options; evaluate tradeoffs; agree on a test, decision rule, or commitment; document what happens if the conflict reappears."},
+        {"type":"heuristic","title":"Interests create options that positions hide","confidence":"high","content":"Two positions can look incompatible while the underlying interests are not. Ask what each side is protecting, avoiding, or trying to achieve before concluding there is no solution."},
+        {"type":"failure-mode","title":"Conflict failures","confidence":"high","content":"Avoid trying to win before defining the issue, dragging in old grievances, using majority opinion as proof, pretending a value disagreement is a technical fact dispute, forcing immediate resolution when more evidence is needed, and leaving commitments ambiguous."}
+      ],
+      "drills": [{"key":"creative-disagreement","title":"Resolve a creative direction conflict","difficulty":"guided","prompt":"A client wants a flashy edit while the creative team wants a restrained premium feel. Identify positions, interests, objective constraints, and a testable path to a decision.","rubric":["Positions and interests separated","Shared goals identified","Tradeoffs explicit","Test or decision rule proposed","No false certainty"]}]
+    },
+    {
+      "key": "persuasion",
+      "name": "Ethical Persuasion",
+      "description": "Make a recommendation compelling through relevance, evidence, clarity, and credible tradeoffs.",
+      "purpose": "Help people make informed decisions without manipulation or deceptive pressure.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Persuasion starts with the other person's decision criteria","confidence":"high","content":"A strong argument connects the recommendation to the audience's goals, constraints, risks, and evidence. More enthusiasm is not a substitute for relevance."},
+        {"type":"procedure","title":"Recommendation structure","confidence":"high","content":"State the decision; explain why it matters; define the criteria; present the recommendation; give the strongest supporting evidence; acknowledge material tradeoffs and uncertainty; compare credible alternatives; then state the next action."},
+        {"type":"failure-mode","title":"Persuasion failures","confidence":"high","content":"Avoid fake scarcity, withholding material downsides, attacking alternatives unfairly, overwhelming with irrelevant evidence, assuming objections are ignorance, and using confidence of tone as a substitute for confidence of evidence."}
+      ],
+      "drills": [{"key":"tool-investment","title":"Recommend a business tool investment","difficulty":"guided","prompt":"Persuade an owner to adopt a new operations tool. Build the case around cost, time saved, error reduction, implementation burden, downside, and alternatives without hiding uncertainty.","rubric":["Decision criteria explicit","Evidence tied to criteria","Tradeoffs acknowledged","Alternative compared fairly","Next action clear"]}]
+    },
+    {
+      "key": "presentation-storytelling",
+      "name": "Presentation & Business Storytelling",
+      "description": "Organize information into a clear narrative that helps an audience understand, remember, and decide.",
+      "purpose": "Turn data, ideas, and recommendations into structured communication rather than slide-by-slide dumping.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"A presentation needs a through-line","confidence":"high","content":"Good presentations answer a sequence of questions the audience naturally has: What is happening? Why does it matter? What are the choices? What do you recommend? What happens next? Slides support that story rather than becoming the story themselves."},
+        {"type":"procedure","title":"Presentation build workflow","confidence":"high","content":"Define audience and decision; write the one-sentence takeaway; outline the argument before designing slides; give each slide one job; use evidence where it changes belief; simplify charts and visuals; rehearse transitions; then cut material that does not support the decision or understanding."},
+        {"type":"failure-mode","title":"Presentation failures","confidence":"high","content":"Avoid title-less charts, walls of text, one idea split across too many slides, decorative data, reading the slide aloud, delaying the main point until the end when the audience needs it early, and ending without a decision or next action."}
+      ],
+      "drills": [{"key":"proposal-story","title":"Structure a client proposal presentation","difficulty":"guided","prompt":"Build a short presentation structure for a client choosing between three service packages. Define the story, slide jobs, evidence, tradeoffs, recommendation, and final decision slide.","rubric":["Audience decision drives structure","One job per slide","Evidence is relevant","Tradeoffs visible","Clear close/next action"]}]
+    },
+    {
+      "key": "decision-communication",
+      "name": "Decision Communication",
+      "description": "Communicate decisions so people understand what was decided, why, what changes, and who owns the next move.",
+      "purpose": "Prevent settled decisions from becoming recurring confusion or invisible assumptions.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Decision record format","confidence":"high","content":"State the decision; date and owner; problem being solved; material alternatives considered; key reasoning and evidence; consequences; actions and owners; review trigger if assumptions change. Keep it short enough to be read later."},
+        {"type":"heuristic","title":"Communicate what changes because of the decision","confidence":"high","content":"People often understand the decision statement but not how their work changes. Translate the decision into concrete changes in priority, behavior, timeline, budget, or ownership."},
+        {"type":"failure-mode","title":"Decision communication failures","confidence":"high","content":"Avoid announcing decisions without rationale when buy-in matters, burying ownership, leaving old instructions active, reopening decisions without changed evidence, confusing discussion notes with a final decision, and assuming everyone heard the same verbal conversation."}
+      ],
+      "drills": [{"key":"priority-decision","title":"Communicate a portfolio priority change","difficulty":"guided","prompt":"A company decides to pause a low-priority project and redirect resources to a revenue-critical project. Write the decision structure including reason, impact, owners, what stops, what starts, and what would trigger reconsideration.","rubric":["Decision unmistakable","Reason concise","Operational change explicit","Owners/actions named","Review trigger defined"]}]
+    }
+  ]
+}
