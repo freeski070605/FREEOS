@@ -1,0 +1,118 @@
+{
+  "packKey": "comfyui-generative-media-core-v1",
+  "title": "ComfyUI & Generative Media Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/comfyui-generative-media/core-v1",
+  "domain": {
+    "key": "comfyui-generative-media",
+    "name": "ComfyUI & Generative Media",
+    "description": "Program-specific ComfyUI workflow construction for image and video generation, model components, conditioning, control/reference systems, custom nodes, performance tuning, debugging, reproducibility, and production handoff. Model- and node-version details should be checked against current documentation when needed.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "graph-workflow-fundamentals",
+      "name": "ComfyUI Graph & Workflow Fundamentals",
+      "description": "Understand node graphs, typed connections, execution dependencies, workflow state, queues, and reusable graph structure.",
+      "purpose": "Build readable generative workflows instead of fragile node tangles that cannot be debugged or reused.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"A ComfyUI workflow is an executable dataflow graph","confidence":"high","content":"Nodes transform typed data such as models, conditioning, latents, images, masks, clips, and control signals. Connections encode both data movement and execution dependencies, so graph structure is part of the program logic."},
+        {"type":"procedure","title":"Build a workflow from stages","confidence":"high","content":"Separate loading, conditioning, generation, decoding, post-processing, and saving into recognizable sections; label important groups; expose only meaningful parameters; test a minimal path before adding control/reference branches; save working checkpoints of the graph."},
+        {"type":"failure-mode","title":"Graph-design failures","confidence":"high","content":"Avoid unlabeled spaghetti graphs, duplicate model loaders without need, hidden parameter differences across branches, adding many custom nodes before the base graph works, and changing several generation variables at once while debugging."}
+      ],
+      "drills": [{"key":"clean-base-workflow","title":"Design a clean base generation graph","difficulty":"guided","prompt":"Build the logical stages for a reusable image-generation workflow with clear model loading, conditioning, sampling, decode, preview, and save sections.","rubric":["Stages separated","Connections readable","Parameters intentional","Minimal path works first","Workflow can be reused"]}]
+    },
+    {
+      "key": "models-components",
+      "name": "Models, Encoders, VAEs & Components",
+      "description": "Match checkpoints, text/image encoders, VAEs, adapters, LoRAs, motion modules, and related components correctly.",
+      "purpose": "Prevent incompatible or misleading model combinations and understand which component controls which part of generation.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"A generative pipeline is a component stack","confidence":"high","content":"Checkpoint families, text encoders, VAEs, adapters, LoRAs, ControlNet-style modules, image encoders, and motion components are not interchangeable. Compatibility depends on architecture, expected conditioning, dimensions, and training family."},
+        {"type":"procedure","title":"Component selection workflow","confidence":"high","content":"Identify the base model family first; confirm required encoders and VAE; add adapters or LoRAs one at a time; verify expected model type and weight range; record source/version/hash where practical; test a known baseline before combining components."},
+        {"type":"failure-mode","title":"Component failures","confidence":"high","content":"Avoid loading components trained for incompatible model families, stacking many LoRAs before testing each one, assuming filename implies architecture, and troubleshooting visual quality before verifying that every required component actually loaded."}
+      ],
+      "drills": [{"key":"pipeline-component-audit","title":"Audit a model stack","difficulty":"guided","prompt":"A workflow produces distorted outputs after adding a LoRA, image adapter, and custom VAE. Design the order for verifying compatibility and isolating the failing component.","rubric":["Base family verified","Components isolated","Compatibility checked","Baseline restored","Sources/versions recorded"]}]
+    },
+    {
+      "key": "sampling-conditioning",
+      "name": "Sampling, Conditioning & Prompt Control",
+      "description": "Control seeds, samplers, schedulers, steps, guidance, positive/negative conditioning, latent size, and reproducible parameter changes.",
+      "purpose": "Make generation changes intentional and diagnosable rather than random knob turning.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Generation parameters interact","confidence":"high","content":"Seed, sampler, schedule, step count, guidance, resolution, conditioning strength, denoise level, and model family influence each other. A parameter cannot be judged in isolation without holding the rest of the test stable."},
+        {"type":"procedure","title":"Controlled generation test","confidence":"high","content":"Fix model, prompt, seed, dimensions, and baseline sampler settings; change one important parameter; compare outputs; log the change; preserve a known-good preset; only then combine changes that have demonstrated a useful effect."},
+        {"type":"failure-mode","title":"Sampling failures","confidence":"high","content":"Avoid randomizing seed while comparing settings, adding excessive steps without measured benefit, using extreme guidance to force prompt adherence, and changing resolution or denoise strength while assuming every other parameter remains comparable."}
+      ],
+      "drills": [{"key":"controlled-sampler-test","title":"Run a controlled sampler comparison","difficulty":"guided","prompt":"Design a small experiment comparing two sampling strategies without confounding seed, prompt, model, or resolution.","rubric":["Variables controlled","One change at a time","Seed fixed","Output criteria defined","Results recorded"]}]
+    },
+    {
+      "key": "control-reference-guidance",
+      "name": "Control, Pose & Reference Guidance",
+      "description": "Use pose, depth, edges, masks, reference images, image adapters, and identity/style guidance without overwhelming the base generation.",
+      "purpose": "Preserve composition, pose, identity, or style while keeping control strength understandable.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Control-guidance workflow","confidence":"high","content":"Choose the control signal that represents the constraint you need; preprocess it visibly; connect the compatible control model or adapter; start with moderate strength; compare against an uncontrolled baseline; then tune start/end timing or weighting only after the control is confirmed to work."},
+        {"type":"heuristic","title":"Use the weakest control that reliably preserves the requirement","confidence":"high","content":"Over-constraining pose, identity, depth, style, and edges at once can reduce image quality and make failures hard to diagnose. Add controls in priority order."},
+        {"type":"failure-mode","title":"Control failures","confidence":"high","content":"Avoid incompatible preprocessors/models, hidden resized control images with wrong aspect ratio, maxing every control weight, and combining multiple reference systems before verifying each independently."}
+      ],
+      "drills": [{"key":"identity-pose-control","title":"Preserve identity and pose","difficulty":"guided","prompt":"Plan a ComfyUI graph that preserves a subject's identity while following a target pose, with a test order that isolates each guidance system.","rubric":["Control roles separated","Compatibility verified","Strength starts moderate","Baseline comparisons included","Aspect ratio handled"]}]
+    },
+    {
+      "key": "image-video-pipelines",
+      "name": "Image-to-Image & Image-to-Video Pipelines",
+      "description": "Build transform, inpaint, outpaint, temporal, and image-to-video workflows with controlled source influence and output handoff.",
+      "purpose": "Turn still assets into consistent variations or motion while preserving required structure.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Denoise controls how much source structure survives","confidence":"high","content":"Image-to-image and inpainting workflows balance source preservation against regeneration. Higher transformation strength may improve change magnitude but can destroy identity, geometry, or layout that the source was meant to preserve."},
+        {"type":"procedure","title":"Image/video transformation workflow","confidence":"high","content":"Prepare source dimensions and masks; choose transform strength deliberately; preserve seed and settings for tests; add motion or temporal components only after still-image behavior is stable; preview short/low-cost outputs; then increase frame count, resolution, or refinement stages."},
+        {"type":"failure-mode","title":"Image/video pipeline failures","confidence":"high","content":"Avoid testing long video before short previews work, resizing sources inconsistently across branches, masking with unclear feather/boundary behavior, and treating frame flicker as a color-grade problem before checking temporal conditioning."}
+      ],
+      "drills": [{"key":"short-image-to-video","title":"Build a short image-to-video test","difficulty":"guided","prompt":"Design a low-cost workflow that animates a character image while preserving identity and validating motion before rendering a long clip.","rubric":["Source preparation clear","Short preview first","Identity preservation tested","Motion stage isolated","Output settings documented"]}]
+    },
+    {
+      "key": "custom-nodes-environments",
+      "name": "Custom Nodes, Python Environments & Dependency Safety",
+      "description": "Install and manage custom nodes, Python dependencies, models, and extensions without destabilizing the working environment.",
+      "purpose": "Expand ComfyUI safely while keeping dependency failures recoverable.",
+      "riskLevel": "elevated",
+      "units": [
+        {"type":"concept","title":"Custom nodes execute third-party code","confidence":"high","content":"A custom node can install dependencies, access files, make network requests, and change the Python environment. Treat node repositories and install scripts as software supply-chain inputs rather than harmless workflow files."},
+        {"type":"procedure","title":"Safe custom-node installation","confidence":"high","content":"Record the current working environment; review repository/source and dependency instructions; install one extension at a time; capture commit/version; restart and test a known baseline workflow; keep rollback or environment recreation notes; avoid exposing secrets to untrusted nodes."},
+        {"type":"failure-mode","title":"Environment failures","confidence":"high","content":"Avoid mass-updating every node before a deadline, installing unknown code solely because a workflow requests it, mixing incompatible Torch/CUDA packages without a plan, and deleting a working environment before confirming the replacement starts."}
+      ],
+      "drills": [{"key":"node-install-plan","title":"Plan a safe custom-node install","difficulty":"guided","prompt":"A downloaded workflow requires three unfamiliar custom-node repositories. Define how to review, install, test, and roll back them without damaging a working ComfyUI setup.","rubric":["Third-party code treated as risk","Baseline captured","One-at-a-time installs","Rollback defined","Secrets/network exposure considered"]}]
+    },
+    {
+      "key": "vram-performance-debugging",
+      "name": "VRAM, Performance & Workflow Debugging",
+      "description": "Diagnose CUDA, VRAM, tensor-shape, node, NaN, dependency, and performance problems systematically.",
+      "purpose": "Recover broken workflows without random reinstall cycles or unnecessary quality loss.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"ComfyUI debugging ladder","confidence":"high","content":"Read the first meaningful error; identify the failing node; verify input shapes/types and model compatibility; reproduce with a minimal branch; inspect VRAM/resolution/batch/frame pressure; confirm environment/package versions; change one cause at a time and rerun the smallest test."},
+        {"type":"heuristic","title":"Reduce the graph before reducing quality","confidence":"high","content":"When a complex graph fails, isolate the failing stage first. Lowering resolution or quality everywhere may hide the real problem and make future scaling unpredictable."},
+        {"type":"failure-mode","title":"Debugging failures","confidence":"high","content":"Avoid reinstalling the entire environment after every node error, ignoring the first stack trace in favor of later cascading errors, changing model and sampler together, and repeatedly triggering expensive full-length jobs during diagnosis."}
+      ],
+      "drills": [{"key":"vram-failure-isolation","title":"Diagnose an out-of-memory workflow","difficulty":"guided","prompt":"A workflow succeeds for one image but fails for a 33-frame video on an 8GB GPU. Build an isolation and memory-reduction plan that preserves the pipeline's intent.","rubric":["Failing stage isolated","VRAM drivers identified","Short tests used","Changes measured","Quality tradeoffs explicit"]}]
+    },
+    {
+      "key": "reproducibility-metadata-delivery",
+      "name": "Reproducibility, Metadata & Production Handoff",
+      "description": "Preserve workflows, prompts, seeds, model versions, node versions, outputs, and handoff metadata for repeatable production.",
+      "purpose": "Make successful generations reproducible and usable by editing, compositing, or automation systems downstream.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Production capture workflow","confidence":"high","content":"Save the exact workflow; record seed and major generation parameters; identify model and adapter versions; use deterministic output naming; preserve source/reference assets; save intermediate outputs when they are expensive to recreate; attach enough metadata to reproduce the result later."},
+        {"type":"concept","title":"A good output without provenance is hard to scale","confidence":"high","content":"Production value comes from being able to reproduce, revise, batch, and hand off successful results. The final image or video alone does not capture the decisions that created it."},
+        {"type":"failure-mode","title":"Handoff failures","confidence":"high","content":"Avoid overwriting successful outputs, saving only screenshots of graph settings, depending on model filenames with no version record, and exporting media without documenting crop, frame rate, alpha, color, or downstream expectations."}
+      ],
+      "drills": [{"key":"reproducible-hero-shot","title":"Package a reproducible hero shot","difficulty":"guided","prompt":"Define the files and metadata needed so another workstation can reproduce and revise a successful ComfyUI hero image or short clip.","rubric":["Workflow preserved","Seed/settings captured","Models/nodes identified","Assets included","Downstream media specs documented"]}]
+    }
+  ]
+}
