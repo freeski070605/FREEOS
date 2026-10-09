@@ -1,0 +1,224 @@
+{
+  "packKey": "photo-video-professional-core-v1",
+  "title": "Professional Photo & Video Production Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/photo-video/professional-core-v1",
+  "domain": {
+    "key": "photo-video",
+    "name": "Photo & Video Production",
+    "description": "Practical production knowledge for camera, lighting, audio, editing, color, motion, event/commercial workflows, and delivery QC.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "exposure-control",
+      "name": "Exposure Control",
+      "description": "Control exposure intentionally across changing scenes while protecting important highlights, shadows, motion, and noise.",
+      "purpose": "Create technically usable images that support the desired visual intent and remain consistent across coverage.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Video exposure workflow","confidence":"high","content":"Confirm frame rate and delivery format. Choose motion rendering first; a shutter near a 180-degree equivalent is a common natural-motion starting point, not a law. Choose aperture for depth of field and lens behavior. Keep ISO near a clean operating range when practical. Use ND or lighting rather than sacrificing motion or depth-of-field intent. Judge important tones with waveform, zebras, or histogram rather than LCD brightness alone. Re-check after reframing or lighting changes."},
+        {"type":"heuristic","title":"Protect what cannot be recovered","confidence":"high","content":"When dynamic range is limited, identify the story-critical subject and highlight. Protect meaningful highlight detail and skin before expendable practicals or background windows. A centered histogram is not the goal; preserving the tones that carry the image is."},
+        {"type":"failure-mode","title":"Common exposure failures","confidence":"high","content":"Avoid judging only by monitor brightness, chasing exposure with shutter and changing motion character, raising ISO before considering light or ND, underexposing log footage until shadows become noisy, clipping faces to preserve irrelevant backgrounds, and allowing shot-to-shot exposure drift."}
+      ],
+      "drills": [
+        {"key":"mixed-light-scene","title":"Expose a mixed-light scene","difficulty":"guided","prompt":"Given a subject near a bright window with a dim interior, propose camera settings, lighting or ND choices, and which tones you will protect. Explain the tradeoffs.","rubric":["Identifies story-critical tones","Keeps motion and depth-of-field intentional","Uses objective exposure checks","Explains highlight/shadow tradeoff","Avoids arbitrary ISO/shutter changes"]}
+      ]
+    },
+    {
+      "key": "composition-framing",
+      "name": "Composition & Framing",
+      "description": "Compose images that direct attention, preserve continuity, and create intentional visual relationships.",
+      "purpose": "Use frame design to make subjects, actions, and emotional emphasis immediately legible.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Framing checklist","confidence":"high","content":"Identify the subject and emotional purpose; choose shot size; check headroom and lead room; inspect edges for cutoffs and distractions; separate subject from background; check horizon and verticals; confirm eyeline and screen-direction continuity; decide whether symmetry, imbalance, centered framing, or negative space serves the moment."},
+        {"type":"heuristic","title":"Backgrounds are part of the subject","confidence":"high","content":"A strong pose or performance can be weakened by poles through heads, bright objects at frame edges, clutter, or competing faces. Clean the background physically, optically, or by moving the camera before trying to repair it in post."},
+        {"type":"failure-mode","title":"Composition failures","confidence":"high","content":"Watch for accidental tangencies, too much headroom, insufficient look room, inconsistent eyelines, awkward joint cutoffs in portraits, distracting high-contrast backgrounds, and reframing every shot independently without sequence continuity."}
+      ],
+      "drills": [
+        {"key":"coverage-sequence","title":"Design three-shot coverage","difficulty":"guided","prompt":"Design a wide, medium, and close-up for a two-person conversation. Explain camera side, eyelines, background control, and why each shot earns its place.","rubric":["Clear visual hierarchy","Continuity preserved","Shot sizes have distinct jobs","Backgrounds considered","Coverage supports editing"]}
+      ]
+    },
+    {
+      "key": "camera-lenses",
+      "name": "Camera & Lens Selection",
+      "description": "Choose camera, focal length, distance, stabilization, and recording settings for the job instead of by habit.",
+      "purpose": "Match capture tools to story, environment, delivery, low-light, mobility, and post-production needs.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Focal length versus perspective","confidence":"high","content":"Focal length changes field of view; perspective changes primarily with camera position. Moving closer exaggerates near/far size relationships, while moving back compresses them. Do not describe lens compression without accounting for changed camera distance."},
+        {"type":"procedure","title":"Lens selection workflow","confidence":"high","content":"Choose shot purpose and camera position first, then focal length for the desired field of view. Check working distance, background, minimum focus, stabilization, aperture, breathing, distortion, low-light needs, autofocus behavior, and whether the recording format fits the post workflow."},
+        {"type":"failure-mode","title":"Camera and lens failures","confidence":"high","content":"Avoid selecting a lens only for blur, standing in the wrong place and trying to fix perspective with focal length, changing lens families without continuity, ignoring rolling-shutter or stabilization limits, and recording a codec or profile that the post workflow cannot handle."}
+      ],
+      "drills": [
+        {"key":"lens-choice-portrait","title":"Choose lenses for three portrait intents","difficulty":"guided","prompt":"Choose camera position and focal-length range for an environmental portrait, intimate close-up, and compressed stage/event shot. Explain perspective and background consequences.","rubric":["Separates perspective from focal length","Explains working distance","Matches lens choice to intent","Considers focus and stabilization","Avoids one-size-fits-all thinking"]}
+      ]
+    },
+    {
+      "key": "lighting",
+      "name": "Lighting",
+      "description": "Shape exposure, contrast, direction, color, and separation with practical and controlled light.",
+      "purpose": "Make subjects readable and dimensional while supporting mood and maintaining continuity.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Fast portrait and interview lighting","confidence":"high","content":"Control problematic ambient sources. Establish exposure for the environment you want to retain. Place a key to create facial shape and catchlight. Use fill or negative fill to set contrast. Add separation or background light only if needed. Match or intentionally contrast color temperature. Check skin exposure and background clipping, then document changes for continuity."},
+        {"type":"heuristic","title":"Fix the biggest lighting problem first","confidence":"high","content":"Do not add lights to compensate for a bad room. First move the subject, camera, or existing practicals; block spill; use negative fill; then add light only where it solves a specific problem."},
+        {"type":"failure-mode","title":"Lighting failures","confidence":"high","content":"Watch for mixed color casts on skin, flat frontal light, unmotivated rim lights, overexposed foreheads, uncontrolled practicals, fixtures in reflections, uneven group exposure caused by distance, and continuity changes between coverage angles."}
+      ],
+      "drills": [
+        {"key":"small-room-interview","title":"Light a small-room interview","difficulty":"guided","prompt":"Design a minimal lighting plan for a small room with one window, one bi-color LED, and a reflector. Include subject placement, key direction, ambient control, and exposure priorities.","rubric":["Uses environment before adding gear","Explains key/fill strategy","Controls mixed color","Protects important highlights","Plan is realistic for available gear"]}
+      ]
+    },
+    {
+      "key": "audio-capture",
+      "name": "Production Audio Capture",
+      "description": "Capture intelligible, clean production audio with appropriate microphones, placement, gain structure, redundancy, and monitoring.",
+      "purpose": "Protect dialogue and key live sound so post-production has usable material.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Dialogue capture workflow","confidence":"high","content":"Choose lav, boom, handheld, or recorder based on movement and environment. Place the microphone as close as practical without creating visual or clothing problems. Set gain using real performance level and leave headroom; dialogue peaks around roughly -12 to -6 dBFS are a useful digital starting range, not a law. Monitor with headphones, listen for HVAC, hum, RF, handling and clothing noise, use 48 kHz for standard video workflows unless the production requires otherwise, and capture room tone plus redundancy when failure cost is high."},
+        {"type":"heuristic","title":"Monitor the sound, not the meters","confidence":"high","content":"Meters cannot reveal clothing rustle, RF ticks, echo, wind, clipping upstream of the recorder, or a dead lav. Wear headphones whenever the production permits."},
+        {"type":"failure-mode","title":"Audio failures","confidence":"high","content":"Common failures include microphone too far from source, auto-gain pumping, lav rubbing, no wind protection, clipping because rehearsal was quieter than performance, mismatched sample rates, forgotten room tone, and relying on camera scratch audio as the only source."}
+      ],
+      "drills": [
+        {"key":"noisy-room-dialogue","title":"Plan dialogue in a noisy room","difficulty":"guided","prompt":"Choose microphone type, placement, gain, and noise-control steps for a two-person conversation in a reverberant room with HVAC noise.","rubric":["Prioritizes close placement","Addresses room and HVAC noise","Sets realistic headroom","Includes monitoring","Includes backup or contingency"]}
+      ]
+    },
+    {
+      "key": "editing-rhythm",
+      "name": "Editing Rhythm & Pacing",
+      "description": "Control timing, energy, attention, and emotional cadence through shot duration, movement, sound, and performance.",
+      "purpose": "Make cuts feel motivated by story, emotion, music, or action rather than arbitrary frequency.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Rhythm is not cut frequency","confidence":"high","content":"Fast cutting is only one kind of rhythm. Pacing also comes from shot duration, internal movement, dialogue cadence, musical phrasing, silence, camera movement, and expectation. A long shot can feel fast if the frame contains evolving action."},
+        {"type":"procedure","title":"Rhythm pass","confidence":"high","content":"Build for meaning and continuity first. Watch without stopping and mark where attention drops, anticipation is cut short, or beats linger after their value is spent. Adjust on performance turns, action peaks, musical accents, or intentional counter-rhythm. Rewatch with sound off and then audio-only to separate visual and sonic pacing problems."},
+        {"type":"heuristic","title":"Cut on change","confidence":"high","content":"A strong cut often follows a change in information, emotion, motion, speaker, beat, or point of view. Do not cut just because a fixed number of seconds passed."}
+      ],
+      "drills": [
+        {"key":"performance-cut","title":"Edit a performance passage","difficulty":"guided","prompt":"Given a 30-second performance with wide, medium, close-up and insert coverage, describe a cut strategy that preserves buildup, lands key lyrics or actions, and varies pace.","rubric":["Preserves performance moments","Uses coverage with purpose","Creates pace contrast","Avoids mechanical beat-by-beat cutting","Explains why major cuts happen"]}
+      ]
+    },
+    {
+      "key": "narrative-editing",
+      "name": "Narrative Editing & Story Structure",
+      "description": "Select and order material to create clear cause and effect, emotional progression, and useful information.",
+      "purpose": "Turn raw coverage into a sequence that communicates what happened and why the audience should care.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Story assembly workflow","confidence":"high","content":"Identify the core promise, desire, problem, or dramatic question. Select the strongest moments before polishing. Build a beginning that orients, a middle that develops or escalates, and an ending that resolves or reframes. Remove repetition. Use reactions and details to reveal meaning, not hide weak decisions. Check continuity after story value, and screen for someone who lacks context."},
+        {"type":"heuristic","title":"Prefer the strongest truthful moment","confidence":"high","content":"If the emotionally strongest take has a minor continuity mismatch, first try to preserve the performance and solve the mismatch invisibly rather than choosing a weaker performance solely for continuity."},
+        {"type":"failure-mode","title":"Narrative editing failures","confidence":"high","content":"Avoid chronological dumping with no hierarchy, repeated information, slow openings, missing reactions, montage used to avoid decisions, confusing geography, and continuing after the emotional resolution has already landed."}
+      ],
+      "drills": [
+        {"key":"event-story","title":"Build a one-minute event story","difficulty":"guided","prompt":"Outline a one-minute event highlight from arrival through payoff using only 12 shots. State the job of every shot.","rubric":["Clear beginning-middle-end","Each shot has a distinct job","Uses reactions and details meaningfully","Avoids chronological dumping","Ends on payoff"]}
+      ]
+    },
+    {
+      "key": "color-correction",
+      "name": "Color Correction",
+      "description": "Normalize exposure, white balance, contrast, saturation, and shot matching before creative grading.",
+      "purpose": "Create technically consistent footage with believable skin and predictable downstream grading.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Correction workflow","confidence":"high","content":"Confirm input color space and gamma plus sequence/output management. Normalize log or raw correctly when needed. Balance exposure with waveform. Correct unwanted white-balance and tint shifts. Set contrast and black/white points without crushing or clipping important detail. Place skin and key colors plausibly using scopes plus visual judgment. Match adjacent shots by subject, not isolated numbers. Add creative look only after correction and matching."},
+        {"type":"heuristic","title":"Match the cut, not the thumbnail","confidence":"high","content":"Two shots that look acceptable alone can clash when cut together. Compare adjacent shots at the same story moment and match subject brightness, color, and contrast perception."},
+        {"type":"failure-mode","title":"Color correction failures","confidence":"high","content":"Avoid applying LUTs before correct color management, judging only by scopes, neutralizing intentional practical color, chasing exact skin-line placement across different complexions or lighting, clipping channels, and matching backgrounds while faces drift."}
+      ],
+      "drills": [
+        {"key":"shot-match","title":"Match three camera angles","difficulty":"guided","prompt":"Describe how you would match a wide, medium, and close-up of the same subject shot with slightly different exposure and white balance. Include scope order and visual checks.","rubric":["Starts with color management","Matches subject first","Uses waveform and vectorscope appropriately","Avoids destructive clipping","Preserves intentional lighting"]}
+      ]
+    },
+    {
+      "key": "color-grading",
+      "name": "Creative Color Grading",
+      "description": "Create intentional color, contrast, density, and separation after technical correction while protecting skin and delivery constraints.",
+      "purpose": "Use color as part of storytelling and brand identity without sacrificing image integrity.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Look development workflow","confidence":"high","content":"Start from corrected, matched footage. Define references and emotional intent. Establish global contrast and density. Shape palette, protect skin and brand-critical colors, add selective windows or keys only where they support attention, test the look across multiple shots rather than one hero frame, and check output gamut, highlight rolloff, noise, banding, and compression behavior."},
+        {"type":"heuristic","title":"A look must survive the worst shot","confidence":"high","content":"Do not approve a grade because one hero close-up looks great. Test against underexposed shots, mixed lighting, different skin tones, and high-saturation scenes."},
+        {"type":"failure-mode","title":"Grading failures","confidence":"high","content":"Avoid LUT stacking, orange-and-teal by default, oversaturated skin, crushed blacks, noisy shadow pushes, inconsistent looks across cameras, local corrections that track poorly, and effect-heavy grades that hide weak correction."}
+      ],
+      "drills": [
+        {"key":"brand-look","title":"Design a restrained brand look","difficulty":"guided","prompt":"Create a grade strategy for a premium commercial that should feel warm, clean, and expensive without looking heavily filtered.","rubric":["Defines contrast and density","Defines palette","Protects skin and product color","Tests across shots","Avoids effect-for-effect's-sake"]}
+      ]
+    },
+    {
+      "key": "premiere-pro",
+      "name": "Adobe Premiere Pro",
+      "description": "Organize, edit, mix, color, caption, and deliver efficiently in Premiere Pro using durable project structure and non-destructive workflows.",
+      "purpose": "Turn raw media into reliable deliverables while keeping projects editable, performant, and recoverable.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Premiere project workflow","confidence":"high","content":"Ingest and verify media; establish project and bin structure; create proxies when codec or hardware makes editing inefficient; sync multicam and audio; build selects and stringouts; edit in dedicated sequences; keep dialogue, music, and SFX track roles consistent; color-manage intentionally; version sequences at milestones; export through settings that match delivery; review the exported file rather than only the timeline."},
+        {"type":"heuristic","title":"Version instead of overwrite","confidence":"high","content":"Duplicate sequences at meaningful milestones before major structural changes. Use clear names such as v01_assembly, v02_client, v03_color rather than final_final2."},
+        {"type":"failure-mode","title":"Premiere workflow failures","confidence":"high","content":"Avoid editing directly from disorganized media, mixed sequence settings, unhandled variable-frame-rate problems, excessive effects before picture lock, bad cache or proxy assumptions, missing linked media, and delivering without watching the export."}
+      ],
+      "drills": [
+        {"key":"project-setup","title":"Design a Premiere project structure","difficulty":"guided","prompt":"Design bins, naming, sequence versions, audio track roles, proxy policy, and export QC for a wedding with two cameras, recorder audio, drone, photos, and licensed music.","rubric":["Organization is scalable","Sync strategy is clear","Versioning is recoverable","Proxy policy is justified","Export QC included"]}
+      ]
+    },
+    {
+      "key": "after-effects",
+      "name": "Adobe After Effects",
+      "description": "Build motion graphics, compositing, tracking, cleanup, and animation with organized, controllable compositions.",
+      "purpose": "Create reusable motion and compositing work that integrates cleanly with editing workflows.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Motion graphic workflow","confidence":"high","content":"Define comp size, frame rate, and duration; organize assets; build major layout first; establish anchor points and parent hierarchy; animate primary motion before secondary polish; use the graph editor for acceleration and deceleration; precomp by logical function; expose reusable controls; use motion blur only where appropriate; render intermediate codecs when a live link becomes fragile."},
+        {"type":"heuristic","title":"Primary motion first","confidence":"high","content":"Before glow, blur, particles, texture, or micro-animation, the timing and trajectory of the main objects should already communicate the idea."},
+        {"type":"failure-mode","title":"After Effects failures","confidence":"high","content":"Avoid everything in one comp, broken anchor points, linear keyframes without intent, excessive motion blur, raster assets scaled too far, precomp nesting with no logic, unstable dynamic-link chains, and effects hiding weak motion design."}
+      ],
+      "drills": [
+        {"key":"logo-animation","title":"Plan a five-second logo animation","difficulty":"guided","prompt":"Design a five-second logo reveal with one primary motion idea, secondary polish, reusable controls, and a clean handoff back to Premiere.","rubric":["Primary motion is clear","Timing is purposeful","Acceleration is considered","Controls are reusable","Render handoff is practical"]}
+      ]
+    },
+    {
+      "key": "event-production",
+      "name": "Event & Wedding Production",
+      "description": "Plan and execute live-event photo/video coverage where moments cannot be repeated.",
+      "purpose": "Protect irreplaceable moments while producing emotionally strong, technically reliable deliverables.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Event coverage workflow","confidence":"high","content":"Before the event: confirm timeline, contacts, locations, restrictions, lighting, audio feeds, shot priorities, batteries, cards, backup gear, and time sync. During: establish location, protect key arrivals, vows, speeches or performances, capture reactions and details, rotate media and batteries before critical blocks, and monitor audio. After: duplicate media before formatting, verify counts, organize by camera and time, create selects, then build a story rather than a chronological dump."},
+        {"type":"heuristic","title":"Arrive before the moment","confidence":"high","content":"If a key event begins at 5:00, camera, exposure, audio, and position should be ready before 5:00. Live production punishes setup during the moment."},
+        {"type":"failure-mode","title":"Event production failures","confidence":"high","content":"Avoid one-battery or one-card strategies, no audio backup, standing where guests block the shot, moving during vows or speeches, missing reactions, overshooting generic footage while missing scheduled moments, poor low-light preparation, and formatting media before verified backup."}
+      ],
+      "drills": [
+        {"key":"wedding-plan","title":"Build a wedding coverage plan","difficulty":"guided","prompt":"Create a coverage plan for ceremony, portraits, entrances, speeches, first dance, open dance floor, and exit with two cameras and one audio recorder.","rubric":["Prioritizes irreversible moments","Includes audio redundancy","Includes positions and timing","Includes battery and media strategy","Includes reaction and detail coverage"]}
+      ]
+    },
+    {
+      "key": "commercial-production",
+      "name": "Commercial / Advertising Production",
+      "description": "Translate a business objective into concise creative that communicates value, earns attention, and supports a measurable call to action.",
+      "purpose": "Produce ads that solve a communication problem rather than merely look attractive.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"An ad is a business argument","confidence":"high","content":"Creative choices should support audience, problem or desire, promise, proof, differentiation, offer, and action. Beautiful footage that does not communicate value can still be a weak ad."},
+        {"type":"procedure","title":"Commercial production workflow","confidence":"high","content":"Clarify objective and target audience; define one primary message; gather proof and benefits; write a hook-body-proof-CTA structure; storyboard only shots that earn their place; capture demonstration, human reaction, credibility, and brand assets; edit for platform behavior; create alternate hooks and cutdowns; measure response and learn."},
+        {"type":"failure-mode","title":"Commercial failures","confidence":"high","content":"Avoid opening with a logo instead of value, vague claims, feature dumping, no proof, generic lifestyle B-roll, CTA unrelated to the promise, too many messages, slow pacing for the placement, and never testing alternate hooks."}
+      ],
+      "drills": [
+        {"key":"sixty-second-ad","title":"Design a 60-second service ad","difficulty":"guided","prompt":"Create a 60-second ad structure for a local service business: hook, problem or desire, demonstration, proof, offer, CTA, and required shots.","rubric":["Clear audience and promise","Hook arrives early","Proof is concrete","Shots support message","CTA follows naturally"]}
+      ]
+    },
+    {
+      "key": "delivery-qc",
+      "name": "Media Delivery & Quality Control",
+      "description": "Verify technical, editorial, audio, color, naming, and platform requirements before delivery.",
+      "purpose": "Prevent avoidable client-facing failures and preserve archive and revision capability.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"The export is a new artifact","confidence":"high","content":"A correct timeline can still produce a bad deliverable because of export settings, encoder behavior, missing effects, audio routing, color transforms, or upload processing. QC the actual exported file."},
+        {"type":"procedure","title":"Delivery QC workflow","confidence":"high","content":"Confirm requested resolution, frame rate, codec/container, aspect ratio, audio expectations, caption needs, naming, and duration. Export. Watch the full file for high-value work, checking beginning and end, sync, missing media, flash frames, color shifts, titles, spelling, dialogue, music/SFX, fades, black frames, and compression artifacts. Spot-check on the destination platform or device. Keep project, source, licenses, and final masters according to retention policy."},
+        {"type":"heuristic","title":"QC at the cost of failure","confidence":"high","content":"The more expensive or irreversible the delivery, the deeper the QC. A client master deserves full playback; a low-stakes draft may use targeted spot checks."}
+      ],
+      "drills": [
+        {"key":"final-master-check","title":"QC a final master","difficulty":"guided","prompt":"Create a final-delivery checklist for a 4K client video plus vertical social cutdown, including export, playback, naming, platform check, and archive.","rubric":["Covers both formats","Checks actual exports","Includes audio/color/title checks","Includes version naming","Includes archive and retention"]}
+      ]
+    }
+  ]
+}
