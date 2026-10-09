@@ -1,0 +1,194 @@
+{
+  "packKey": "business-strategy-operations-core-v1",
+  "title": "Business Strategy & Operations Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/business/strategy-operations-core-v1",
+  "domain": {
+    "key": "business",
+    "name": "Business Strategy & Operations",
+    "description": "Practical business knowledge for pricing, offers, sales, negotiation, acquisition, marketing, scoping, operations, recurring revenue, strategy, cash flow, and capital allocation.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "pricing-unit-economics",
+      "name": "Pricing & Unit Economics",
+      "description": "Price work from economics, risk, value, positioning, and capacity rather than habit or fear.",
+      "purpose": "Protect margin while creating offers customers can understand and businesses can sustain.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Know the economic floor before choosing the price","confidence":"high","content":"Separate hard costs, labor, overhead allocation, acquisition cost, payment fees, revision risk, warranty or support burden, taxes that must be collected or reserved, and desired profit. The economic floor is not automatically the selling price; it is the point below which the job destroys value unless there is a deliberate strategic reason."},
+        {"type":"procedure","title":"Practical pricing workflow","confidence":"high","content":"Define scope and outcome, estimate delivery labor and direct costs, add contingency for uncertainty, calculate a minimum acceptable contribution margin, compare against customer value and market alternatives, choose a pricing model, then stress-test for one extra revision, delay, or cost overrun. Record estimated versus realized margin after delivery so future quotes improve."},
+        {"type":"heuristic","title":"Discount scope before discounting value","confidence":"high","content":"When a buyer cannot afford the full offer, reduce deliverables, speed, customization, support, usage, or revision allowance before cutting price with the same obligations. A lower price with unchanged scope usually turns a sales concession into an operations problem."}
+      ],
+      "drills": [
+        {"key":"price-creative-job","title":"Price a six-hour creative job","difficulty":"guided","prompt":"Price a six-hour event photo/video job with prep, travel, editing, delivery, and one revision round. Show economic floor, target price, margin logic, and what scope you would remove if the client needs a lower price.","rubric":["Includes total labor not just event hours","Separates hard costs from margin","Accounts for revision and delivery burden","Explains floor versus target","Uses scope reduction instead of blind discounting"]}
+      ]
+    },
+    {
+      "key": "offer-design",
+      "name": "Offer Design",
+      "description": "Turn capabilities into clear customer outcomes, boundaries, proof, and buying choices.",
+      "purpose": "Make value legible enough that customers know what they are buying and why it matters.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"An offer is more than a service list","confidence":"high","content":"A strong offer combines target customer, painful or valuable problem, promised outcome, delivery mechanism, proof, timeframe, scope boundaries, price structure, risk handling, and next step. Features matter only when connected to a result the buyer values."},
+        {"type":"procedure","title":"Build an offer from the customer backward","confidence":"high","content":"Identify the customer and trigger event, define the desired result, list obstacles and risks, choose only the deliverables required to create the result, package them into a simple path, state exclusions, add credible proof, choose price and payment terms, then test whether a stranger can explain the offer after reading it once."},
+        {"type":"heuristic","title":"Sell fewer promises more clearly","confidence":"high","content":"Adding more deliverables can lower perceived clarity and increase delivery cost. Prefer one strong promise with a coherent mechanism over a bundle of unrelated services that forces the customer to figure out the value."}
+      ],
+      "drills": [
+        {"key":"package-ad-service","title":"Design a 60-second ad offer","difficulty":"guided","prompt":"Create a simple offer for producing a 60-second ad for a local business. Define ideal customer, outcome, included work, exclusions, proof, timeline, price logic, and next step.","rubric":["Outcome is customer-centered","Scope is bounded","Deliverables support the outcome","Proof and risk are addressed","Offer is easy to explain"]}
+      ]
+    },
+    {
+      "key": "sales-discovery",
+      "name": "Sales Discovery",
+      "description": "Diagnose customer problems, urgency, decision process, economics, and fit before proposing a solution.",
+      "purpose": "Avoid pitching too early and improve close quality by understanding what actually drives the purchase.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Discovery conversation sequence","confidence":"high","content":"Start with why the conversation is happening now. Explore current state, desired state, consequences of leaving the problem unsolved, prior attempts, constraints, timing, stakeholders, decision process, and budget context. Reflect the problem back in the customer's language before recommending anything."},
+        {"type":"heuristic","title":"Follow impact before features","confidence":"high","content":"When a customer names a problem, ask what it causes, how often it happens, who feels it, and what it costs in time, money, risk, or missed opportunity. Impact creates priority; feature talk before impact usually produces weak urgency."},
+        {"type":"failure-mode","title":"Discovery failures","confidence":"high","content":"Avoid interrogation, leading questions designed only to confirm your solution, giving a full pitch before understanding the problem, treating stated budget as the only measure of value, ignoring who can approve the purchase, and leaving the call without a concrete next step."}
+      ],
+      "drills": [
+        {"key":"discovery-roleplay","title":"Run a service discovery call","difficulty":"guided","prompt":"Outline a discovery call for a small business owner who says they need more social content. Include questions that uncover business goal, current process, impact, urgency, buying process, constraints, and next step.","rubric":["Starts with trigger and desired outcome","Explores impact","Avoids premature pitching","Identifies decision process","Ends with a clear next step"]}
+      ]
+    },
+    {
+      "key": "negotiation",
+      "name": "Negotiation",
+      "description": "Trade across price, scope, timing, risk, terms, and relationship value without giving away margin blindly.",
+      "purpose": "Reach workable agreements while protecting important interests and preserving future options.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Negotiate variables, not just price","confidence":"high","content":"Most business negotiations include scope, quantity, speed, payment timing, deposit, revisions, exclusivity, usage, support, cancellation, schedule priority, and future commitment. Price becomes less destructive when concessions are exchanged across multiple variables."},
+        {"type":"procedure","title":"Prepare a negotiation before the conversation","confidence":"high","content":"Define target outcome, walk-away point, best alternative, high-value low-cost concessions, expensive concessions, facts that support your position, likely objections, and what you need in exchange for movement. During the negotiation, make conditional trades instead of unilateral concessions and summarize agreements in writing."},
+        {"type":"heuristic","title":"Every meaningful concession should buy something","confidence":"high","content":"Use conditional language such as: if we reduce price, then scope, payment timing, volume, usage, or revision allowance changes. Repeated one-way concessions train the buyer to keep asking."}
+      ],
+      "drills": [
+        {"key":"budget-pushback","title":"Handle budget pushback","difficulty":"guided","prompt":"A client wants a $1,200 package for $700 with the same deliverables. Build a negotiation response using tradeable variables and define your walk-away point.","rubric":["Does not immediately split the difference","Uses conditional trades","Protects scope or margin","Defines alternative options","Maintains relationship tone"]}
+      ]
+    },
+    {
+      "key": "client-acquisition",
+      "name": "Client Acquisition",
+      "description": "Build repeatable channels for finding, contacting, converting, and learning from prospective customers.",
+      "purpose": "Create a pipeline that does not depend entirely on random referrals or one-off attention spikes.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Acquisition is a system of stages","confidence":"high","content":"Track at minimum target accounts or audience, conversations started, qualified opportunities, proposals, wins, average deal size, sales cycle, acquisition cost, and source. A weak result can come from targeting, message, response rate, qualification, proposal quality, close rate, or retention; do not treat all pipeline problems as a need for more leads."},
+        {"type":"procedure","title":"Build one acquisition channel before five","confidence":"high","content":"Choose one customer segment and one channel, build a list or audience source, create a relevant message and proof asset, contact consistently, track replies and booked conversations, review objections weekly, and improve the bottleneck. Expand channels only after the first one is measurable enough to learn from."},
+        {"type":"heuristic","title":"Specific proof beats generic capability claims","confidence":"high","content":"Lead with evidence relevant to the prospect's situation: a similar result, before-and-after, useful teardown, prototype, short audit, or case study. 'We do websites, video, AI, marketing and more' is harder to trust than proof tied to one business problem."}
+      ],
+      "drills": [
+        {"key":"build-pipeline","title":"Build a 30-day acquisition pipeline","difficulty":"guided","prompt":"Design a 30-day client acquisition plan for one DFB Solutions service using one primary channel. Include target list, outreach cadence, proof asset, metrics, and weekly learning loop.","rubric":["Uses one clear segment","Chooses measurable channel","Includes relevant proof","Tracks stage metrics","Includes iteration loop"]}
+      ]
+    },
+    {
+      "key": "marketing-strategy",
+      "name": "Marketing Strategy",
+      "description": "Connect market, positioning, message, content, channel, conversion, and retention into one strategy.",
+      "purpose": "Generate demand and trust by making the right promise to the right people in the right context.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Marketing has a job at each stage","confidence":"high","content":"Awareness content earns attention, consideration content builds understanding and proof, conversion assets reduce buying friction, onboarding confirms the decision, and retention content deepens value. One piece of content should not be expected to perform every stage equally well."},
+        {"type":"procedure","title":"Create a strategy from market to measurement","confidence":"high","content":"Define customer segment, trigger problem, alternatives, positioning, core message, proof, primary channel, content themes, conversion path, follow-up, and metrics. Choose one primary outcome metric and supporting leading indicators so activity is not mistaken for progress."},
+        {"type":"heuristic","title":"Distribution is part of the product","confidence":"high","content":"A strong asset that nobody relevant sees has little business value. Plan where content, offers, case studies, and referrals will travel before producing them, then repurpose around channel behavior instead of posting identical material everywhere."}
+      ],
+      "drills": [
+        {"key":"campaign-map","title":"Map a simple campaign","difficulty":"guided","prompt":"Create a campaign for a service business launching a new premium package. Define audience, trigger, message, proof, content sequence, conversion path, and metrics.","rubric":["Clear segment and trigger","Message matches stage","Proof is included","Conversion path is explicit","Metrics connect to business outcome"]}
+      ]
+    },
+    {
+      "key": "scope-contracts",
+      "name": "Scoping & Contract Boundaries",
+      "description": "Translate expectations into deliverables, exclusions, acceptance criteria, change control, timing, payment, and ownership boundaries.",
+      "purpose": "Reduce ambiguity, protect relationships, and prevent profitable work from becoming uncontrolled work.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Scope before schedule","confidence":"high","content":"Define objective, deliverables, formats, quantity, inputs required from client, milestones, review rounds, acceptance criteria, exclusions, dependencies, usage or ownership assumptions, support period, price, deposit, payment milestones, cancellation terms, and change-request process before promising a final schedule."},
+        {"type":"heuristic","title":"Ambiguity is hidden liability","confidence":"high","content":"Words like unlimited, complete, all edits, full support, or whatever is needed create open-ended obligations unless carefully bounded. Replace vague promises with measurable deliverables and a process for new requests."},
+        {"type":"failure-mode","title":"Scope-control failures","confidence":"high","content":"Common failures include starting before deposit or required inputs, verbal additions never documented, unlimited revision language, undefined approval authority, no late-feedback effect on schedule, unclear ownership or usage, and treating every new request as customer service instead of a scope decision."}
+      ],
+      "drills": [
+        {"key":"scope-website-project","title":"Scope a client website build","difficulty":"guided","prompt":"Draft the business scope structure for a five-page client website with content collection, one design direction, two revision rounds, launch, and 30 days of post-launch support.","rubric":["Deliverables are measurable","Inputs and dependencies are clear","Revisions are bounded","Change control exists","Ownership and support boundaries are addressed"]}
+      ]
+    },
+    {
+      "key": "operations-systems",
+      "name": "Operations & Systems",
+      "description": "Design repeatable processes that reduce errors, waiting, handoff friction, and owner dependence.",
+      "purpose": "Increase throughput and consistency without solving every problem with more effort.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Optimize flow before local efficiency","confidence":"high","content":"A fast individual step does not help if work waits in queues, approvals, missing inputs, or rework. Map work from request to completion, identify the constraint and major handoff delays, then improve the whole flow rather than maximizing isolated activity."},
+        {"type":"procedure","title":"Turn repeated work into an operating system","confidence":"high","content":"Observe the real workflow, define trigger and completion state, list inputs and outputs, assign owner, document critical steps, add checklists at error-prone points, automate stable repetitive steps, create exception handling, track cycle time and defects, then update the process from actual failures."},
+        {"type":"heuristic","title":"Automate stable repetition, not confusion","confidence":"high","content":"If the human process is unclear, frequently changing, or full of exceptions, automation often scales the mess. Standardize the decision and data flow first, then automate the repetitive portion while keeping ambiguous cases visible to a human."}
+      ],
+      "drills": [
+        {"key":"systemize-client-delivery","title":"Systemize client delivery","difficulty":"guided","prompt":"Design an operating workflow from signed agreement through asset collection, production, review, delivery, final payment, and follow-up for a creative service job.","rubric":["Clear trigger and completion state","Owners and handoffs defined","Checkpoints reduce errors","Exceptions are handled","Metrics are included"]}
+      ]
+    },
+    {
+      "key": "recurring-revenue",
+      "name": "Recurring Revenue Design",
+      "description": "Create repeatable ongoing value that justifies repeat billing and remains profitable to deliver.",
+      "purpose": "Reduce revenue volatility while deepening customer value and operational predictability.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Recurring billing requires recurring value","confidence":"high","content":"A subscription is durable when the customer's problem or desired outcome recurs and the provider continues creating measurable value. Simply moving a one-time deliverable onto monthly billing creates churn if the customer cannot see an ongoing reason to stay."},
+        {"type":"procedure","title":"Design a recurring offer","confidence":"high","content":"Identify a recurring customer job, choose the repeatable deliverable or managed outcome, define service cadence, capacity limits, response times, reporting, rollover rules, minimum term if justified, upgrade path, margin target, and cancellation process. Pilot with a small number of customers and measure utilization, retention, and delivery burden."},
+        {"type":"heuristic","title":"Standardize the core and customize the edge","confidence":"high","content":"Recurring services become difficult to scale when every client receives a unique process. Keep the core workflow, cadence, tooling, reporting, and boundaries standard; customize only the parts that create meaningful customer value."}
+      ],
+      "drills": [
+        {"key":"retainer-design","title":"Design a monthly content retainer","difficulty":"guided","prompt":"Design a monthly content retainer for a local business. Define recurring value, deliverables, cadence, capacity limits, reporting, price logic, and cancellation terms.","rubric":["Recurring value is explicit","Scope is capacity-aware","Delivery is standardized","Customer can see outcomes","Retention economics are considered"]}
+      ]
+    },
+    {
+      "key": "competitive-strategy",
+      "name": "Competitive Strategy",
+      "description": "Choose where to compete, what advantage to build, and which activities reinforce that position.",
+      "purpose": "Avoid competing everywhere on the same dimensions as everyone else.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Strategy is a set of choices and tradeoffs","confidence":"high","content":"Strategy requires choosing customer, problem, position, capabilities, and what not to do. An advantage is stronger when activities reinforce each other and are difficult to copy as a system, not just when one feature is temporarily unique."},
+        {"type":"procedure","title":"Competitive strategy review","confidence":"high","content":"Map customer segments, jobs-to-be-done, alternatives, competitors, switching costs, price and non-price dimensions, your distinctive capabilities, and the activities required to deliver them. Select a position, identify tradeoffs, define what evidence would prove the strategy is working, and revisit when market facts change."},
+        {"type":"heuristic","title":"Do not confuse capability with advantage","confidence":"high","content":"Being able to offer video, web, AI, design, or automation is not automatically an advantage if many providers can do the same. Advantage comes from a differentiated outcome, speed, cost structure, trust, access, workflow, proprietary assets, integration, brand, or accumulated learning that matters to the customer."}
+      ],
+      "drills": [
+        {"key":"position-dfb-service","title":"Position a DFB service","difficulty":"guided","prompt":"Choose one DFB Solutions service and define customer segment, alternatives, differentiating outcome, reinforcing capabilities, tradeoffs, and evidence that would validate the position.","rubric":["Makes real choices","Identifies alternatives","Differentiation matters to customer","Capabilities reinforce position","Includes validation evidence"]}
+      ]
+    },
+    {
+      "key": "cash-flow",
+      "name": "Cash-Flow Management",
+      "description": "Manage timing of cash receipts, obligations, reserves, and working capital so profitable work does not create a liquidity crisis.",
+      "purpose": "Keep the business able to meet obligations while funding delivery and growth.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Profit and cash are different","confidence":"high","content":"A sale can be profitable on paper while creating a cash shortage if costs are paid before customer cash arrives. Deposits, payment timing, inventory, receivables, debt service, taxes, owner draws, and capital purchases all affect liquidity independently of accounting profit."},
+        {"type":"procedure","title":"Weekly cash-control rhythm","confidence":"high","content":"Maintain a rolling cash forecast with starting cash, expected inflows by confidence and date, committed outflows, taxes or reserves, minimum operating buffer, and ending cash. Review overdue receivables, upcoming large obligations, project deposits, and discretionary spending weekly. Update forecast from actual bank movement rather than assumptions."},
+        {"type":"heuristic","title":"Use payment terms to finance delivery responsibly","confidence":"high","content":"For project work, structure deposits and milestones so the business is not routinely funding substantial client-specific costs out of pocket. Match cash collection to risk and work performed while keeping terms understandable and fair."}
+      ],
+      "drills": [
+        {"key":"cash-forecast","title":"Build a 13-week cash view","difficulty":"guided","prompt":"Given uneven project payments, monthly expenses, taxes, and one planned equipment purchase, outline a 13-week cash forecast and the decisions you would make if the minimum cash buffer is breached.","rubric":["Separates timing from profit","Uses confidence on inflows","Protects required obligations","Defines minimum cash buffer","Creates actions for shortfall"]}
+      ]
+    },
+    {
+      "key": "capital-allocation",
+      "name": "Capital Allocation",
+      "description": "Choose where limited money, time, compute, and management attention should go for the best risk-adjusted strategic return.",
+      "purpose": "Prevent attractive ideas from starving higher-priority work and preserve optionality under uncertainty.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Every investment has an opportunity cost","confidence":"high","content":"Capital includes cash, time, attention, equipment capacity, compute, and reputation. Funding one project means not funding another. Evaluate expected upside, downside, reversibility, time to feedback, strategic fit, cash impact, and what must be delayed or abandoned to make room."},
+        {"type":"procedure","title":"Rank investments before committing","confidence":"high","content":"Define the objective, estimate required resources, identify expected return and learning value, score strategic alignment, downside, reversibility, time-to-value, and confidence, compare against the next-best use of resources, then choose a staged commitment with explicit kill or continue criteria when uncertainty is high."},
+        {"type":"heuristic","title":"Buy learning cheaply before buying scale expensively","confidence":"high","content":"When uncertainty is high, prefer a small test, prototype, pre-sale, manual service, or limited campaign that resolves the key unknown before committing major capital. Scale after evidence improves rather than using a large investment to discover whether the premise was wrong."}
+      ],
+      "drills": [
+        {"key":"allocate-growth-budget","title":"Allocate a limited growth budget","difficulty":"guided","prompt":"Allocate a fixed budget across revenue work, equipment, software, marketing, product development, and cash reserve. Explain opportunity cost, staged bets, kill criteria, and why each allocation outranks alternatives.","rubric":["Considers opportunity cost","Protects liquidity","Uses staged commitments","Accounts for uncertainty","Links choices to strategy"]}
+      ]
+    }
+  ]
+}
