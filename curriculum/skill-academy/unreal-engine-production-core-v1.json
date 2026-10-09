@@ -1,0 +1,118 @@
+{
+  "packKey": "unreal-engine-production-core-v1",
+  "title": "Unreal Engine Production Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/unreal-engine-production/core-v1",
+  "domain": {
+    "key": "unreal-engine-production",
+    "name": "Unreal Engine Production",
+    "description": "Program-specific Unreal Engine operation covering editor workflow, Actors and Components, Levels and World Partition, Blueprints, C++, materials, Niagara, animation, Control Rig, Sequencer, lighting, profiling, and packaging. Version-sensitive feature details should be checked against current documentation when needed.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "editor-content-project-structure",
+      "name": "Unreal Editor, Content & Project Structure",
+      "description": "Navigate Unreal Editor panels, Content Browser organization, project settings, plugins, assets, and source-control-friendly project layout.",
+      "purpose": "Keep Unreal projects understandable and prevent content, reference, and configuration drift as they grow.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Unreal assets are referenced objects, not loose files","confidence":"high","content":"Maps, Blueprints, materials, textures, meshes, animations, data assets, and other packages reference each other. Renames and moves should be performed with reference awareness and redirector cleanup rather than treated like arbitrary filesystem changes."},
+        {"type":"procedure","title":"Project organization workflow","confidence":"high","content":"Define folder and naming rules; separate project-owned content from third-party packs; review enabled plugins; establish maps, Blueprints, art, audio, UI, data, and developer areas; use editor-aware moves; save and validate references after restructuring."},
+        {"type":"failure-mode","title":"Project-structure failures","confidence":"high","content":"Avoid mixing marketplace or plugin content directly into core project folders, leaving redirectors unresolved indefinitely, enabling plugins without need, and renaming heavily referenced assets outside the editor without validation."}
+      ],
+      "drills": [{"key":"unreal-project-cleanup","title":"Organize a production Unreal project","difficulty":"guided","prompt":"An Unreal project has imported marketplace content, custom Blueprints, test maps, duplicated materials, and unclear ownership. Design a cleanup plan that preserves references.","rubric":["Folder ownership defined","Reference-safe moves used","Plugin scope reviewed","Third-party content isolated","Validation/rollback included"]}]
+    },
+    {
+      "key": "actors-components-levels",
+      "name": "Actors, Components, Levels & World Structure",
+      "description": "Build runtime objects using Actors and Components and organize worlds using Levels, streaming, and large-world structures.",
+      "purpose": "Create reusable gameplay and environment structures without fragile level-specific duplication.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Actors are containers for composed runtime behavior","confidence":"high","content":"Actor Components, Scene Components, Child Actor patterns, data assets, and inheritance each solve different reuse problems. Composition usually scales better than deep inheritance when responsibilities are independent."},
+        {"type":"procedure","title":"World-structure workflow","confidence":"high","content":"Define world boundaries and persistent systems; decide what belongs in reusable Actors versus level-only placement; use components for independent capabilities; establish streaming or partition strategy for large worlds; test loading, unloading, and actor ownership under play."},
+        {"type":"failure-mode","title":"World-structure failures","confidence":"high","content":"Avoid giant monolithic Actors, duplicating logic per level, relying on hidden level references inside reusable actors, and building large environments before deciding streaming and ownership conventions."}
+      ],
+      "drills": [{"key":"modular-city-block","title":"Structure a reusable city block","difficulty":"guided","prompt":"Plan Unreal Actor/component and level organization for a city block containing modular buildings, traffic props, lights, interactables, and streamed surroundings.","rubric":["Reusable actors separated","Component responsibilities clear","Streaming considered","Level-only references controlled","Scale-up path defined"]}]
+    },
+    {
+      "key": "blueprints",
+      "name": "Blueprint Visual Scripting",
+      "description": "Build maintainable Unreal gameplay and tool logic using Blueprint classes, functions, events, interfaces, dispatchers, and data-driven patterns.",
+      "purpose": "Use Blueprints as structured software rather than an unreadable collection of connected nodes.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Blueprint design workflow","confidence":"high","content":"Define responsibility and state; choose Actor, Component, Function Library, Interface, Data Asset, or other suitable type; use functions and macros intentionally; prefer events over constant polling where possible; name variables and execution paths clearly; test construction and runtime behavior separately."},
+        {"type":"heuristic","title":"Readable Blueprint graphs are part of correctness","confidence":"high","content":"Small functions, clear execution flow, reroute nodes, comments, typed interfaces, and bounded responsibilities make visual scripts easier to debug and safer to change than giant Event Graphs."},
+        {"type":"failure-mode","title":"Blueprint failures","confidence":"high","content":"Avoid heavy logic on Tick by default, casting chains across unrelated systems, hard-coded level actor references in reusable classes, duplicated graphs instead of reusable functions/components, and hidden state changes inside sprawling execution paths."}
+      ],
+      "drills": [{"key":"interaction-blueprint","title":"Build a reusable Blueprint interaction framework","difficulty":"guided","prompt":"Design a Blueprint system supporting doors, seats, pickups, and prompts without hard-coding each class into the player Blueprint.","rubric":["Interfaces/components considered","Tick minimized","Dependencies explicit","Graphs modular","Reuse across actor types demonstrated"]}]
+    },
+    {
+      "key": "cpp-integration",
+      "name": "Unreal C++ & Blueprint Integration",
+      "description": "Use Unreal C++ classes, reflection macros, modules, components, and Blueprint exposure in a maintainable hybrid architecture.",
+      "purpose": "Place performance-sensitive or reusable systems in code while preserving designer-friendly Blueprint control where useful.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Unreal C++ participates in an engine reflection system","confidence":"high","content":"UObjects, Actors, Components, properties, functions, garbage collection, modules, and Blueprint exposure follow engine-specific ownership and reflection rules beyond ordinary C++ semantics."},
+        {"type":"procedure","title":"Hybrid code workflow","confidence":"high","content":"Define system responsibility; choose UObject, Actor, Component, subsystem, or plain struct/class appropriately; expose only necessary properties and functions to Blueprint; respect object ownership and lifecycle; compile incrementally; test editor hot-reload-sensitive changes with clean restarts when needed."},
+        {"type":"failure-mode","title":"C++ integration failures","confidence":"high","content":"Avoid storing unmanaged pointers to engine objects without ownership awareness, exposing every internal detail to Blueprint, putting designer-tunable data only in code, and assuming C++ constructor or editor-time behavior matches runtime initialization order."}
+      ],
+      "drills": [{"key":"cpp-blueprint-component","title":"Design a reusable C++ component with Blueprint controls","difficulty":"guided","prompt":"Plan an Unreal component implemented in C++ for core behavior but configurable and event-visible in Blueprint.","rubric":["Correct engine type chosen","Lifecycle considered","Blueprint surface minimal","Ownership safe","Designer configuration supported"]}]
+    },
+    {
+      "key": "materials-niagara",
+      "name": "Materials, Shaders & Niagara",
+      "description": "Create reusable Unreal materials and Niagara effects while controlling visual complexity and runtime cost.",
+      "purpose": "Build scalable visual systems that remain art-directable and performant.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Material and VFX graphs are runtime programs","confidence":"high","content":"Texture samples, branches, translucency, particle counts, overdraw, dynamic parameters, and simulation stages all carry costs. Visual graphs should be treated as executable systems, not free decoration."},
+        {"type":"procedure","title":"Material and effect workflow","confidence":"high","content":"Define surface or effect behavior; build a reusable master/material-function structure where appropriate; expose instance parameters; keep texture channel conventions consistent; prototype Niagara emitters with bounded spawn and lifetime; test overdraw and shader complexity in representative scenes."},
+        {"type":"failure-mode","title":"Material/VFX failures","confidence":"high","content":"Avoid unique one-off materials for every prop, unnecessary translucency, particle systems with unbounded spawn, using expensive effects to hide lighting problems, and assuming editor preview cost equals scene cost."}
+      ],
+      "drills": [{"key":"weathered-sign-vfx","title":"Build a material plus lightweight effect","difficulty":"guided","prompt":"Plan a reusable weathered-neon sign material and a subtle Niagara flicker/spark effect for repeated urban props.","rubric":["Material reusable","Parameters exposed","Translucency justified","Particle budget bounded","Runtime profiling included"]}]
+    },
+    {
+      "key": "animation-control-rig-sequencer",
+      "name": "Animation, Control Rig & Sequencer",
+      "description": "Work with skeletal animation, Animation Blueprints, Control Rig, root motion, retargeting, and Sequencer for runtime and cinematic motion.",
+      "purpose": "Create motion systems and cinematics that remain editable and integrate cleanly with gameplay.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Animation integration workflow","confidence":"high","content":"Validate skeleton and scale; import clips with known frame/root conventions; configure retargeting where needed; separate locomotion state from additive/upper-body layers; use Control Rig for procedural or editor-time adjustment; use Sequencer tracks with explicit ownership of transforms and animation."},
+        {"type":"heuristic","title":"Only one system should own a transform at a time","confidence":"high","content":"Gameplay movement, root motion, Sequencer, Control Rig, physics, and Blueprint transforms can fight each other. Define authority per state and transition ownership explicitly."},
+        {"type":"failure-mode","title":"Animation/cinematic failures","confidence":"high","content":"Avoid duplicate transform ownership, retargeting without checking pose/base skeleton assumptions, foot sliding from mismatched root policy, and Sequencer overrides that leave gameplay actors in unexpected state after playback."}
+      ],
+      "drills": [{"key":"cinematic-interaction","title":"Build a gameplay-to-cinematic interaction","difficulty":"guided","prompt":"Plan an Unreal sequence where the player triggers a short door-entry cinematic and then returns cleanly to gameplay control.","rubric":["Transform ownership defined","Animation state restored","Sequencer boundaries explicit","Root motion policy clear","Failure/skip path considered"]}]
+    },
+    {
+      "key": "world-lighting-rendering",
+      "name": "World Building, Lighting & Rendering",
+      "description": "Assemble large environments using modular assets, landscape/world systems, lighting, reflection, exposure, fog, and render features.",
+      "purpose": "Create readable, performant worlds with coherent visual hierarchy and scalable content organization.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Environment build workflow","confidence":"high","content":"Establish world units and coordinate policy; block traversal and sightlines; place modular kits before bespoke detail; define streaming/partition cells; set exposure and broad lighting; validate reflections, shadows, atmosphere, and navigation; add hero detail after performance and scale are stable."},
+        {"type":"concept","title":"Large-world quality depends on hierarchy and streaming","confidence":"high","content":"A believable world does not require every object to be unique. Modular repetition, HLODs/LODs, instancing, culling, partitioning, and selective hero detail create scale without overwhelming memory and render budgets."},
+        {"type":"failure-mode","title":"World-building failures","confidence":"high","content":"Avoid placing final detail before scale and traversal are validated, unbounded shadow-casting lights, inconsistent exposure between zones, hero-density detail everywhere, and discovering streaming problems only after the full map is assembled."}
+      ],
+      "drills": [{"key":"real-world-neighborhood","title":"Plan a real-world neighborhood build","difficulty":"guided","prompt":"Design an Unreal workflow for recreating a real neighborhood from GIS/reference data using modular buildings, hero landmarks, streamed surroundings, and nighttime lighting.","rubric":["Scale/coordinates explicit","Modular vs hero split defined","Streaming planned","Lighting hierarchy clear","Runtime validation included"]}]
+    },
+    {
+      "key": "profiling-packaging",
+      "name": "Unreal Profiling, Optimization & Packaging",
+      "description": "Measure game-thread, render-thread, GPU, memory, streaming, shader, and asset costs and prepare stable packaged builds.",
+      "purpose": "Deliver projects that work outside the editor on target hardware instead of relying on editor-only success.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Performance and packaging loop","confidence":"high","content":"Define target hardware and frame/memory budgets; test standalone or packaged builds; capture timing and GPU evidence in representative scenes; identify dominant bottleneck; make one meaningful change; compare before/after; verify maps, cooked assets, plugins, configuration, and package output."},
+        {"type":"heuristic","title":"Optimize measured bottlenecks","confidence":"high","content":"Geometry, shadows, materials, Niagara, Blueprint Tick, physics, streaming, and memory stress different systems. Use engine profiling tools to identify the limiting path instead of applying generic reductions everywhere."},
+        {"type":"failure-mode","title":"Optimization/package failures","confidence":"high","content":"Avoid judging performance only in editor viewport, lowering global quality before locating hotspots, packaging without testing clean-machine assumptions, and changing many systems at once so cause and effect become unclear."}
+      ],
+      "drills": [{"key":"long-street-frame-drop","title":"Diagnose a long-street performance drop","difficulty":"guided","prompt":"An Unreal city scene drops below frame target only when looking down a long street. Build a profiling plan covering visibility, geometry, materials, shadows, lights, and streaming.","rubric":["Target hardware stated","Profiling evidence required","Likely systems isolated","Changes measured separately","Packaged-build validation included"]}]
+    }
+  ]
+}
