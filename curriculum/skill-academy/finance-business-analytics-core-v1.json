@@ -1,0 +1,144 @@
+{
+  "packKey": "finance-business-analytics-core-v1",
+  "title": "Finance & Business Analytics Core v1",
+  "sourceLabel": "FREEOS Practical Skills Curriculum",
+  "sourceRef": "internal://skill-academy/finance-business-analytics/core-v1",
+  "domain": {
+    "key": "finance-business-analytics",
+    "name": "Finance & Business Analytics",
+    "description": "Practical bookkeeping, financial statements, budgeting, cash forecasting, profitability, working capital, controls, and scenario analysis for operating a business responsibly.",
+    "riskProfile": "standard"
+  },
+  "competencies": [
+    {
+      "key": "bookkeeping-basics",
+      "name": "Bookkeeping Fundamentals",
+      "description": "Record business activity consistently so financial reports reflect what actually happened.",
+      "purpose": "Create trustworthy operating data before attempting higher-level analysis.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Transactions need classification and evidence","confidence":"high","content":"A useful bookkeeping record identifies date, amount, account/category, counterparty, business purpose, and supporting evidence. The same transaction should not be classified differently month to month just to make reports look better."},
+        {"type":"procedure","title":"Monthly bookkeeping close","confidence":"high","content":"Collect bank and payment-platform activity; categorize revenue and expenses consistently; reconcile accounts to statements; identify transfers and owner transactions separately; attach supporting documents where available; review uncategorized items; then lock or mark the period complete before analysis."},
+        {"type":"failure-mode","title":"Bookkeeping failures","confidence":"high","content":"Avoid mixing personal and business spending without clear classification, counting transfers as revenue, ignoring processor fees, duplicating imported transactions, leaving cash expenses undocumented, and changing categories to force a desired profit number."}
+      ],
+      "drills": [{"key":"month-close","title":"Close a small-business month","difficulty":"guided","prompt":"Given bank deposits, card spending, a transfer between accounts, processor fees, an owner draw, and one cash purchase, explain how each should be classified and what evidence is needed before closing the month.","rubric":["Transfers separated from income","Owner activity separated","Fees recognized","Cash transaction documented","Reconciliation included"]}]
+    },
+    {
+      "key": "financial-statements",
+      "name": "Financial Statements",
+      "description": "Read income statements, balance sheets, and cash-flow statements as connected views of the business.",
+      "purpose": "Understand performance, financial position, and cash movement without confusing one with another.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Three statements answer different questions","confidence":"high","content":"The income statement shows revenue and expenses over a period; the balance sheet shows assets, liabilities, and equity at a point in time; the cash-flow statement explains how cash changed. Profit, net worth, and cash are related but not interchangeable."},
+        {"type":"procedure","title":"Financial statement review order","confidence":"high","content":"Review revenue and gross margin trends; inspect operating expenses and net income; then examine receivables, payables, debt, cash, and equity; reconcile why cash changed differently from profit; finally investigate unusual movements rather than reading only the bottom line."},
+        {"type":"failure-mode","title":"Statement interpretation failures","confidence":"high","content":"Avoid treating revenue as profit, treating profit as cash, ignoring receivables that may never collect, ignoring debt-funded cash increases, comparing periods with different scopes, and drawing conclusions from one ratio without operating context."}
+      ],
+      "drills": [{"key":"statement-story","title":"Explain the financial story","difficulty":"guided","prompt":"A company shows rising revenue and positive net income but falling cash and rising receivables. Explain the likely operating story and what additional questions you would ask.","rubric":["Distinguishes profit from cash","Receivables recognized","Working-capital effect explained","Follow-up questions are specific","No unsupported certainty"]}]
+    },
+    {
+      "key": "budgeting",
+      "name": "Budgeting",
+      "description": "Turn priorities into explicit spending and revenue assumptions that can be compared with actual results.",
+      "purpose": "Allocate limited resources intentionally instead of reacting after money is already spent.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"A budget is a decision model","confidence":"high","content":"A useful budget links expected activity to money. It should show assumptions, fixed costs, variable costs, discretionary spending, contingency, and target outcomes. A budget is not a promise that every estimate will be correct."},
+        {"type":"procedure","title":"Build an operating budget","confidence":"high","content":"Start with committed obligations; estimate revenue by source and timing; separate fixed and variable costs; include taxes/reserves as appropriate to the business context; allocate discretionary spending to priorities; add contingency; then compare actual versus budget monthly and explain material variance."},
+        {"type":"heuristic","title":"Budget scarce cash before optional ambition","confidence":"high","content":"Fund obligations, delivery capacity, and risk reserves before expansion spending. A high-return idea that threatens payroll, rent, taxes, or delivery reliability can still be a bad timing decision."}
+      ],
+      "drills": [{"key":"lean-budget","title":"Build a lean monthly budget","difficulty":"guided","prompt":"A small service business expects uneven monthly revenue. Build a budget framework that protects fixed obligations, delivery costs, taxes/reserves, marketing, owner pay, and contingency without assuming every month is average.","rubric":["Fixed and variable costs separated","Revenue uncertainty acknowledged","Reserves included","Priorities visible","Variance review included"]}]
+    },
+    {
+      "key": "cash-forecasting",
+      "name": "Cash Forecasting",
+      "description": "Forecast when money is expected to enter and leave, not only how much revenue or profit is expected.",
+      "purpose": "See cash shortfalls early enough to change timing, collections, spending, or commitments.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Timing drives liquidity","confidence":"high","content":"A profitable job can still create a cash problem when expenses are paid before the client pays. Forecasting should model actual payment dates, deposits, collections probability, recurring bills, payroll, taxes, debt service, and one-time costs."},
+        {"type":"procedure","title":"13-week cash forecast","confidence":"high","content":"Start with current available cash; list expected inflows by week and confidence; list mandatory outflows by week; add planned discretionary outflows separately; calculate weekly ending cash; flag minimum-cash breaches; update actuals and revised timing at least weekly."},
+        {"type":"failure-mode","title":"Cash forecast failures","confidence":"high","content":"Avoid placing invoice date where payment date belongs, assuming every receivable collects on time, ignoring annual or quarterly obligations, counting unused credit as cash without noting debt consequences, and updating the forecast only after a problem occurs."}
+      ],
+      "drills": [{"key":"cash-gap","title":"Diagnose a coming cash gap","difficulty":"guided","prompt":"A business has cash today, two large invoices due to be collected next month, and payroll plus vendor bills due this month. Explain how to forecast the gap and identify non-destructive options before borrowing.","rubric":["Uses timing rather than profit","Collection uncertainty included","Mandatory outflows prioritized","Options address timing/root cause","Debt is not automatic first answer"]}]
+    },
+    {
+      "key": "break-even",
+      "name": "Break-Even Analysis",
+      "description": "Calculate the activity level required to cover fixed costs given contribution margin.",
+      "purpose": "Understand whether pricing and volume assumptions can support the cost structure.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Contribution margin funds fixed costs","confidence":"high","content":"Contribution margin equals revenue minus costs that vary with delivering that revenue. Break-even volume depends on fixed cost divided by contribution per unit or job. The calculation is only as useful as the cost behavior assumptions behind it."},
+        {"type":"procedure","title":"Break-even workflow","confidence":"high","content":"Define the unit of sale; identify price; estimate variable cost per unit; calculate contribution; identify period fixed costs; compute break-even units or revenue; then test sensitivity to lower price, higher variable cost, and lower capacity."},
+        {"type":"failure-mode","title":"Break-even failures","confidence":"high","content":"Avoid treating semi-variable labor as fixed without thought, ignoring capacity limits, using average margin when product mix varies heavily, excluding owner labor entirely, and using break-even as a profit target instead of the minimum point before profit."}
+      ],
+      "drills": [{"key":"service-break-even","title":"Calculate service break-even","difficulty":"guided","prompt":"A service sells for $500, has $180 of variable delivery cost, and the business has $3,200 of monthly fixed cost. Calculate simple break-even jobs and explain which assumptions should be stress-tested.","rubric":["Contribution calculated correctly","Break-even volume correct","Capacity considered","Cost assumptions questioned","Break-even not confused with target profit"]}]
+    },
+    {
+      "key": "working-capital",
+      "name": "Working Capital",
+      "description": "Manage receivables, payables, inventory, deposits, and short-term obligations so operations have enough cash to function.",
+      "purpose": "Prevent growth from consuming more cash than the business can support.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Growth can consume cash","confidence":"high","content":"When sales grow faster than collections, inventory turns, or supplier terms, more cash can become trapped in receivables or inventory. Working-capital management focuses on the timing gap between paying for delivery and collecting from customers."},
+        {"type":"procedure","title":"Working-capital review","confidence":"high","content":"Measure days to collect receivables; identify overdue accounts; review deposit policy; review supplier payment terms; identify slow-moving inventory if relevant; compare customer payment timing with vendor/payment timing; then target the largest timing mismatch."},
+        {"type":"heuristic","title":"Fix the cash cycle before financing it","confidence":"high","content":"Before adding debt to solve recurring cash shortages, determine whether deposits, collections discipline, pricing, inventory, or payment terms can shorten the operating cash cycle."}
+      ],
+      "drills": [{"key":"growth-cash-cycle","title":"Improve a growth cash cycle","difficulty":"guided","prompt":"A service business is booking more work but paying subcontractors weeks before clients pay final invoices. Propose changes to deposits, milestones, collections, and supplier terms before considering external financing.","rubric":["Cash-cycle mismatch identified","Deposit/milestone options considered","Collections process included","Supplier timing considered","Financing is not first-line by default"]}]
+    },
+    {
+      "key": "ar-ap",
+      "name": "Accounts Receivable & Payable",
+      "description": "Manage money owed by customers and money owed to vendors with clear aging, follow-up, and priority rules.",
+      "purpose": "Protect cash, relationships, and record accuracy while reducing surprises.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"procedure","title":"Receivables discipline","confidence":"high","content":"Invoice promptly; state due date and payment instructions clearly; reconcile payments; review aging at least weekly; contact overdue customers consistently; document disputes; separate collection status from emotional assumptions; and escalate according to agreed policy or contract."},
+        {"type":"procedure","title":"Payables discipline","confidence":"high","content":"Record bills when incurred; verify amount and vendor; track due dates; separate disputed charges; prioritize according to legal/contractual obligation, continuity of critical supply, penalties, and cash availability; avoid paying early automatically when cash is constrained unless there is a justified benefit."},
+        {"type":"failure-mode","title":"AR/AP failures","confidence":"high","content":"Avoid invoicing late, leaving due dates ambiguous, applying payments to the wrong invoice, paying duplicate vendor bills, using collections as a memory-based process, ignoring small overdue balances until they accumulate, and stretching critical vendors without communication."}
+      ],
+      "drills": [{"key":"aging-review","title":"Run an aging review","difficulty":"guided","prompt":"Given invoices current, 15 days late, 45 days late, disputed, and partially paid, prioritize follow-up and define the next action for each status.","rubric":["Status differences recognized","Follow-up escalates appropriately","Disputes separated from nonpayment","Partial payments reconciled","Actions are documented"]}]
+    },
+    {
+      "key": "margin-profitability",
+      "name": "Margin & Profitability Analysis",
+      "description": "Measure whether customers, services, jobs, and channels create enough contribution after real delivery cost.",
+      "purpose": "Find where revenue creates value and where busy work hides weak economics.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Revenue quality matters","confidence":"high","content":"Two jobs with the same price can produce different profit because labor, subcontractors, revisions, travel, payment fees, usage, returns, and support differ. Profitability analysis should use the cost drivers that actually change by job or customer."},
+        {"type":"procedure","title":"Job profitability review","confidence":"high","content":"Capture quoted price and collected revenue; record direct labor time, subcontractors, materials, travel, platform/processing fees, and other variable delivery cost; calculate contribution and effective hourly return; compare estimated versus actual; then identify scope, pricing, or process causes of variance."},
+        {"type":"failure-mode","title":"Profitability failures","confidence":"high","content":"Avoid calling a job profitable because cash came in, ignoring unpaid revision time, using revenue per hour without direct costs, spreading all overhead equally when it obscures decision-useful differences, and keeping low-margin work only because it is familiar."}
+      ],
+      "drills": [{"key":"job-profitability","title":"Analyze an underperforming job","difficulty":"guided","prompt":"A $900 job took 12 hours instead of 7 and included $140 of direct costs plus $35 in payment fees. Analyze the job and identify whether the fix belongs in price, scope, estimation, or process.","rubric":["Real direct costs included","Labor variance identified","Contribution considered","Root cause not assumed","Corrective action maps to cause"]}]
+    },
+    {
+      "key": "scenario-analysis",
+      "name": "Scenario Analysis",
+      "description": "Compare plausible outcomes under changing price, demand, cost, timing, and capacity assumptions.",
+      "purpose": "Make decisions that remain useful when the future does not match the base forecast.",
+      "riskLevel": "standard",
+      "units": [
+        {"type":"concept","title":"Forecast ranges beat false precision","confidence":"high","content":"Scenario analysis should separate assumptions from outputs. A base case, downside case, and upside case are useful when they reflect plausible changes in demand, price, cost, timing, and capacity rather than arbitrary percentage changes."},
+        {"type":"procedure","title":"Build a decision scenario","confidence":"high","content":"Define the decision; identify the few assumptions that drive the result; create plausible downside/base/upside values; calculate cash, margin, and capacity implications; identify trigger points that would change the decision; then choose an action that is robust across more than one scenario when possible."},
+        {"type":"heuristic","title":"Stress the assumption that can kill the plan","confidence":"high","content":"Do not spend equal time varying every input. Find the assumption whose failure would make the plan unacceptable and stress-test that first."}
+      ],
+      "drills": [{"key":"equipment-purchase","title":"Scenario-test an equipment purchase","difficulty":"guided","prompt":"A business is considering equipment based on expected monthly jobs. Build downside, base, and upside cases using job volume, contribution per job, financing/payment cost, and resale/exit considerations.","rubric":["Key assumptions identified","Downside case is plausible","Cash and margin included","Decision triggers defined","No single-point forecast treated as certainty"]}]
+    },
+    {
+      "key": "financial-controls",
+      "name": "Financial Controls & Review",
+      "description": "Use approvals, reconciliations, separation of duties, documentation, and exception review to reduce preventable loss and reporting errors.",
+      "purpose": "Protect the business without creating unnecessary bureaucracy.",
+      "riskLevel": "elevated",
+      "units": [
+        {"type":"concept","title":"Controls should target meaningful failure modes","confidence":"high","content":"Useful controls reduce the chance or impact of error, fraud, duplicate payment, unauthorized spending, missing revenue, or inaccurate reporting. Controls should be proportional to the risk and volume involved."},
+        {"type":"procedure","title":"Basic small-business control set","confidence":"high","content":"Separate request, approval, payment, and reconciliation when practical; require evidence for expenses; use spending limits; reconcile bank and processor accounts; review unusual vendors or amount changes; protect account access; document refunds and credits; and review exceptions rather than every low-risk transaction manually."},
+        {"type":"failure-mode","title":"Control failures","confidence":"high","content":"Avoid one person creating vendors and approving their own payments without review, shared credentials, unreconciled accounts, undocumented cash handling, approval after payment, blanket vendor trust without amount verification, and controls so burdensome that people bypass them."}
+      ],
+      "drills": [{"key":"payment-control","title":"Design a payment control flow","difficulty":"guided","prompt":"Design a lightweight control process for vendor bills in a small business. Include invoice receipt, verification, approval threshold, payment, reconciliation, and handling of urgent exceptions.","rubric":["Roles separated where practical","Evidence required","Approval thresholds sensible","Reconciliation included","Exceptions documented"]}]
+    }
+  ]
+}
