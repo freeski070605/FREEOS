@@ -28,6 +28,8 @@ import { toolsRouter } from "./routes/tools.routes";
 import { automationsRouter } from "./routes/automations.routes";
 import { commandRouter } from "./routes/command.routes";
 import { ragRouter } from "./routes/rag.routes";
+import { remoteOpsRouter } from "./routes/remoteOps.routes";
+import { remoteOpsService } from "./services/remoteOps.service";
 import { registerDefaultTools, getToolRegistry, ToolExecutor, ToolRequests } from "@freeos/tool-runner";
 import { Scheduler, configureScheduler } from "@freeos/scheduler-core";
 import { schedulerRouter } from "./routes/scheduler.routes";
@@ -81,6 +83,7 @@ app.use("/browser", browserRouter);
 app.use("/agents", agentsRouter);
 app.use("/scheduler", schedulerRouter);
 app.use("/automations", automationsRouter);
+app.use("/remote-ops", remoteOpsRouter);
 app.use("/command", learningCandidateMiddleware, commandRouter);
 app.use("/rag", ragRouter);
 
@@ -92,5 +95,7 @@ app.use(errorHandler);
 const server = app.listen(config.port, "127.0.0.1", () => {
   console.log(`[FREEOS] API online at http://localhost:${config.port}`);
   console.log("[FREEOS] Dangerous actions are disabled.");
+  remoteOpsService.start();
+  console.log("[FREEOS] Remote Ops task worker online; API remains loopback-only.");
 });
-server.on("close", () => scheduler.stop());
+server.on("close", () => { scheduler.stop(); remoteOpsService.stop(); });
