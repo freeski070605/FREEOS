@@ -26,7 +26,7 @@ Write-Host "2. Design, UX & Branding Core v1"
 Write-Host "3. Facilities, Repair & Maintenance Core v1"
 Write-Host "4. Finance & Business Analytics Core v1"
 Write-Host "5. Communication & Leadership Core v1"
-Write-Host "`nExpected expansion: 50 competencies, 150 training units, 50 drills." -ForegroundColor Yellow
+Write-Host "`nExpected expansion: 51 competencies, 153 training units, 51 drills." -ForegroundColor Yellow
 Write-Host "OwnerApproved: $([bool]$OwnerApproved)"
 
 & $importer -PackPath $packPaths -OwnerApproved:$OwnerApproved -BaseUrl $BaseUrl
