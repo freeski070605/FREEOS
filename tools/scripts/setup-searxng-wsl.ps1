@@ -28,10 +28,6 @@ function Normalize-WslDistroNames([string[]]$Lines) {
     foreach ($raw in @($Lines)) {
         $line = Clean-WslText ([string]$raw)
         if (-not $line) { continue }
-
-        # Newer WSL builds can emit two display columns even when --quiet is
-        # requested (for example: "Ubuntu     Ubuntu"). We only want the
-        # machine-readable distribution name from the first column.
         $line = $line -replace '^\*\s*', ''
         $name = (($line -split '\s{2,}', 2)[0]).Trim()
         if (-not $name) { continue }
@@ -118,9 +114,6 @@ function Select-Distro([string[]]$Installed, [string[]]$Online, [string]$Root) {
     if ($configured -and $Installed -contains $configured) { return $configured }
 
     $preferred = @("Ubuntu-24.04", "Debian", "Ubuntu-22.04", "Ubuntu")
-
-    # Resume a distro that FREEOS already installed under the requested E: root,
-    # even if a previous bootstrap failed before .env was updated.
     foreach ($candidate in $preferred) {
         if ($Installed -contains $candidate) {
             $candidatePath = Join-Path $Root $candidate
@@ -173,9 +166,8 @@ su -s /bin/bash -c "'$VENV/bin/pip' install -U pip setuptools wheel pyyaml msgsp
 su -s /bin/bash -c "cd '$SRC' && '$VENV/bin/pip' install --use-pep517 --no-build-isolation -e ." searxng
 
 install -d -m 0755 /etc/searxng
-if [ ! -s "$SETTINGS" ]; then
-  SECRET="$(openssl rand -hex 32)"
-  cat > "$SETTINGS" <<EOF
+SECRET="$(openssl rand -hex 32)"
+cat > "$SETTINGS" <<EOF
 use_default_settings: true
 
 general:
@@ -194,10 +186,26 @@ server:
   secret_key: "$SECRET"
   limiter: false
   image_proxy: true
+
+outgoing:
+  request_timeout: 8.0
+  max_request_timeout: 15.0
+  retries: 1
+
+# Keep the default engine catalog, but explicitly enable several common no-key
+# general-web engines so FREEOS has deterministic direct-engine fallbacks.
+engines:
+  - name: duckduckgo
+    disabled: false
+  - name: google
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: startpage
+    disabled: false
 EOF
-  chown root:searxng "$SETTINGS"
-  chmod 0640 "$SETTINGS"
-fi
+chown root:searxng "$SETTINGS"
+chmod 0640 "$SETTINGS"
 
 cat > /usr/local/bin/freeos-searxng-start <<'EOF'
 #!/usr/bin/env bash
@@ -224,13 +232,19 @@ EOF
 chmod 0755 /usr/local/bin/freeos-searxng-start
 chown -R searxng:searxng "$BASE"
 
+# Setup is also a repair command. Restart the local instance so refreshed
+# settings/engine configuration are applied immediately.
+if [ -f "$BASE/searxng.pid" ]; then
+  OLD_PID="$(cat "$BASE/searxng.pid" 2>/dev/null || true)"
+  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    kill "$OLD_PID" || true
+    sleep 2
+  fi
+  rm -f "$BASE/searxng.pid"
+fi
 su -s /bin/bash -c /usr/local/bin/freeos-searxng-start searxng
 '@
 
-    # PowerShell here-strings use Windows CRLF. Bash treats the trailing CR as
-    # part of tokens such as "pipefail", producing errors like
-    # ": invalid option namepefail". Normalize the entire payload to Unix LF
-    # before base64 transport into WSL.
     $bash = $bash.Replace("`r`n", "`n").Replace("`r", "`n")
     $bytes = [Text.Encoding]::UTF8.GetBytes($bash)
     $encoded = [Convert]::ToBase64String($bytes)
@@ -238,15 +252,24 @@ su -s /bin/bash -c /usr/local/bin/freeos-searxng-start searxng
     if ($LASTEXITCODE -ne 0) { throw "SearXNG bootstrap inside WSL failed." }
 }
 
+function Invoke-SearchProbe([string]$Url, [string]$Query) {
+    $encoded = [Uri]::EscapeDataString($Query)
+    $searchUri = "$($Url.TrimEnd('/'))/search?q=$encoded&format=json"
+    try {
+        $response = Invoke-RestMethod -Uri $searchUri -Method Get -TimeoutSec 20
+        return @($response.results).Count
+    } catch {
+        return 0
+    }
+}
+
 function Test-Searxng([string]$Url) {
-    $searchUri = "$($Url.TrimEnd('/'))/search?q=freeos&format=json"
-    for ($attempt = 1; $attempt -le 40; $attempt++) {
-        try {
-            $response = Invoke-RestMethod -Uri $searchUri -Method Get -TimeoutSec 5
-            if ($null -ne $response.results) { return $true }
-        } catch {
-            Start-Sleep -Seconds 2
+    for ($attempt = 1; $attempt -le 20; $attempt++) {
+        if ((Invoke-SearchProbe -Url $Url -Query "Blender official documentation") -gt 0) { return $true }
+        foreach ($engine in @("duckduckgo", "google", "bing", "startpage")) {
+            if ((Invoke-SearchProbe -Url $Url -Query "!$engine Blender official documentation") -gt 0) { return $true }
         }
+        Start-Sleep -Seconds 2
     }
     return $false
 }
@@ -284,7 +307,7 @@ if (-not ($installed -contains $distro)) {
     Write-Host "Reusing FREEOS WSL distro on E: $distro" -ForegroundColor DarkGray
 }
 
-Write-Host "Bootstrapping SearXNG inside $distro ..." -ForegroundColor Cyan
+Write-Host "Bootstrapping / refreshing SearXNG inside $distro ..." -ForegroundColor Cyan
 Invoke-WslBootstrap -Distro $distro
 
 Set-FreeOSEnvValue -Name "SEARXNG_BASE_URL" -Value $BaseUrl.TrimEnd('/')
@@ -292,9 +315,10 @@ Set-FreeOSEnvValue -Name "SEARXNG_WSL_DISTRO" -Value $distro
 Set-FreeOSEnvValue -Name "SEARXNG_WSL_INSTALL_ROOT" -Value $installPath
 
 if (-not (Test-Searxng -Url $BaseUrl)) {
-    Write-Host "`nSearXNG did not pass the Windows-side JSON health check." -ForegroundColor Yellow
+    Write-Host "`nSearXNG is reachable but did not return a real web-search result." -ForegroundColor Yellow
     Write-Host "Inspect the WSL log with:" -ForegroundColor Yellow
     Write-Host "  wsl.exe -d $distro -u root -- bash -lc `"tail -n 120 /opt/freeos-searxng/searxng.log`""
+    Write-Host "Then run: npm.cmd run check:searxng" -ForegroundColor Yellow
     exit 1
 }
 
@@ -302,7 +326,7 @@ Write-Host "`nSearXNG is online for FREEOS without Docker." -ForegroundColor Gre
 Write-Host "WSL distro: $distro"
 Write-Host "Linux storage: $installPath"
 Write-Host "URL: $($BaseUrl.TrimEnd('/'))"
-Write-Host "JSON API: verified"
+Write-Host "JSON API: verified with real search results"
 Write-Host "FREEOS .env: updated"
 Write-Host "`nFuture starts:" -ForegroundColor Cyan
 Write-Host "  npm.cmd run start:searxng"
