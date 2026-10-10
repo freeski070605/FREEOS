@@ -3,6 +3,11 @@ import type { NormalizedSearchResult, SearchOptions } from "./research.types";
 
 type RawResult = Record<string, unknown>;
 
+interface SearchExecution {
+  results: NormalizedSearchResult[];
+  unresponsive: string[];
+}
+
 function compactSpaces(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -12,6 +17,18 @@ function stripQueryNoise(value: string): string {
     .replace(/\b(the|a|an|this|that|requested|objective|current|highest|best|possible|practical|premium|production-ready|professional|polished)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeEngineErrors(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 12).map(item => {
+    if (typeof item === "string") return item;
+    if (Array.isArray(item)) return item.map(part => String(part)).join(": ");
+    if (item && typeof item === "object") {
+      try { return JSON.stringify(item); } catch { return String(item); }
+    }
+    return String(item);
+  });
 }
 
 /**
@@ -64,12 +81,7 @@ export function buildSearxngQueryVariants(query: string): string[] {
 
 export async function checkSearxngStatus(baseUrl: string): Promise<boolean> {
   try {
-    const url = new URL("search", `${baseUrl.replace(/\/$/, "")}/`);
-    url.search = new URLSearchParams({ q: "FREEOS status check", format: "json" }).toString();
-    const response = await fetch(url, { signal: AbortSignal.timeout(3000), headers: { Accept: "application/json" } });
-    if (!response.ok) return false;
-    const data = await response.json() as { results?: unknown };
-    return Array.isArray(data.results);
+    return (await searchSearxng(baseUrl, "Blender official documentation", { maxResults: 1 })).length > 0;
   } catch { return false; }
 }
 
@@ -91,33 +103,53 @@ export function normalizeSearchResults(rawResults: unknown): NormalizedSearchRes
   });
 }
 
-async function executeSearch(baseUrl: string, query: string, options: SearchOptions): Promise<NormalizedSearchResult[]> {
+async function executeSearch(baseUrl: string, query: string, options: SearchOptions): Promise<SearchExecution> {
   const maxResults = Math.min(Math.max(Math.trunc(options.maxResults ?? 5), 1), 20);
   const url = new URL("search", `${baseUrl.replace(/\/$/, "")}/`);
   url.search = new URLSearchParams({
     q: query.trim(),
     format: "json",
-    categories: "general",
     ...(options.language ? { language: options.language } : {}),
   }).toString();
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(12000),
     headers: { Accept: "application/json", "User-Agent": "FREEOS/0.1 local research" },
   });
   if (!response.ok) throw new ResearchError(`SearXNG returned HTTP ${response.status}.`, "offline");
-  const payload = await response.json() as { results?: unknown };
-  return normalizeSearchResults(payload.results).slice(0, maxResults);
+  const payload = await response.json() as { results?: unknown; unresponsive_engines?: unknown };
+  return {
+    results: normalizeSearchResults(payload.results).slice(0, maxResults),
+    unresponsive: normalizeEngineErrors(payload.unresponsive_engines),
+  };
 }
 
 export async function searchSearxng(baseUrl: string, query: string, options: SearchOptions = {}): Promise<NormalizedSearchResult[]> {
   if (!query.trim()) throw new ResearchError("query is required.", "validation");
   try {
     const variants = buildSearxngQueryVariants(query);
+    const engineErrors = new Set<string>();
+
     for (const variant of variants) {
-      const results = await executeSearch(baseUrl, variant, options);
-      if (results.length) return results;
+      const attempt = await executeSearch(baseUrl, variant, options);
+      attempt.unresponsive.forEach(item => engineErrors.add(item));
+      if (attempt.results.length) return attempt.results;
     }
-    return [];
+
+    // If aggregate/default engine selection is unhealthy, force a few well-known
+    // no-key engines one at a time. SearXNG supports selecting an engine by !name.
+    // This remains local metasearch and requires no paid search API key.
+    const baseVariant = variants[variants.length - 1] ?? compactSpaces(query);
+    for (const engine of ["duckduckgo", "google", "bing", "startpage"]) {
+      const attempt = await executeSearch(baseUrl, `!${engine} ${baseVariant}`, options);
+      attempt.unresponsive.forEach(item => engineErrors.add(item));
+      if (attempt.results.length) return attempt.results;
+    }
+
+    const diagnostics = Array.from(engineErrors).slice(0, 8);
+    throw new ResearchError(
+      `SearXNG returned no usable results after ${variants.length} query variant(s) and direct engine fallbacks.${diagnostics.length ? ` Engine diagnostics: ${diagnostics.join(" | ")}` : ""}`,
+      "not_found",
+    );
   } catch (error) {
     if (error instanceof ResearchError) throw error;
     throw new ResearchError("SearXNG is offline or not configured. Start a local instance or set SEARXNG_BASE_URL, then try again.", "offline");
