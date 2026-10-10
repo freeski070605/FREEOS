@@ -3,6 +3,7 @@ import type { JsonObject, ToolDefinition, ToolRiskLevel } from "./tool.types";
 import { ToolRunnerError } from "./tool.types";
 import { getToolRegistry, type ToolRegistry } from "./toolRegistry";
 import { runMpfbBaseSmokeTest, runMpfbPhenotypeTest } from "./blenderCharacterTools";
+import { runMpfbDetailTest } from "./blenderCharacterDetailTools";
 
 const OPERATOR_TOOLS: Array<Omit<ToolDefinition, "id" | "createdAt" | "updatedAt">> = [
   { toolKey: "operator.apps.list", name: "List production operators", description: "Lists configured creative/development operators and readiness without launching anything.", category: "operator", riskLevel: "read_only" as ToolRiskLevel, enabled: true, requiresApproval: false },
@@ -13,6 +14,7 @@ const OPERATOR_TOOLS: Array<Omit<ToolDefinition, "id" | "createdAt" | "updatedAt
   { toolKey: "operator.blender.run_plan", name: "Run governed Blender plan", description: "Executes a validated JSON scene plan through FREEOS's fixed Blender driver. Arbitrary Python and shell execution are not accepted.", category: "operator", riskLevel: "medium_risk" as ToolRiskLevel, enabled: true, requiresApproval: true },
   { toolKey: "operator.blender.mpfb.smoke_test", name: "Verify MPFB base-human capability", description: "Runs one fixed MPFB create-human smoke test in background Blender, saves a diagnostic blend/render/manifest under the FREEOS workspace, verifies real mesh/render evidence, and records the verified capability. It does not accept arbitrary Python.", category: "operator", riskLevel: "medium_risk" as ToolRiskLevel, enabled: true, requiresApproval: true },
   { toolKey: "operator.blender.mpfb.phenotype_test", name: "Verify MPFB phenotype controls", description: "Runs a fixed, validated MPFB phenotype creation adapter using only allowlisted gender/age/body/race enums and a bounded influence value. It verifies active phenotype shape keys, a real mesh, a diagnostic render, and records the verified capability.", category: "operator", riskLevel: "medium_risk" as ToolRiskLevel, enabled: true, requiresApproval: true },
+  { toolKey: "operator.blender.mpfb.detail_test", name: "Verify MPFB fine-detail controls", description: "Runs a fixed MPFB fine-detail adapter with bounded semantic sliders mapped only to known built-in nose, chin, and mouth targets. It verifies non-macro detail shape keys, creates a portrait diagnostic render, saves evidence, and records the verified capability.", category: "operator", riskLevel: "medium_risk" as ToolRiskLevel, enabled: true, requiresApproval: true },
 ];
 
 export function registerOperatorTools(registry: ToolRegistry = getToolRegistry()): ToolDefinition[] {
@@ -56,6 +58,9 @@ export async function executeOperatorTool(registry: ToolRegistry, toolKey: strin
       }
       case "operator.blender.mpfb.phenotype_test": {
         return await runMpfbPhenotypeTest(registry.rootDir, args.jobKey, args.profile);
+      }
+      case "operator.blender.mpfb.detail_test": {
+        return await runMpfbDetailTest(registry.rootDir, args.jobKey, args.profile);
       }
       default: throw new ToolRunnerError(`Unknown operator tool: ${toolKey}.`, "not_found");
     }
