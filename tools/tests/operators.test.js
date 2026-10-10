@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { listOperators, getOperatorStatus } from "../../packages/operator-core/dist/index.js";
+import { downloadCapabilityArtifact, listOperators, getOperatorStatus } from "../../packages/operator-core/dist/index.js";
 
 test("operator catalog exposes the production stack", () => {
   const items = listOperators();
@@ -23,4 +23,11 @@ test("operator executable mapping rejects the wrong executable name", () => {
     if (original === undefined) delete process.env.FREEOS_OPERATOR_BLENDER_EXE;
     else process.env.FREEOS_OPERATOR_BLENDER_EXE = original;
   }
+});
+
+test("capability acquisition refuses non-HTTPS downloads before network access", async () => {
+  await assert.rejects(
+    () => downloadCapabilityArtifact(process.cwd(), "http://example.com/free-tool.zip"),
+    /require HTTPS/i,
+  );
 });
