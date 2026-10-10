@@ -21,6 +21,7 @@ export interface OperatorProfile {
   name: string;
   envVar: string;
   processNames: string[];
+  executableNames: string[];
   capabilities: OperatorCapability[];
   notes: string;
 }
@@ -40,20 +41,20 @@ export class OperatorError extends Error {
 }
 
 export const OPERATOR_PROFILES: OperatorProfile[] = [
-  { key: "blender", name: "Blender Operator", envVar: "FREEOS_OPERATOR_BLENDER_EXE", processNames: ["blender"], capabilities: ["ui-control", "launch", "native-plan"], notes: "Native plan execution uses a fixed FREEOS Blender driver rather than arbitrary Python." },
-  { key: "premiere", name: "Premiere Pro Operator", envVar: "FREEOS_OPERATOR_PREMIERE_EXE", processNames: ["Adobe Premiere Pro"], capabilities: ["ui-control", "launch"], notes: "GUI production operator; native project automation can be added behind a dedicated adapter." },
-  { key: "after-effects", name: "After Effects Operator", envVar: "FREEOS_OPERATOR_AFTER_EFFECTS_EXE", processNames: ["AfterFX"], capabilities: ["ui-control", "launch"], notes: "GUI production operator; native render adapters remain separately governed." },
-  { key: "photoshop", name: "Photoshop Operator", envVar: "FREEOS_OPERATOR_PHOTOSHOP_EXE", processNames: ["Photoshop"], capabilities: ["ui-control", "launch"], notes: "GUI production operator." },
-  { key: "lightroom", name: "Lightroom Operator", envVar: "FREEOS_OPERATOR_LIGHTROOM_EXE", processNames: ["Lightroom", "LightroomClassic"], capabilities: ["ui-control", "launch"], notes: "GUI production operator." },
-  { key: "unity", name: "Unity Operator", envVar: "FREEOS_OPERATOR_UNITY_EXE", processNames: ["Unity"], capabilities: ["ui-control", "launch"], notes: "GUI production operator; batch-mode project adapters can be added as fixed operations." },
-  { key: "unreal", name: "Unreal Engine Operator", envVar: "FREEOS_OPERATOR_UNREAL_EXE", processNames: ["UnrealEditor"], capabilities: ["ui-control", "launch"], notes: "GUI production operator; commandlet adapters can be added as fixed operations." },
-  { key: "comfyui", name: "ComfyUI Operator", envVar: "FREEOS_OPERATOR_COMFYUI_EXE", processNames: ["ComfyUI"], capabilities: ["ui-control", "launch"], notes: "Local GUI operator. HTTP workflow execution should use a dedicated local adapter rather than arbitrary shell commands." },
-  { key: "obs", name: "OBS Studio Operator", envVar: "FREEOS_OPERATOR_OBS_EXE", processNames: ["obs64", "obs32"], capabilities: ["ui-control", "launch"], notes: "GUI production operator; streaming/record controls should use a dedicated OBS adapter when enabled." },
-  { key: "vscode", name: "VS Code Operator", envVar: "FREEOS_OPERATOR_VSCODE_EXE", processNames: ["Code"], capabilities: ["ui-control", "launch"], notes: "GUI companion to the existing governed Coding Workspace." },
+  { key: "blender", name: "Blender Operator", envVar: "FREEOS_OPERATOR_BLENDER_EXE", processNames: ["blender"], executableNames: ["blender.exe"], capabilities: ["ui-control", "launch", "native-plan"], notes: "Native plan execution uses a fixed FREEOS Blender driver rather than arbitrary Python." },
+  { key: "premiere", name: "Premiere Pro Operator", envVar: "FREEOS_OPERATOR_PREMIERE_EXE", processNames: ["Adobe Premiere Pro"], executableNames: ["Adobe Premiere Pro.exe"], capabilities: ["ui-control", "launch"], notes: "GUI production operator; native project automation can be added behind a dedicated adapter." },
+  { key: "after-effects", name: "After Effects Operator", envVar: "FREEOS_OPERATOR_AFTER_EFFECTS_EXE", processNames: ["AfterFX"], executableNames: ["AfterFX.exe"], capabilities: ["ui-control", "launch"], notes: "GUI production operator; native render adapters remain separately governed." },
+  { key: "photoshop", name: "Photoshop Operator", envVar: "FREEOS_OPERATOR_PHOTOSHOP_EXE", processNames: ["Photoshop"], executableNames: ["Photoshop.exe"], capabilities: ["ui-control", "launch"], notes: "GUI production operator." },
+  { key: "lightroom", name: "Lightroom Operator", envVar: "FREEOS_OPERATOR_LIGHTROOM_EXE", processNames: ["Lightroom", "LightroomClassic"], executableNames: ["Lightroom.exe"], capabilities: ["ui-control", "launch"], notes: "GUI production operator." },
+  { key: "unity", name: "Unity Operator", envVar: "FREEOS_OPERATOR_UNITY_EXE", processNames: ["Unity"], executableNames: ["Unity.exe"], capabilities: ["ui-control", "launch"], notes: "GUI production operator; batch-mode project adapters can be added as fixed operations." },
+  { key: "unreal", name: "Unreal Engine Operator", envVar: "FREEOS_OPERATOR_UNREAL_EXE", processNames: ["UnrealEditor"], executableNames: ["UnrealEditor.exe"], capabilities: ["ui-control", "launch"], notes: "GUI production operator; commandlet adapters can be added as fixed operations." },
+  { key: "comfyui", name: "ComfyUI Operator", envVar: "FREEOS_OPERATOR_COMFYUI_EXE", processNames: ["ComfyUI"], executableNames: ["ComfyUI.exe"], capabilities: ["ui-control", "launch"], notes: "Local GUI operator. HTTP workflow execution should use a dedicated local adapter rather than arbitrary shell commands." },
+  { key: "obs", name: "OBS Studio Operator", envVar: "FREEOS_OPERATOR_OBS_EXE", processNames: ["obs64", "obs32"], executableNames: ["obs64.exe", "obs32.exe"], capabilities: ["ui-control", "launch"], notes: "GUI production operator; streaming/record controls should use a dedicated OBS adapter when enabled." },
+  { key: "vscode", name: "VS Code Operator", envVar: "FREEOS_OPERATOR_VSCODE_EXE", processNames: ["Code"], executableNames: ["Code.exe"], capabilities: ["ui-control", "launch"], notes: "GUI companion to the existing governed Coding Workspace." },
 ];
 
 const blockedExecutableNames = new Set([
-  "cmd.exe", "powershell.exe", "pwsh.exe", "wt.exe", "regedit.exe", "reg.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe",
+  "cmd.exe", "powershell.exe", "pwsh.exe", "wt.exe", "regedit.exe", "reg.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "explorer.exe",
 ]);
 
 function profile(key: string): OperatorProfile {
@@ -66,7 +67,9 @@ function configuredPath(item: OperatorProfile): string | null {
   const value = process.env[item.envVar]?.trim();
   if (!value) return null;
   const full = resolve(value);
-  if (blockedExecutableNames.has(basename(full).toLowerCase())) throw new OperatorError(`${item.name} cannot be mapped to a command shell or script host.`, "blocked");
+  const file = basename(full);
+  if (blockedExecutableNames.has(file.toLowerCase())) throw new OperatorError(`${item.name} cannot be mapped to a command shell, file manager, or script host.`, "blocked");
+  if (!item.executableNames.some(name => name.toLowerCase() === file.toLowerCase())) throw new OperatorError(`${item.name} must point to one of: ${item.executableNames.join(", ")}.`, "blocked");
   return full;
 }
 
