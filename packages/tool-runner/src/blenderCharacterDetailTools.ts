@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { resolve, sep } from "node:path";
 import { getOperatorStatus } from "@freeos/operator-core";
@@ -107,6 +107,17 @@ function readManifest(path: string): MpfbDetailResult {
   }
 }
 
+function blenderTempEnvironment(rootDir: string, jobKey: string): NodeJS.ProcessEnv {
+  const tempDir = inside(rootDir, resolve(rootDir, "data", "operator-temp", "blender", jobKey));
+  mkdirSync(tempDir, { recursive: true });
+  return {
+    ...process.env,
+    TEMP: tempDir,
+    TMP: tempDir,
+    TMPDIR: tempDir,
+  };
+}
+
 export async function runMpfbDetailTest(rootDir: string, rawJobKey: unknown, rawProfile: unknown): Promise<MpfbDetailResult & { stdoutTail: string }> {
   const jobKey = safeJobKey(rawJobKey);
   const profile = normalizeMpfbDetailProfile(rawProfile);
@@ -116,6 +127,7 @@ export async function runMpfbDetailTest(rootDir: string, rawJobKey: unknown, raw
   const script = inside(rootDir, resolve(rootDir, "packages", "operator-core", "scripts", "blender_mpfb_detail.py"));
   if (!existsSync(script)) throw new ToolRunnerError("FREEOS MPFB detail driver is missing.", "blocked");
   const manifestPath = inside(rootDir, resolve(rootDir, "generated", "operators", "blender", "mpfb-detail", jobKey, "manifest.json"));
+  const childEnv = blenderTempEnvironment(rootDir, jobKey);
 
   const args = [
     "--background", "--python", script, "--", "--root", resolve(rootDir), "--job-key", jobKey,
@@ -128,7 +140,12 @@ export async function runMpfbDetailTest(rootDir: string, rawJobKey: unknown, raw
   ];
 
   return await new Promise((resolveResult, reject) => {
-    const child = spawn(blender.executablePath!, args, { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(blender.executablePath!, args, {
+      shell: false,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: childEnv,
+    });
     let stdout = "";
     let stderr = "";
     let settled = false;
