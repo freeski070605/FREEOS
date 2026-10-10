@@ -1,4 +1,4 @@
-import { getOperatorStatus, launchOperator, listOperators, runBlenderPlan, type OperatorKey } from "@freeos/operator-core";
+import { getOperatorStatus, inspectOperatorEnvironment, launchOperator, listOperators, runBlenderPlan, type OperatorKey } from "@freeos/operator-core";
 import type { JsonObject, ToolDefinition, ToolRiskLevel } from "./tool.types";
 import { ToolRunnerError } from "./tool.types";
 import { getToolRegistry, type ToolRegistry } from "./toolRegistry";
@@ -6,6 +6,7 @@ import { getToolRegistry, type ToolRegistry } from "./toolRegistry";
 const OPERATOR_TOOLS: Array<Omit<ToolDefinition, "id" | "createdAt" | "updatedAt">> = [
   { toolKey: "operator.apps.list", name: "List production operators", description: "Lists configured creative/development operators and readiness without launching anything.", category: "operator", riskLevel: "read_only" as ToolRiskLevel, enabled: true, requiresApproval: false },
   { toolKey: "operator.status", name: "Production operator status", description: "Checks one configured operator and its exact executable readiness.", category: "operator", riskLevel: "read_only" as ToolRiskLevel, enabled: true, requiresApproval: false },
+  { toolKey: "operator.environment.inspect", name: "Inspect production environment", description: "Inventories the selected production operator and other configured operators. Blender inspection also inventories available/enabled addons so FREEOS can use existing tools before seeking new ones.", category: "operator", riskLevel: "read_only" as ToolRiskLevel, enabled: true, requiresApproval: false },
   { toolKey: "operator.app.launch", name: "Launch production application", description: "Launches one explicitly configured production application. Requires owner approval.", category: "operator", riskLevel: "medium_risk" as ToolRiskLevel, enabled: true, requiresApproval: true },
   { toolKey: "operator.blender.run_plan", name: "Run governed Blender plan", description: "Executes a validated JSON scene plan through FREEOS's fixed Blender driver. Arbitrary Python and shell execution are not accepted.", category: "operator", riskLevel: "medium_risk" as ToolRiskLevel, enabled: true, requiresApproval: true },
 ];
@@ -33,6 +34,7 @@ export async function executeOperatorTool(registry: ToolRegistry, toolKey: strin
     switch (toolKey) {
       case "operator.apps.list": return { operators: listOperators() };
       case "operator.status": return { operator: getOperatorStatus(operatorKey(args.operatorKey)) };
+      case "operator.environment.inspect": return { inventory: await inspectOperatorEnvironment(operatorKey(args.operatorKey)) };
       case "operator.app.launch": return await launchOperator(operatorKey(args.operatorKey));
       case "operator.blender.run_plan": {
         const path = typeof args.planPath === "string" ? args.planPath.trim() : "";
