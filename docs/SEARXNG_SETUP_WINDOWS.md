@@ -8,11 +8,9 @@ Set a different local, network, or self-hosted instance in `.env`:
 SEARXNG_BASE_URL=http://127.0.0.1:8080
 ```
 
-## Recommended local setup on Windows
+## Recommended local setup on Windows: WSL on E: (no Docker)
 
-FREEOS includes a Windows helper that provisions SearXNG using the current official SearXNG Docker Compose template.
-
-Prerequisite: Docker Desktop with the Docker engine running.
+FREEOS uses a dedicated WSL 2 Linux distribution for SearXNG and places the Linux distribution storage under `E:\FREEOS_Linux` by default. Docker Desktop is not required.
 
 From the FREEOS repository root:
 
@@ -22,30 +20,68 @@ npm.cmd run setup:searxng
 
 The helper:
 
-- checks that Docker and Docker Compose v2 are available
-- downloads the current official SearXNG Compose template
-- binds SearXNG to `127.0.0.1:8080` only
-- creates a private random SearXNG secret
-- enables the JSON search format required by FREEOS
-- starts SearXNG and Valkey
-- verifies `/search?q=freeos&format=json`
-- updates the root FREEOS `.env` with `SEARXNG_BASE_URL=http://127.0.0.1:8080`
+- checks that WSL is enabled and recent enough to support `--location`
+- refuses to silently install a Linux distribution on C:
+- selects an unused Ubuntu or Debian distribution
+- installs that distribution directly under `E:\FREEOS_Linux\<distro>`
+- installs SearXNG from its official Git repository into `/opt/freeos-searxng`
+- creates a dedicated `searxng` Linux user and Python virtual environment
+- enables SearXNG JSON output required by FREEOS
+- binds SearXNG to `127.0.0.1:8080` inside WSL
+- starts the service and verifies the JSON search endpoint from Windows
+- records the selected WSL distribution and SearXNG URL in the root `.env`
 
-Runtime files live under `data/searxng/` and are not intended to be exposed publicly.
+If WSL is not enabled yet, the helper stops rather than installing a distribution to the wrong location. Open an Administrator PowerShell once and run:
 
-Verify after setup:
+```powershell
+wsl.exe --install --no-distribution --web-download
+```
+
+Restart Windows if requested, return to `E:\FREEOS`, and rerun:
+
+```powershell
+npm.cmd run setup:searxng
+```
+
+Microsoft WSL supports installing distributions to a chosen folder with `--location`. FREEOS intentionally requires that capability for this setup so the dedicated Linux filesystem stays off C:.
+
+SearXNG's direct Linux installation uses its official source tree and a Python virtual environment. FREEOS runs the local web application directly for this private workstation use instead of installing Docker Desktop.
+
+## Starting it later
+
+After setup, start the WSL-hosted SearXNG service with:
+
+```powershell
+npm.cmd run start:searxng
+```
+
+Then verify:
 
 ```powershell
 npm.cmd run check:searxng
 ```
 
-If the setup helper reports that Docker is missing, install/start Docker Desktop first and rerun the command. If the containers start but the JSON health check does not pass, inspect them with:
+Expected status:
+
+```text
+[FREEOS] SearXNG online: http://127.0.0.1:8080
+```
+
+If startup fails, inspect the Linux log using the distro name saved in `.env` as `SEARXNG_WSL_DISTRO`:
 
 ```powershell
-cd E:\FREEOS\data\searxng
-docker compose ps
-docker compose logs core --tail 100
+wsl.exe -d <distro> -u root -- bash -lc "tail -n 120 /opt/freeos-searxng/searxng.log"
 ```
+
+## Optional Docker path
+
+The older Docker helper remains available only as an explicit alternative:
+
+```powershell
+npm.cmd run setup:searxng:docker
+```
+
+It is not the default FREEOS setup.
 
 ## Other setup choices
 
