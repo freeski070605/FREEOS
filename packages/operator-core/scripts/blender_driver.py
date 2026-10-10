@@ -6,6 +6,7 @@ import re
 import sys
 
 import bpy
+from mathutils import Vector
 
 JOB_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,79}$")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,79}$")
@@ -132,7 +133,28 @@ def add_primitive(spec):
     return obj
 
 
-def add_light(spec):
+def object_bounds(objects):
+    points = []
+    for obj in objects:
+        if getattr(obj, "bound_box", None):
+            points.extend(obj.matrix_world @ Vector(corner) for corner in obj.bound_box)
+    if not points:
+        fail("Cannot frame an empty Blender scene")
+    minimum = Vector((min(p.x for p in points), min(p.y for p in points), min(p.z for p in points)))
+    maximum = Vector((max(p.x for p in points), max(p.y for p in points), max(p.z for p in points)))
+    center = (minimum + maximum) * 0.5
+    radius = max((maximum - minimum).length * 0.5, 0.5)
+    return center, radius
+
+
+def aim_at(obj, target):
+    direction = Vector(target) - obj.location
+    if direction.length < 0.0001:
+        fail("Camera/light target is too close to its location")
+    obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+
+
+def add_light(spec, target=None):
     name = safe_name(spec.get("name"), "light name")
     kind = str(spec.get("type", "AREA")).upper()
     if kind not in ("AREA", "POINT", "SUN", "SPOT"):
@@ -152,25 +174,63 @@ def add_light(spec):
     obj = bpy.data.objects.new(name=name, object_data=data)
     bpy.context.collection.objects.link(obj)
     obj.location = location
-    obj.rotation_euler = rotation
+    if target is not None and kind != "POINT":
+        aim_at(obj, target)
+    else:
+        obj.rotation_euler = rotation
     return obj
 
 
-def add_camera(spec):
+def add_camera(spec, target, radius):
     name = safe_name(spec.get("name", "Camera"), "camera name")
-    location = vector(spec.get("location", [0, -12, 5]), 3, "camera location", -10000, 10000)
-    rotation = [math.radians(v) for v in vector(spec.get("rotation", [70, 0, 0]), 3, "camera rotation", -3600, 3600)]
     lens = float(spec.get("lens", 50))
     if not (1 <= lens <= 500):
         fail("Camera lens is outside the allowed range")
     data = bpy.data.cameras.new(name=name)
     data.lens = lens
+    data.clip_start = 0.05
+    data.clip_end = 10000
     obj = bpy.data.objects.new(name=name, object_data=data)
     bpy.context.collection.objects.link(obj)
-    obj.location = location
-    obj.rotation_euler = rotation
+
+    auto_frame = spec.get("autoFrame", True) is not False
+    if auto_frame:
+        distance = max(radius * 3.25, 7.0)
+        obj.location = (target.x, target.y - distance, target.z + radius * 0.10)
+        aim_at(obj, target)
+    else:
+        location = vector(spec.get("location", [0, -12, 5]), 3, "camera location", -10000, 10000)
+        obj.location = location
+        if isinstance(spec.get("lookAt"), list):
+            aim_at(obj, vector(spec.get("lookAt"), 3, "camera lookAt", -10000, 10000))
+        else:
+            rotation = [math.radians(v) for v in vector(spec.get("rotation", [70, 0, 0]), 3, "camera rotation", -3600, 3600)]
+            obj.rotation_euler = rotation
     bpy.context.scene.camera = obj
     return obj
+
+
+def verify_render(path):
+    if not os.path.isfile(path) or os.path.getsize(path) < 1024:
+        fail("Rendered preview file is missing or empty")
+    image = bpy.data.images.load(path, check_existing=False)
+    try:
+        pixels = image.pixels
+        total = len(pixels) // 4
+        if total <= 0:
+            fail("Rendered preview contains no pixels")
+        stride = max(1, total // 512)
+        values = []
+        for pixel_index in range(0, total, stride):
+            offset = pixel_index * 4
+            r, g, b = pixels[offset], pixels[offset + 1], pixels[offset + 2]
+            values.append(float(r) * 0.2126 + float(g) * 0.7152 + float(b) * 0.0722)
+            if len(values) >= 512:
+                break
+        if not values or max(values) - min(values) < 0.01:
+            fail("Rendered preview appears blank or nearly uniform; deliverable verification refused")
+    finally:
+        bpy.data.images.remove(image)
 
 
 def main():
@@ -249,18 +309,20 @@ def main():
                 fail("Unknown parent relationship")
             child.parent = parent
 
+    center, radius = object_bounds(list(object_map.values()))
+
     lights = plan.get("lights", [])
     if not isinstance(lights, list) or len(lights) > 32:
         fail("lights must be a list with at most 32 entries")
     for spec in lights:
         if not isinstance(spec, dict):
             fail("Invalid light entry")
-        add_light(spec)
+        add_light(spec, center)
 
     camera_spec = plan.get("camera", {"name": "Camera"})
     if not isinstance(camera_spec, dict):
         fail("camera must be an object")
-    add_camera(camera_spec)
+    add_camera(camera_spec, center, radius)
 
     blend_name = safe_filename(plan.get("blendFile", "character.blend"), "blendFile")
     if not blend_name.lower().endswith(".blend"):
@@ -270,6 +332,7 @@ def main():
 
     render_spec = plan.get("render", {}) if isinstance(plan.get("render", {}), dict) else {}
     render_path = None
+    render_verified = False
     if bool(render_spec.get("enabled", True)):
         render_name = safe_filename(render_spec.get("fileName", "preview.png"), "render fileName")
         if not render_name.lower().endswith(".png"):
@@ -278,15 +341,19 @@ def main():
         scene.render.filepath = render_path
         scene.render.image_settings.file_format = "PNG"
         bpy.ops.render.render(write_still=True)
+        verify_render(render_path)
+        render_verified = True
 
     manifest = {
         "ok": True,
         "jobKey": job_key,
         "blendFile": os.path.relpath(blend_path, root).replace("\\", "/"),
         "renderFile": os.path.relpath(render_path, root).replace("\\", "/") if render_path else None,
+        "renderVerified": render_verified,
         "objectCount": len(objects),
         "materialCount": len(materials),
         "lightCount": len(lights),
+        "cameraAutoFramed": camera_spec.get("autoFrame", True) is not False,
     }
     manifest_path = os.path.join(job_dir, "manifest.json")
     with open(manifest_path, "w", encoding="utf-8") as handle:
