@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getOperatorStatus, type OperatorKey } from "@freeos/operator-core";
-import { getToolRegistry, ToolRequests } from "@freeos/tool-runner";
+import { getToolRegistry, listCapabilityVerifications, ToolRequests } from "@freeos/tool-runner";
 import { getQualityPreflight, listQualityPreflights, runQualityPreflight } from "../services/qualityExecution.service";
 
 export const qualityExecutionRouter = Router();
@@ -9,6 +9,13 @@ const body = (value: unknown): Record<string, unknown> => value && typeof value 
 qualityExecutionRouter.get("/preflights", (request, response, next) => {
   try { response.json({ preflights: listQualityPreflights(Number(request.query.limit) || 50) }); }
   catch (error) { next(error); }
+});
+
+qualityExecutionRouter.get("/capabilities", (request, response, next) => {
+  try {
+    const operatorKey = typeof request.query.operatorKey === "string" && request.query.operatorKey.trim() ? request.query.operatorKey.trim() : undefined;
+    response.json({ capabilities: listCapabilityVerifications(operatorKey) });
+  } catch (error) { next(error); }
 });
 
 qualityExecutionRouter.get("/preflights/:taskId", (request, response, next) => {
@@ -34,20 +41,20 @@ qualityExecutionRouter.post("/preflight", async (request, response, next) => {
   } catch (error) { next(error); }
 });
 
+function requireMpfbPreflight(taskId: number) {
+  if (!Number.isInteger(taskId) || taskId < 1) throw new Error("Invalid task ID.");
+  const preflight = getQualityPreflight(taskId);
+  if (!preflight) throw new Error("Quality preflight not found.");
+  if (preflight.operatorKey !== "blender") throw new Error("MPFB capability verification is only valid for Blender quality preflights.");
+  const mpfb = preflight.plan.localCapabilities.find(item => /mpfb|makehuman/i.test(item.name));
+  if (!mpfb?.installed || !mpfb.enabled) throw new Error("MPFB is not currently verified as installed and enabled in this preflight. Re-run environment inspection/preflight first.");
+  return preflight;
+}
+
 qualityExecutionRouter.post("/preflights/:taskId/mpfb-smoke-request", (request, response, next) => {
   try {
     const taskId = Number(request.params.taskId);
-    if (!Number.isInteger(taskId) || taskId < 1) { response.status(400).json({ error: "Invalid task ID." }); return; }
-    const preflight = getQualityPreflight(taskId);
-    if (!preflight) { response.status(404).json({ error: "Quality preflight not found." }); return; }
-    if (preflight.operatorKey !== "blender") { response.status(400).json({ error: "MPFB smoke verification is only valid for Blender quality preflights." }); return; }
-
-    const mpfb = preflight.plan.localCapabilities.find(item => /mpfb|makehuman/i.test(item.name));
-    if (!mpfb?.installed || !mpfb.enabled) {
-      response.status(409).json({ error: "MPFB is not currently verified as installed and enabled in this preflight. Re-run environment inspection/preflight first." });
-      return;
-    }
-
+    requireMpfbPreflight(taskId);
     const jobKey = `quality-task-${taskId}-mpfb-base`;
     const toolRequest = new ToolRequests(getToolRegistry()).createToolRequest({
       toolKey: "operator.blender.mpfb.smoke_test",
@@ -62,7 +69,47 @@ qualityExecutionRouter.post("/preflights/:taskId/mpfb-smoke-request", (request, 
       executesOnApproval: false,
       note: "Approve and run this Tool Runner request to verify that FREEOS can actually create and visually verify an MPFB base human. Passing this smoke test verifies only the base-human stage, not the full premium character workflow.",
     });
-  } catch (error) { next(error); }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "MPFB request failed.";
+    response.status(/not found/i.test(message) ? 404 : /Invalid task/i.test(message) ? 400 : 409).json({ error: message });
+  }
+});
+
+qualityExecutionRouter.post("/preflights/:taskId/mpfb-phenotype-request", (request, response, next) => {
+  try {
+    const taskId = Number(request.params.taskId);
+    requireMpfbPreflight(taskId);
+    const input = body(request.body);
+    const supplied = body(input.profile);
+    const profile = Object.keys(supplied).length ? supplied : {
+      gender: "male",
+      age: "young",
+      muscle: "averagemuscle",
+      weight: "averageweight",
+      height: "average",
+      proportions: "max",
+      race: "universal",
+      influence: 0.8,
+    };
+    const jobKey = `quality-task-${taskId}-mpfb-phenotype`;
+    const toolRequest = new ToolRequests(getToolRegistry()).createToolRequest({
+      toolKey: "operator.blender.mpfb.phenotype_test",
+      title: `Verify MPFB phenotype controls for task #${taskId}`,
+      description: `Runs FREEOS's governed MPFB phenotype adapter using a structured, allowlisted profile. The default profile is a neutral-reference young male with moderate muscle/weight, wider-shoulder proportions, universal race blend, and 0.8 influence. This is a capability verification profile, not final character art direction.`,
+      args: { jobKey, profile },
+      requestedBy: `quality-execution:${taskId}`,
+    });
+    response.status(201).json({
+      request: toolRequest,
+      jobKey,
+      profile,
+      executesOnApproval: false,
+      note: "Approve and run this Tool Runner request. Passing verifies that FREEOS can intentionally drive MPFB phenotype controls and prove active shape-key effects; it still does not verify premium face sculpting, hair, clothing, rigging, or final materials.",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "MPFB phenotype request failed.";
+    response.status(/not found/i.test(message) ? 404 : /Invalid task/i.test(message) ? 400 : 409).json({ error: message });
+  }
 });
 
 qualityExecutionRouter.post("/preflights/:taskId/acquisition-request", (request, response, next) => {
