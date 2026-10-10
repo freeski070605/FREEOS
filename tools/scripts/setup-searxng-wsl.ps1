@@ -23,6 +23,25 @@ function Get-WslLines([string[]]$Arguments) {
     return @($clean -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 }
 
+function Normalize-WslDistroNames([string[]]$Lines) {
+    $result = New-Object System.Collections.Generic.List[string]
+    foreach ($raw in @($Lines)) {
+        $line = Clean-WslText ([string]$raw)
+        if (-not $line) { continue }
+
+        # Newer WSL builds can emit two display columns even when --quiet is
+        # requested (for example: "Ubuntu     Ubuntu"). We only want the
+        # machine-readable distribution name from the first column.
+        $line = $line -replace '^\*\s*', ''
+        $name = (($line -split '\s{2,}', 2)[0]).Trim()
+        if (-not $name) { continue }
+        if ($name -match '^(NAME|DISTRIBUTION|The following|Use .+ to install)\b') { continue }
+        if ($name -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { continue }
+        if (-not $result.Contains($name)) { [void]$result.Add($name) }
+    }
+    return @($result)
+}
+
 function Test-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -226,8 +245,11 @@ Require-WslPlatform
 Ensure-LocationSupport
 
 $installed = @()
-try { $installed = @(Get-WslLines @("--list", "--quiet")) } catch { $installed = @() }
-$online = @(Get-WslLines @("--list", "--online", "--quiet"))
+try { $installed = @(Normalize-WslDistroNames (Get-WslLines @("--list", "--quiet"))) } catch { $installed = @() }
+$online = @(Normalize-WslDistroNames (Get-WslLines @("--list", "--online", "--quiet")))
+if (-not $online.Count) {
+    throw "WSL returned no usable online distro names. Run 'wsl.exe --list --online' manually and rerun setup if the list is available."
+}
 $distro = Select-Distro -Installed $installed -Online $online
 $installPath = Join-Path $InstallRoot $distro
 
