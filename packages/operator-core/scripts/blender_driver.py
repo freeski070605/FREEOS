@@ -211,6 +211,8 @@ def main():
     scene.render.resolution_y = int(resolution[1])
     scene.render.resolution_percentage = 100
     world_color = vector(scene_spec.get("worldColor", [0.03, 0.03, 0.03]), 3, "worldColor", 0, 1)
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new("FREEOS_World")
     scene.world.color = world_color
 
     material_map = {}
