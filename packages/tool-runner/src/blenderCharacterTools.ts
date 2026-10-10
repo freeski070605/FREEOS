@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { resolve, sep } from "node:path";
 import { getOperatorStatus } from "@freeos/operator-core";
@@ -125,6 +125,17 @@ function tail(stdout: string, stderr: string): string {
   return `${stderr}\n${stdout}`.trim().slice(-3000).replace(/[\r\n]+/g, " | ");
 }
 
+function blenderTempEnvironment(rootDir: string, jobKey: string): NodeJS.ProcessEnv {
+  const tempDir = inside(rootDir, resolve(rootDir, "data", "operator-temp", "blender", jobKey));
+  mkdirSync(tempDir, { recursive: true });
+  return {
+    ...process.env,
+    TEMP: tempDir,
+    TMP: tempDir,
+    TMPDIR: tempDir,
+  };
+}
+
 async function runFixedBlenderAdapter<T extends { jobKey: string; blendFile: string; renderFile: string }>(input: {
   rootDir: string;
   jobKey: string;
@@ -142,12 +153,13 @@ async function runFixedBlenderAdapter<T extends { jobKey: string; blendFile: str
   const script = inside(input.rootDir, resolve(input.rootDir, "packages", "operator-core", "scripts", input.scriptName));
   if (!existsSync(script)) throw new ToolRunnerError(`FREEOS ${input.label} driver is missing.`, "blocked");
   const expectedManifest = inside(input.rootDir, resolve(input.rootDir, "generated", "operators", "blender", input.outputSubdir, input.jobKey, "manifest.json"));
+  const childEnv = blenderTempEnvironment(input.rootDir, input.jobKey);
 
   return await new Promise((resolveResult, reject) => {
     const child = spawn(blender.executablePath!, [
       "--background", "--python", script, "--", "--root", resolve(input.rootDir), "--job-key", input.jobKey,
       ...(input.extraArgs ?? []),
-    ], { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    ], { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: childEnv });
 
     let stdout = "";
     let stderr = "";
