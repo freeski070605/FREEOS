@@ -34,6 +34,37 @@ qualityExecutionRouter.post("/preflight", async (request, response, next) => {
   } catch (error) { next(error); }
 });
 
+qualityExecutionRouter.post("/preflights/:taskId/mpfb-smoke-request", (request, response, next) => {
+  try {
+    const taskId = Number(request.params.taskId);
+    if (!Number.isInteger(taskId) || taskId < 1) { response.status(400).json({ error: "Invalid task ID." }); return; }
+    const preflight = getQualityPreflight(taskId);
+    if (!preflight) { response.status(404).json({ error: "Quality preflight not found." }); return; }
+    if (preflight.operatorKey !== "blender") { response.status(400).json({ error: "MPFB smoke verification is only valid for Blender quality preflights." }); return; }
+
+    const mpfb = preflight.plan.localCapabilities.find(item => /mpfb|makehuman/i.test(item.name));
+    if (!mpfb?.installed || !mpfb.enabled) {
+      response.status(409).json({ error: "MPFB is not currently verified as installed and enabled in this preflight. Re-run environment inspection/preflight first." });
+      return;
+    }
+
+    const jobKey = `quality-task-${taskId}-mpfb-base`;
+    const toolRequest = new ToolRequests(getToolRegistry()).createToolRequest({
+      toolKey: "operator.blender.mpfb.smoke_test",
+      title: `Verify MPFB base-human capability for task #${taskId}`,
+      description: `Runs FREEOS's fixed MPFB base-human smoke adapter for quality task #${taskId}. It invokes only the governed mpfb.create_human path, saves diagnostic evidence inside the FREEOS workspace, and does not execute arbitrary web-provided code.`,
+      args: { jobKey },
+      requestedBy: `quality-execution:${taskId}`,
+    });
+    response.status(201).json({
+      request: toolRequest,
+      jobKey,
+      executesOnApproval: false,
+      note: "Approve and run this Tool Runner request to verify that FREEOS can actually create and visually verify an MPFB base human. Passing this smoke test verifies only the base-human stage, not the full premium character workflow.",
+    });
+  } catch (error) { next(error); }
+});
+
 qualityExecutionRouter.post("/preflights/:taskId/acquisition-request", (request, response, next) => {
   try {
     const taskId = Number(request.params.taskId);
