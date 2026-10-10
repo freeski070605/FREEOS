@@ -16,10 +16,31 @@ export function assertScreenCaptureAllowed(): void {
 
 export const CONTROL_KEYS = ["computer.window.focus", "computer.mouse.move", "computer.mouse.click", "computer.keyboard.type", "computer.keyboard.press", "computer.keyboard.hotkey", "computer.app.launch"] as const;
 export const OBSERVATION_KEYS = ["computer.status", "computer.windows.list", "computer.window.active", "computer.processes.list", "computer.screen.capture"] as const;
-export const ALLOWED_KEYS = ["Tab", "Escape", "Left", "Right", "Up", "Down", "Home", "End", "PageUp", "PageDown", "Backspace", "Space"] as const;
+export const ALLOWED_KEYS = ["Tab", "Enter", "Escape", "Left", "Right", "Up", "Down", "Home", "End", "PageUp", "PageDown", "Backspace", "Space"] as const;
 // Paste can contain unreviewed clipboard data, so it is excluded.
-export const ALLOWED_HOTKEYS = ["CTRL+A", "CTRL+C", "CTRL+Z", "CTRL+Y", "CTRL+F", "SHIFT+TAB"] as const;
+export const ALLOWED_HOTKEYS = ["CTRL+A", "CTRL+C", "CTRL+S", "CTRL+SHIFT+S", "CTRL+O", "CTRL+Z", "CTRL+Y", "CTRL+F", "SHIFT+TAB"] as const;
 export type ComputerArgs = Record<string, unknown>;
+
+const OPERATOR_ENV_VARS = [
+  "FREEOS_OPERATOR_BLENDER_EXE",
+  "FREEOS_OPERATOR_PREMIERE_EXE",
+  "FREEOS_OPERATOR_AFTER_EFFECTS_EXE",
+  "FREEOS_OPERATOR_PHOTOSHOP_EXE",
+  "FREEOS_OPERATOR_LIGHTROOM_EXE",
+  "FREEOS_OPERATOR_UNITY_EXE",
+  "FREEOS_OPERATOR_UNREAL_EXE",
+  "FREEOS_OPERATOR_COMFYUI_EXE",
+  "FREEOS_OPERATOR_OBS_EXE",
+  "FREEOS_OPERATOR_VSCODE_EXE",
+] as const;
+const BLOCKED_EXECUTABLES = new Set(["cmd.exe", "powershell.exe", "pwsh.exe", "wt.exe", "regedit.exe", "reg.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "explorer.exe"]);
+
+export function configuredComputerExecutables(): string[] {
+  const windows = process.env.SystemRoot || "C:\\Windows";
+  const base = [win32.join(windows, "System32", "notepad.exe"), win32.join(windows, "System32", "calc.exe"), win32.join(windows, "System32", "mspaint.exe")];
+  const configured = OPERATOR_ENV_VARS.map(key => process.env[key]?.trim()).filter((value): value is string => !!value);
+  return [...new Set([...base, ...configured])].filter(path => !BLOCKED_EXECUTABLES.has(win32.basename(path).toLowerCase()));
+}
 
 export function validateComputerArgs(key: string, input: ComputerArgs): ComputerArgs {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new ComputerError("Arguments must be an object.", "validation");
@@ -41,10 +62,9 @@ export function validateComputerArgs(key: string, input: ComputerArgs): Computer
   if (key === "computer.keyboard.hotkey" && !(ALLOWED_HOTKEYS as readonly unknown[]).includes(input.hotkey)) throw new ComputerError("Hotkey is not allowed.", "blocked");
   if (key === "computer.app.launch") {
     const executable = input.executable;
-    const windows = process.env.SystemRoot || "C:\\Windows";
-    const allowed = [win32.join(windows, "System32", "notepad.exe"), win32.join(windows, "System32", "calc.exe"), win32.join(windows, "System32", "mspaint.exe")];
-    if (typeof executable !== "string" || !allowed.some(path => path.toLowerCase() === executable.toLowerCase())) throw new ComputerError("Launch requires an exact Windows System32 path to notepad.exe, calc.exe, or mspaint.exe. Other executables and all script hosts are blocked.", "blocked");
-    if (!Array.isArray(input.args) || input.args.length !== 0) throw new ComputerError("This foundation only allows an explicit empty args array.", "blocked");
+    const allowed = configuredComputerExecutables();
+    if (typeof executable !== "string" || !allowed.some(path => path.toLowerCase() === executable.toLowerCase())) throw new ComputerError("Launch requires an exact configured production-operator executable path or a built-in benign Windows app.", "blocked");
+    if (!Array.isArray(input.args) || input.args.length !== 0) throw new ComputerError("Desktop app launch only accepts an explicit empty args array. Native automation uses governed operator adapters instead.", "blocked");
   }
   return { ...input };
 }
