@@ -8,8 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -n API,DASHBOARD -c cyan,magenta \"npm run dev:api\" \"npm run dev:dashboard\"",
-    "dev:remote": "concurrently -n API,REMOTE -c cyan,magenta \"npm run dev:api\" \"npm run dev:remote --workspace @freeos/dashboard\"",
+    "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/scripts/start-freeos-dev.ps1",
+    "dev:remote": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/scripts/start-freeos-dev.ps1 -Remote",
     "dev:api": "npm run dev --workspace @freeos/api-server",
     "dev:dashboard": "npm run dev --workspace @freeos/dashboard",
     "build": "npm run build --workspaces --if-present",
