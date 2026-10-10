@@ -15,5 +15,10 @@ try {
 } catch (error) {
   console.log(`[FREEOS] SearXNG offline / setup needed: ${baseUrl}`);
   console.log(`[FREEOS] ${error instanceof Error ? error.message : "Connection failed."}`);
+  if (process.env.SEARXNG_WSL_DISTRO) {
+    console.log("[FREEOS] WSL SearXNG is configured. Try: npm.cmd run start:searxng");
+  } else {
+    console.log("[FREEOS] No local SearXNG runtime is configured. Try: npm.cmd run setup:searxng");
+  }
   console.log("[FREEOS] FREEOS can still run; see docs/SEARXNG_SETUP_WINDOWS.md.");
 }
