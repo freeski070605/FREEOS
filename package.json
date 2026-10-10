@@ -15,6 +15,7 @@
     "build": "npm run build --workspaces --if-present",
     "build:api": "npm run build --workspace @freeos/api-server",
     "build:dashboard": "npm run build --workspace @freeos/dashboard",
+    "build:character": "tsc -p packages/operator-core/tsconfig.json && tsc -p packages/tool-runner/tsconfig.json && tsc -p apps/api-server/tsconfig.json",
     "check:ollama": "node tools/scripts/check-ollama.js",
     "check:searxng": "node tools/scripts/check-searxng.js",
     "check:voice": "npm run build --workspace @freeos/voice-core && node tools/scripts/check-voice.js",
