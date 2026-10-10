@@ -5,8 +5,9 @@ import { ApprovalHub } from "./ApprovalHub";
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
 
 type TaskStatus = "queued" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
+type TaskMode = "freeos" | "agent" | "operator";
 interface RemoteTask {
-  id: number; kind: "freeos" | "agent"; agentId: number | null; projectKey: string | null; objective: string; priority: number;
+  id: number; kind: "freeos" | "agent"; agentId: number | null; operatorKey: string | null; projectKey: string | null; objective: string; priority: number;
   status: TaskStatus; currentStep: string; result: string | null; error: string | null; linkedRunId: number | null; approvalIds: number[];
   createdAt: string; startedAt: string | null; completedAt: string | null; updatedAt: string;
 }
@@ -16,6 +17,7 @@ interface RemoteStatus {
   activeTask: RemoteTask | null; nextTask: RemoteTask | null; executionModel: string;
 }
 interface Agent { id: number; name: string; enabled: boolean; projectKeys: string[]; templateKey: string }
+interface OperatorItem { key: string; name: string; configured: boolean; executableExists: boolean; ready: boolean; envVar: string; capabilities: string[]; notes: string }
 interface ComputerStatus { controlEnabled: boolean; screenCaptureEnabled: boolean; observationAvailable: boolean; activeWindow: { processName: string; windowTitle: string } | null }
 interface SnapshotResponse { snapshot: { url: string; width: number; height: number; timestamp: string } }
 
@@ -35,6 +37,7 @@ export function RemoteOpsPanel() {
   const [status, setStatus] = useState<RemoteStatus | null>(null);
   const [tasks, setTasks] = useState<RemoteTask[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [operators, setOperators] = useState<OperatorItem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [computer, setComputer] = useState<ComputerStatus | null>(null);
   const [runs, setRuns] = useState<ToolRun[]>([]);
@@ -43,10 +46,11 @@ export function RemoteOpsPanel() {
   const [livePreview, setLivePreview] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [draft, setDraft] = useState({ kind: "freeos" as "freeos" | "agent", agentId: "", projectKey: "", objective: "" });
+  const [draft, setDraft] = useState({ mode: "freeos" as TaskMode, agentId: "", operatorKey: "", projectKey: "", objective: "" });
 
   const enabledAgents = useMemo(() => agents.filter(agent => agent.enabled), [agents]);
   const selectedAgent = enabledAgents.find(agent => String(agent.id) === draft.agentId);
+  const selectedOperator = operators.find(item => item.key === draft.operatorKey);
   const eligibleProjects = selectedAgent ? projects.filter(project => selectedAgent.projectKeys.includes(project.projectKey)) : projects;
 
   const refresh = useCallback(async () => {
@@ -58,6 +62,7 @@ export function RemoteOpsPanel() {
       remoteJson<ComputerStatus>("/computer/status"),
       api.toolRuns(),
       api.commandActivity(12),
+      remoteJson<{ operators: OperatorItem[] }>("/operators"),
     ]);
     if (settled[0].status === "fulfilled") setStatus(settled[0].value);
     if (settled[1].status === "fulfilled") setTasks(settled[1].value.tasks);
@@ -66,6 +71,7 @@ export function RemoteOpsPanel() {
     if (settled[4].status === "fulfilled") setComputer(settled[4].value);
     if (settled[5].status === "fulfilled") setRuns(settled[5].value);
     if (settled[6].status === "fulfilled") setActivity(settled[6].value);
+    if (settled[7].status === "fulfilled") setOperators(settled[7].value.operators);
     const failed = settled.find(item => item.status === "rejected") as PromiseRejectedResult | undefined;
     if (failed) setNotice(failed.reason instanceof Error ? failed.reason.message : "Some Remote Ops telemetry is unavailable.");
   }, []);
@@ -79,8 +85,9 @@ export function RemoteOpsPanel() {
   useEffect(() => { void refresh(); const timer = window.setInterval(() => void refresh(), 3_000); return () => window.clearInterval(timer); }, [refresh]);
   useEffect(() => { if (!livePreview) return; void capture(); const timer = window.setInterval(() => void capture().catch(error => setNotice(error instanceof Error ? error.message : "Preview unavailable.")), 10_000); return () => window.clearInterval(timer); }, [livePreview, capture]);
   useEffect(() => {
-    if (draft.kind === "agent" && !draft.agentId && enabledAgents[0]) setDraft(value => ({ ...value, agentId: String(enabledAgents[0].id), projectKey: enabledAgents[0].projectKeys[0] ?? "" }));
-  }, [draft.kind, draft.agentId, enabledAgents]);
+    if (draft.mode === "agent" && !draft.agentId && enabledAgents[0]) setDraft(value => ({ ...value, agentId: String(enabledAgents[0].id), projectKey: enabledAgents[0].projectKeys[0] ?? "" }));
+    if (draft.mode === "operator" && !draft.operatorKey && operators[0]) setDraft(value => ({ ...value, operatorKey: operators[0].key }));
+  }, [draft.mode, draft.agentId, draft.operatorKey, enabledAgents, operators]);
 
   async function act(key: string, operation: () => Promise<unknown>, message?: string) {
     setBusy(key); setNotice(null);
@@ -92,18 +99,28 @@ export function RemoteOpsPanel() {
   function submit(event: FormEvent) {
     event.preventDefault();
     void act("enqueue", async () => {
-      await remoteJson("/remote-ops/tasks", { method: "POST", body: JSON.stringify({ kind: draft.kind, agentId: draft.kind === "agent" ? Number(draft.agentId) : undefined, projectKey: draft.projectKey || undefined, objective: draft.objective }) });
+      await remoteJson("/remote-ops/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          kind: draft.mode === "agent" ? "agent" : "freeos",
+          agentId: draft.mode === "agent" ? Number(draft.agentId) : undefined,
+          operatorKey: draft.mode === "operator" ? draft.operatorKey : undefined,
+          projectKey: draft.projectKey || undefined,
+          objective: draft.objective,
+        }),
+      });
       setDraft(value => ({ ...value, objective: "" }));
-    }, "Task added to the queue. FREEOS can keep working while you add more.");
+    }, draft.mode === "operator" ? "Operator job added. FREEOS will prepare executable work and stop at governed approval checkpoints." : "Task added to the queue. FREEOS can keep working while you add more.");
   }
 
   const currentRun = runs.find(run => run.status === "running") ?? runs[0] ?? null;
   const mode = status?.paused ? "PAUSED" : status?.working ? "WORKING" : status?.counts.waitingApproval ? "WAITING" : "IDLE";
+  const submitDisabled = !!busy || (draft.mode === "agent" && !draft.agentId) || (draft.mode === "operator" && (!draft.operatorKey || !selectedOperator?.ready));
 
   return <div className="space-y-4">
     <section className="panel border-electric/20 bg-electric/[.03]">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><p className="eyebrow">Away-from-PC command center</p><h2 className="section-title">Remote Ops</h2><p className="section-copy">Queue work from your phone, watch FREEOS move through tasks, handle approvals, and keep new jobs lined up while the computer stays home.</p></div>
+        <div><p className="eyebrow">Away-from-PC command center</p><h2 className="section-title">Remote Ops</h2><p className="section-copy">Queue work from your phone, route jobs into production operators, watch FREEOS move through tasks, and handle approvals without opening the API to the network.</p></div>
         <span className={`badge ${mode === "WORKING" ? "badge-warn" : mode === "IDLE" ? "badge-safe" : ""}`}>{mode}</span>
       </div>
       {notice && <p className="notice" role="status">{notice}</p>}
@@ -122,15 +139,18 @@ export function RemoteOpsPanel() {
       <section className="panel">
         <p className="eyebrow">Keep feeding the queue</p><h3 className="section-title">Add another task</h3>
         <form className="mt-4 space-y-3" onSubmit={submit}>
-          <select className="field" value={draft.kind} onChange={event => setDraft({ ...draft, kind: event.target.value as "freeos" | "agent", agentId: "", projectKey: "" })}>
-            <option value="freeos">FREEOS general task</option><option value="agent">Run an enabled specialist agent</option>
+          <select className="field" value={draft.mode} onChange={event => setDraft({ ...draft, mode: event.target.value as TaskMode, agentId: "", operatorKey: "", projectKey: "" })}>
+            <option value="freeos">FREEOS general task</option><option value="agent">Run an enabled specialist agent</option><option value="operator">Run a production operator</option>
           </select>
-          {draft.kind === "agent" && <select className="field" required value={draft.agentId} onChange={event => { const agent = enabledAgents.find(item => String(item.id) === event.target.value); setDraft({ ...draft, agentId: event.target.value, projectKey: agent?.projectKeys[0] ?? "" }); }}><option value="">Choose enabled agent</option>{enabledAgents.map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.templateKey}</option>)}</select>}
+          {draft.mode === "agent" && <select className="field" required value={draft.agentId} onChange={event => { const agent = enabledAgents.find(item => String(item.id) === event.target.value); setDraft({ ...draft, agentId: event.target.value, projectKey: agent?.projectKeys[0] ?? "" }); }}><option value="">Choose enabled agent</option>{enabledAgents.map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.templateKey}</option>)}</select>}
+          {draft.mode === "operator" && <select className="field" required value={draft.operatorKey} onChange={event => setDraft({ ...draft, operatorKey: event.target.value })}><option value="">Choose production operator</option>{operators.map(item => <option key={item.key} value={item.key}>{item.name} · {item.ready ? "ready" : "not configured"}</option>)}</select>}
           <select className="field" value={draft.projectKey} onChange={event => setDraft({ ...draft, projectKey: event.target.value })}><option value="">Global / no project</option>{eligibleProjects.map(project => <option key={project.projectKey} value={project.projectKey}>{project.name}</option>)}</select>
-          <textarea className="field min-h-36" required maxLength={4000} placeholder="What do you want FREEOS to work on while you're out?" value={draft.objective} onChange={event => setDraft({ ...draft, objective: event.target.value })}/>
-          <button className="button" disabled={!!busy || (draft.kind === "agent" && !draft.agentId)}>Add to queue</button>
+          <textarea className="field min-h-36" required maxLength={4000} placeholder={draft.mode === "operator" ? "Describe the production deliverable. Example: Build an original stylized animated character in Blender and render a preview." : "What do you want FREEOS to work on while you're out?"} value={draft.objective} onChange={event => setDraft({ ...draft, objective: event.target.value })}/>
+          <button className="button" disabled={submitDisabled}>Add to queue</button>
         </form>
-        {draft.kind === "agent" && enabledAgents.length === 0 && <p className="notice">No enabled specialist agents are available yet. General FREEOS tasks still work; enable an agent in Advanced Systems → Agents when you want agent-mode jobs.</p>}
+        {draft.mode === "agent" && enabledAgents.length === 0 && <p className="notice">No enabled specialist agents are available yet. General FREEOS tasks still work; enable an agent in Advanced Systems → Agents when you want agent-mode jobs.</p>}
+        {draft.mode === "operator" && selectedOperator && !selectedOperator.ready && <p className="notice">{selectedOperator.name} needs its exact executable path in <code>{selectedOperator.envVar}</code> before Remote Ops can use it.</p>}
+        {draft.mode === "operator" && selectedOperator?.key === "blender" && selectedOperator.ready && <p className="meta">Blender is the first native execution adapter: FREEOS generates a structured scene plan, requests approval, executes through a fixed Blender driver, then verifies the .blend and preview output before marking the task complete.</p>}
       </section>
 
       <section className="panel">
@@ -149,9 +169,14 @@ export function RemoteOpsPanel() {
     </div>
 
     <section className="panel">
+      <p className="eyebrow">Production reach</p><h3 className="section-title">Operators</h3>
+      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{operators.map(item => <div className="queue-item" key={item.key}><div className="flex items-start justify-between gap-2"><div><p className="m-0 text-sm font-semibold text-white">{item.name}</p><p className="meta">{item.capabilities.join(" · ")}</p></div><span className={`badge ${item.ready ? "badge-safe" : ""}`}>{item.ready ? "ready" : "setup"}</span></div><p className="mb-0 mt-2 text-xs text-slate-500">{item.notes}</p></div>)}</div>
+    </section>
+
+    <section className="panel">
       <p className="eyebrow">Persistent queue</p><h3 className="section-title">Tasks</h3>
       <div className="mt-4 space-y-2">{tasks.length === 0 && <div className="empty">No Remote Ops tasks yet.</div>}{tasks.map(task => <article key={task.id} className="queue-item">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="m-0 text-sm font-semibold text-white">#{task.id} · {task.objective}</p><p className="meta">{task.kind}{task.agentId ? ` · agent #${task.agentId}` : ""} · {task.projectKey ?? "global"} · {task.currentStep}</p></div><span className={`badge ${statusBadge(task.status)}`}>{task.status.replace("_", " ")}</span></div>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="m-0 text-sm font-semibold text-white">#{task.id} · {task.objective}</p><p className="meta">{task.operatorKey ? `operator · ${task.operatorKey}` : task.kind}{task.agentId ? ` · agent #${task.agentId}` : ""} · {task.projectKey ?? "global"} · {task.currentStep}</p></div><span className={`badge ${statusBadge(task.status)}`}>{task.status.replace("_", " ")}</span></div>
         {task.error && <p className="notice">{task.error}</p>}
         {task.result && <details className="mt-2"><summary className="cursor-pointer text-xs text-slate-400">Task result</summary><pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{task.result}</pre></details>}
         <div className="mt-3 flex flex-wrap gap-2">{task.status === "queued" && <><button className="button" disabled={!!busy} onClick={() => void act(`next-${task.id}`, () => remoteJson(`/remote-ops/tasks/${task.id}/run-next`, { method: "POST", body: "{}" }), `Task #${task.id} moved to the front.`)}>Run next</button><button className="button" disabled={!!busy} onClick={() => void act(`cancel-${task.id}`, () => remoteJson(`/remote-ops/tasks/${task.id}/cancel`, { method: "POST", body: "{}" }), `Task #${task.id} cancelled.`)}>Cancel</button></>}{task.status === "waiting_approval" && <button className="button" disabled={!!busy} onClick={() => void act(`cancel-${task.id}`, () => remoteJson(`/remote-ops/tasks/${task.id}/cancel`, { method: "POST", body: "{}" }), `Task #${task.id} cancelled. Existing approval requests remain separately governed.`)}>Cancel task</button>}</div>
