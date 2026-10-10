@@ -4,9 +4,10 @@ import { getToolRegistry, ToolRequests } from "@freeos/tool-runner";
 import { getOperatorStatus, type OperatorKey } from "@freeos/operator-core";
 import { config } from "../config";
 import { generateWithOllama } from "./ollama.service";
+import { runQualityPreflight, type QualityPreflight } from "./qualityExecution.service";
 
 export type RemoteTaskKind = "freeos" | "agent";
-export type RemoteTaskStatus = "queued" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
+export type RemoteTaskStatus = "queued" | "running" | "waiting_approval" | "capability_gap" | "completed" | "failed" | "cancelled";
 
 export interface RemoteTask {
   id: number;
@@ -162,16 +163,16 @@ export class RemoteOpsService {
     const next = db().prepare("SELECT * FROM remote_ops_tasks WHERE status='queued' ORDER BY priority DESC, id ASC LIMIT 1").get();
     return {
       paused: this.isPaused(), workerOnline: !!this.timer, working: this.working || !!active,
-      counts: { queued: byStatus.queued ?? 0, running: byStatus.running ?? 0, waitingApproval: byStatus.waiting_approval ?? 0, completed: byStatus.completed ?? 0, failed: byStatus.failed ?? 0, cancelled: byStatus.cancelled ?? 0 },
+      counts: { queued: byStatus.queued ?? 0, running: byStatus.running ?? 0, waitingApproval: byStatus.waiting_approval ?? 0, capabilityGap: byStatus.capability_gap ?? 0, completed: byStatus.completed ?? 0, failed: byStatus.failed ?? 0, cancelled: byStatus.cancelled ?? 0 },
       activeTask: active ? row(active) : null,
       nextTask: next ? row(next) : null,
-      executionModel: "Single active task; operator jobs can generate governed work, pause for approval, and verify deliverables before completion.",
+      executionModel: "Quality-seeking preflight first; inspect local tools, learn current best practice when needed, refuse inferior execution when required capabilities are missing, then execute one active task with governed approvals and verified deliverables.",
     };
   }
 
   list(limit = 100): RemoteTask[] {
     const safe = Math.min(Math.max(Number(limit) || 100, 1), 250);
-    return (db().prepare("SELECT * FROM remote_ops_tasks ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'waiting_approval' THEN 1 WHEN 'queued' THEN 2 ELSE 3 END, priority DESC, id DESC LIMIT ?").all(safe) as any[]).map(row);
+    return (db().prepare("SELECT * FROM remote_ops_tasks ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'waiting_approval' THEN 1 WHEN 'capability_gap' THEN 2 WHEN 'queued' THEN 3 ELSE 4 END, priority DESC, id DESC LIMIT ?").all(safe) as any[]).map(row);
   }
 
   enqueue(input: { kind?: unknown; agentId?: unknown; operatorKey?: unknown; projectKey?: unknown; objective?: unknown }): RemoteTask {
@@ -282,15 +283,16 @@ export class RemoteOpsService {
     } finally { clearTimeout(timer); }
   }
 
-  private async buildBlenderPlan(task: RemoteTask): Promise<string> {
+  private async buildBlenderPlan(task: RemoteTask, preflight: QualityPreflight): Promise<string> {
     const root = getToolRegistry().rootDir;
     const plans = join(root, "generated", "operators", "blender", "plans");
     mkdirSync(plans, { recursive: true });
     const jobKey = `remote-task-${task.id}`;
-    const system = `You are FREEOS Blender Planner. Convert the user's objective into ONE JSON scene plan for a fixed Blender driver. Return JSON only, no markdown. You may use only these object types: cube, uv_sphere, ico_sphere, cylinder, cone, torus. Build stylized production blockouts from primitives. Plan schema: {jobKey,blendFile,scene:{resolution:[x,y],worldColor:[r,g,b]},materials:[{name,baseColor:[r,g,b,a],metallic,roughness}],objects:[{name,type,location:[x,y,z],rotation:[deg,deg,deg],scale:[x,y,z],material,smooth,bevel}],camera:{name,location:[x,y,z],rotation:[deg,deg,deg],lens},lights:[{name,type,location,rotation,energy,size,color:[r,g,b]}],render:{enabled:true,fileName:"preview.png"}}. Keep <=80 objects. Do not include code, file paths, scripts, URLs, commands, or unsupported Blender features. Make the composition visible from the camera.`;
+    const system = `You are FREEOS Blender Planner. Convert the user's objective into ONE JSON scene plan for a fixed Blender driver. Return JSON only, no markdown. You may use only these object types: cube, uv_sphere, ico_sphere, cylinder, cone, torus. This driver is appropriate only when the quality preflight has already concluded that a primitive scene plan is sufficient. Plan schema: {jobKey,blendFile,scene:{resolution:[x,y],worldColor:[r,g,b]},materials:[{name,baseColor:[r,g,b,a],metallic,roughness}],objects:[{name,type,location:[x,y,z],rotation:[deg,deg,deg],scale:[x,y,z],material,smooth,bevel}],camera:{name,location:[x,y,z],rotation:[deg,deg,deg],lens},lights:[{name,type,location,rotation,energy,size,color:[r,g,b]}],render:{enabled:true,fileName:"preview.png"}}. Keep <=80 objects. Do not include code, file paths, scripts, URLs, commands, or unsupported Blender features. Make the composition visible from the camera. Follow the supplied quality preflight and do not pretend unsupported capabilities exist.`;
     let plan: Record<string, any>;
     try {
-      const raw = await generateWithOllama({ model: config.defaultModel, system, prompt: task.objective, timeoutMs: config.ollamaGenerateTimeoutMs, options: { temperature: 0.55, top_p: 0.88, repeat_penalty: 1.08, num_predict: 2600 } });
+      const prompt = `${task.objective}\n\nQUALITY-SEEKING PREFLIGHT:\n${JSON.stringify(preflight.plan, null, 2)}`;
+      const raw = await generateWithOllama({ model: config.defaultModel, system, prompt, timeoutMs: config.ollamaGenerateTimeoutMs, options: { temperature: 0.45, top_p: 0.86, repeat_penalty: 1.08, num_predict: 2800 } });
       plan = jsonObject(raw);
       if (!Array.isArray(plan.objects) || plan.objects.length < 1 || !Array.isArray(plan.materials)) throw new Error("Generated plan is incomplete.");
     } catch {
@@ -309,31 +311,39 @@ export class RemoteOpsService {
     const status = getOperatorStatus(operatorKey);
     if (!status.ready) throw new Error(`${status.name} is not ready. Configure ${status.envVar} to the exact installed executable path first.`);
 
+    db().prepare("UPDATE remote_ops_tasks SET current_step='Quality preflight: inspecting local tools and current best practice', updated_at=CURRENT_TIMESTAMP WHERE id=?").run(task.id);
+    const preflight = await runQualityPreflight({ taskId: task.id, operatorKey, projectKey: task.projectKey, objective: task.objective });
+    if (preflight.plan.decision !== "proceed") {
+      db().prepare("UPDATE remote_ops_tasks SET status='capability_gap', current_step='Quality gate stopped an inferior workflow — capability expansion required', result=?, error=NULL, completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .run(JSON.stringify({ operator: operatorKey, qualityPreflight: preflight, nextAction: "Use an installed tool the operator cannot yet control, learn the current workflow, acquire a suitable free tool, or build the missing adapter before execution resumes." }, null, 2), task.id);
+      return;
+    }
+
     const requests = new ToolRequests(getToolRegistry());
     if (operatorKey === "blender") {
-      db().prepare("UPDATE remote_ops_tasks SET current_step='Planning governed Blender scene', updated_at=CURRENT_TIMESTAMP WHERE id=?").run(task.id);
-      const planPath = await this.buildBlenderPlan(task);
+      db().prepare("UPDATE remote_ops_tasks SET current_step='Quality gate passed — planning governed Blender scene', updated_at=CURRENT_TIMESTAMP WHERE id=?").run(task.id);
+      const planPath = await this.buildBlenderPlan(task, preflight);
       const request = requests.createToolRequest({
         toolKey: "operator.blender.run_plan",
         title: `Remote Ops #${task.id}: run Blender build`,
-        description: `FREEOS generated a governed Blender scene plan for task #${task.id}. Approve to execute it through the fixed Blender driver.`,
+        description: `FREEOS completed a quality/capability preflight and generated a governed Blender scene plan for task #${task.id}. Approve to execute it through the fixed Blender driver.`,
         args: { planPath },
         requestedBy: `remote-ops:${task.id}`,
       });
-      db().prepare("UPDATE remote_ops_tasks SET status='waiting_approval', current_step='Blender plan ready — waiting for owner approval', result=?, approval_ids=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
-        .run(JSON.stringify({ operator: "blender", planPath, note: "Plan generated; execution has not run yet." }, null, 2), JSON.stringify([request.id]), task.id);
+      db().prepare("UPDATE remote_ops_tasks SET status='waiting_approval', current_step='Quality gate passed — Blender plan ready for owner approval', result=?, approval_ids=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .run(JSON.stringify({ operator: "blender", planPath, qualityPreflight: preflight, note: "Preflight passed; execution has not run yet." }, null, 2), JSON.stringify([request.id]), task.id);
       return;
     }
 
     const request = requests.createToolRequest({
       toolKey: "operator.app.launch",
       title: `Remote Ops #${task.id}: launch ${status.name}`,
-      description: `${status.name} is configured for UI production control. This first adapter step launches the app; task-specific native automation remains operator-dependent.`,
+      description: `${status.name} passed quality preflight for this objective. Approve the configured production application launch.`,
       args: { operatorKey },
       requestedBy: `remote-ops:${task.id}`,
     });
-    db().prepare("UPDATE remote_ops_tasks SET status='waiting_approval', current_step='Waiting to launch production operator', result=?, approval_ids=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
-      .run(JSON.stringify({ operator: operatorKey, capability: "launch+ui-control", note: "Native task adapter is not yet available for this application." }, null, 2), JSON.stringify([request.id]), task.id);
+    db().prepare("UPDATE remote_ops_tasks SET status='waiting_approval', current_step='Quality gate passed — waiting to launch production operator', result=?, approval_ids=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .run(JSON.stringify({ operator: operatorKey, capability: "launch+ui-control", qualityPreflight: preflight }, null, 2), JSON.stringify([request.id]), task.id);
   }
 
   private async execute(task: RemoteTask): Promise<void> {
