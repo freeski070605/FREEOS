@@ -15,13 +15,14 @@
     "@freeos/research-core": "*",
     "@freeos/voice-core": "*",
     "@freeos/tool-runner": "*",
+    "@freeos/operator-core": "*",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "multer": "^2.0.2",
     "@freeos/computer-core": "*",
-    "@freeos/coding-core": "*"
-    ,"@freeos/scheduler-core": "*"
+    "@freeos/coding-core": "*",
+    "@freeos/scheduler-core": "*"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
