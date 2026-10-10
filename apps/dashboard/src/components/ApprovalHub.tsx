@@ -92,7 +92,7 @@ export function ApprovalHub({ compact = false, onChanged }: { compact?: boolean;
       <div>
         <p className="eyebrow">Human checkpoint</p>
         <h2 className="section-title">Approval hub</h2>
-        <p className="section-copy">Learning becomes durable only after approval. Edit preserves the original proposal in the audit trail.</p>
+        <p className="section-copy">Learning becomes durable only after approval. Remote Ops actions execute automatically only after you explicitly approve the exact requested action.</p>
       </div>
       <button className={button} onClick={() => void refresh()}>Refresh</button>
     </div>
@@ -144,12 +144,21 @@ export function ApprovalHub({ compact = false, onChanged }: { compact?: boolean;
         </article>;
       })}
 
-      {tools?.map((item) => <article className="queue-item" key={`t-${item.id}`}>
-        <div className="flex justify-between gap-3"><div><p className="m-0 text-sm font-semibold text-white">{item.title}</p><p className="meta">Tool · {item.toolKey} · {item.riskLevel}</p></div><span className={`badge ${item.status === "approved" ? "badge-ok" : "badge-warn"}`}>{item.status}</span></div>
-        <p className="mb-0 mt-2 text-sm text-slate-400">{item.description || "No description."}</p>
-        <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs text-slate-300">{JSON.stringify(item.args, null, 2)}</pre>
-        <div className="mt-3 flex flex-wrap gap-2">{item.status === "pending" && <><button className={button} disabled={!!busy} onClick={() => void act(`ta-${item.id}`, () => api.approveToolRequest(item.id), "Tool request approved; it has not run.")}>Approve</button><button className={danger} disabled={!!busy} onClick={() => void act(`tr-${item.id}`, () => api.rejectToolRequest(item.id), "Tool request rejected.")}>Reject</button></>}{item.status === "approved" && <button className={button} disabled={!!busy} onClick={() => void act(`run-${item.id}`, () => api.runToolRequest(item.id), "Approved request ran.")}>Run approved</button>}</div>
-      </article>)}
+      {tools?.map((item) => {
+        const remoteOpsAction = item.requestedBy.startsWith("remote-ops:");
+        return <article className="queue-item" key={`t-${item.id}`}>
+          <div className="flex justify-between gap-3"><div><p className="m-0 text-sm font-semibold text-white">{item.title}</p><p className="meta">Tool · {item.toolKey} · {item.riskLevel}{remoteOpsAction ? " · Remote Ops" : ""}</p></div><span className={`badge ${item.status === "approved" ? "badge-ok" : "badge-warn"}`}>{item.status}</span></div>
+          <p className="mb-0 mt-2 text-sm text-slate-400">{item.description || "No description."}</p>
+          <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs text-slate-300">{JSON.stringify(item.args, null, 2)}</pre>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {item.status === "pending" && <>
+              <button className={button} disabled={!!busy} onClick={() => void act(`ta-${item.id}`, () => api.approveToolRequest(item.id), remoteOpsAction ? "Approved. Remote Ops will execute this exact governed action automatically." : "Tool request approved; it has not run.")}>Approve</button>
+              <button className={danger} disabled={!!busy} onClick={() => void act(`tr-${item.id}`, () => api.rejectToolRequest(item.id), "Tool request rejected.")}>Reject</button>
+            </>}
+            {item.status === "approved" && (remoteOpsAction ? <span className="meta mt-0">Approved — Remote Ops is claiming this action automatically.</span> : <button className={button} disabled={!!busy} onClick={() => void act(`run-${item.id}`, () => api.runToolRequest(item.id), "Approved request ran.")}>Run approved</button>)}
+          </div>
+        </article>;
+      })}
     </div>
   </section>;
 }
