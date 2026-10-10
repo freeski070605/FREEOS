@@ -18,6 +18,8 @@ export interface MpfbSmokeResult {
   polygonCount: number;
   shapeKeyCount: number;
   materialCount: number;
+  diagnosticMaterial?: string;
+  diagnosticMaterialAppliedCount?: number;
   createdObjectCount: number;
 }
 
@@ -51,6 +53,20 @@ function parseMarker(stdout: string): MpfbSmokeResult {
   } catch {
     throw new ToolRunnerError("MPFB smoke-test returned invalid verification evidence.", "blocked");
   }
+}
+
+function readVerifiedManifest(expectedManifest: string, marker: MpfbSmokeResult): MpfbSmokeResult {
+  if (!existsSync(expectedManifest)) throw new ToolRunnerError("MPFB smoke test did not create its verification manifest.", "blocked");
+  let manifest: MpfbSmokeResult;
+  try { manifest = JSON.parse(readFileSync(expectedManifest, "utf8")) as MpfbSmokeResult; }
+  catch { throw new ToolRunnerError("MPFB smoke-test manifest could not be parsed.", "blocked"); }
+  if (!manifest.ok || !manifest.baseHumanVerified || !manifest.renderVerified) {
+    throw new ToolRunnerError("MPFB smoke-test manifest did not verify the base human and render.", "blocked");
+  }
+  if (manifest.jobKey !== marker.jobKey || manifest.blendFile !== marker.blendFile || manifest.renderFile !== marker.renderFile) {
+    throw new ToolRunnerError("MPFB smoke-test stdout and manifest evidence do not match.", "blocked");
+  }
+  return manifest;
 }
 
 function tail(stdout: string, stderr: string): string {
@@ -89,6 +105,25 @@ export async function runMpfbBaseSmokeTest(rootDir: string, rawJobKey: unknown):
       if (error) reject(error);
       else resolveResult(value!);
     };
+
+    const tryFinishFromEvidence = (): boolean => {
+      if (settled || !stdout.includes("FREEOS_MPFB_SMOKE_RESULT=")) return false;
+      try {
+        const marker = parseMarker(stdout);
+        const manifest = readVerifiedManifest(expectedManifest, marker);
+        finish(undefined, { ...manifest, stdoutTail: tail(stdout, stderr) });
+        // MPFB/Blender extensions can keep background Blender alive after the
+        // fixed script has already flushed its verified manifest/result. Do
+        // not make Tool Runner wait for unrelated shutdown cleanup.
+        if (!child.killed) child.kill();
+        return true;
+      } catch {
+        // The stdout JSON or manifest may still be mid-write. A later data
+        // event or the process close handler will perform the strict check.
+        return false;
+      }
+    };
+
     const timeout = setTimeout(() => {
       child.kill();
       finish(new ToolRunnerError("MPFB base-human smoke test timed out.", "blocked"));
@@ -96,7 +131,10 @@ export async function runMpfbBaseSmokeTest(rootDir: string, rawJobKey: unknown):
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
-    child.stdout.on("data", chunk => { if (stdout.length < 2 * 1024 * 1024) stdout += chunk; });
+    child.stdout.on("data", chunk => {
+      if (stdout.length < 2 * 1024 * 1024) stdout += chunk;
+      tryFinishFromEvidence();
+    });
     child.stderr.on("data", chunk => { if (stderr.length < 512 * 1024) stderr += chunk; });
     child.once("error", () => finish(new ToolRunnerError("Blender could not start for the MPFB smoke test.", "blocked")));
     child.once("close", code => {
@@ -104,14 +142,7 @@ export async function runMpfbBaseSmokeTest(rootDir: string, rawJobKey: unknown):
       try {
         if (code !== 0) throw new ToolRunnerError(`MPFB smoke test failed.${tail(stdout, stderr) ? ` ${tail(stdout, stderr)}` : ""}`, "blocked");
         const marker = parseMarker(stdout);
-        if (!existsSync(expectedManifest)) throw new ToolRunnerError("MPFB smoke test did not create its verification manifest.", "blocked");
-        const manifest = JSON.parse(readFileSync(expectedManifest, "utf8")) as MpfbSmokeResult;
-        if (!manifest.ok || !manifest.baseHumanVerified || !manifest.renderVerified) {
-          throw new ToolRunnerError("MPFB smoke-test manifest did not verify the base human and render.", "blocked");
-        }
-        if (manifest.jobKey !== marker.jobKey || manifest.blendFile !== marker.blendFile || manifest.renderFile !== marker.renderFile) {
-          throw new ToolRunnerError("MPFB smoke-test stdout and manifest evidence do not match.", "blocked");
-        }
+        const manifest = readVerifiedManifest(expectedManifest, marker);
         finish(undefined, { ...manifest, stdoutTail: tail(stdout, stderr) });
       } catch (error) {
         finish(error instanceof Error ? error : new ToolRunnerError("MPFB smoke test failed.", "blocked"));
