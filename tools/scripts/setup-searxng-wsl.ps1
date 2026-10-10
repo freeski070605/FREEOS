@@ -113,11 +113,23 @@ function Ensure-LocationSupport {
     }
 }
 
-function Select-Distro([string[]]$Installed, [string[]]$Online) {
+function Select-Distro([string[]]$Installed, [string[]]$Online, [string]$Root) {
     $configured = Get-FreeOSEnvValue "SEARXNG_WSL_DISTRO"
     if ($configured -and $Installed -contains $configured) { return $configured }
 
     $preferred = @("Ubuntu-24.04", "Debian", "Ubuntu-22.04", "Ubuntu")
+
+    # Resume a distro that FREEOS already installed under the requested E: root,
+    # even if a previous bootstrap failed before .env was updated.
+    foreach ($candidate in $preferred) {
+        if ($Installed -contains $candidate) {
+            $candidatePath = Join-Path $Root $candidate
+            if ((Test-Path $candidatePath) -and @(Get-ChildItem -Force $candidatePath -ErrorAction SilentlyContinue).Count -gt 0) {
+                return $candidate
+            }
+        }
+    }
+
     foreach ($candidate in $preferred) {
         if (($Online -contains $candidate) -and -not ($Installed -contains $candidate)) { return $candidate }
     }
@@ -215,6 +227,11 @@ chown -R searxng:searxng "$BASE"
 su -s /bin/bash -c /usr/local/bin/freeos-searxng-start searxng
 '@
 
+    # PowerShell here-strings use Windows CRLF. Bash treats the trailing CR as
+    # part of tokens such as "pipefail", producing errors like
+    # ": invalid option namepefail". Normalize the entire payload to Unix LF
+    # before base64 transport into WSL.
+    $bash = $bash.Replace("`r`n", "`n").Replace("`r", "`n")
     $bytes = [Text.Encoding]::UTF8.GetBytes($bash)
     $encoded = [Convert]::ToBase64String($bytes)
     & wsl.exe -d $Distro -u root -- bash -lc "echo '$encoded' | base64 -d | bash"
@@ -250,7 +267,7 @@ $online = @(Normalize-WslDistroNames (Get-WslLines @("--list", "--online", "--qu
 if (-not $online.Count) {
     throw "WSL returned no usable online distro names. Run 'wsl.exe --list --online' manually and rerun setup if the list is available."
 }
-$distro = Select-Distro -Installed $installed -Online $online
+$distro = Select-Distro -Installed $installed -Online $online -Root $InstallRoot
 $installPath = Join-Path $InstallRoot $distro
 
 if (-not ($installed -contains $distro)) {
@@ -264,7 +281,7 @@ if (-not ($installed -contains $distro)) {
     & wsl.exe --install -d $distro --location $installPath --no-launch --web-download
     if ($LASTEXITCODE -ne 0) { throw "WSL distro installation failed. Nothing was intentionally installed on C: as a fallback." }
 } else {
-    Write-Host "Reusing configured WSL distro: $distro" -ForegroundColor DarkGray
+    Write-Host "Reusing FREEOS WSL distro on E: $distro" -ForegroundColor DarkGray
 }
 
 Write-Host "Bootstrapping SearXNG inside $distro ..." -ForegroundColor Cyan
