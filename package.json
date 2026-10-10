@@ -49,7 +49,7 @@
     "test:scheduler": "node --test tools/tests/scheduler.test.js",
     "test:agents": "node --test tools/tests/agents.test.js",
     "test:operators": "npm run build --workspace @freeos/operator-core && npm run build --workspace @freeos/tool-runner && node --test tools/tests/operators.test.js",
-    "test:quality": "npm run build --workspace @freeos/api-server && node --test tools/tests/quality-execution.test.js"
+    "test:quality": "npm run build --workspace @freeos/research-core && npm run build --workspace @freeos/api-server && node --test tools/tests/quality-execution.test.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
