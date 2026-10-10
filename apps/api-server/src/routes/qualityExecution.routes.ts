@@ -112,6 +112,41 @@ qualityExecutionRouter.post("/preflights/:taskId/mpfb-phenotype-request", (reque
   }
 });
 
+qualityExecutionRouter.post("/preflights/:taskId/mpfb-detail-request", (request, response, next) => {
+  try {
+    const taskId = Number(request.params.taskId);
+    requireMpfbPreflight(taskId);
+    const input = body(request.body);
+    const supplied = body(input.profile);
+    const profile = Object.keys(supplied).length ? supplied : {
+      noseVolume: 0.28,
+      noseWidth: 0.18,
+      chinProminence: 0.30,
+      chinHeight: 0.12,
+      cupidBow: 0.16,
+      cupidBowWidth: 0.12,
+    };
+    const jobKey = `quality-task-${taskId}-mpfb-detail`;
+    const toolRequest = new ToolRequests(getToolRegistry()).createToolRequest({
+      toolKey: "operator.blender.mpfb.detail_test",
+      title: `Verify MPFB fine-detail controls for task #${taskId}`,
+      description: `Runs FREEOS's governed MPFB fine-detail adapter. Each bounded semantic slider maps only to a fixed built-in MPFB target pair for nose, chin, or mouth detail. The adapter verifies non-macro shape-key effects and creates a portrait diagnostic render.`,
+      args: { jobKey, profile },
+      requestedBy: `quality-execution:${taskId}`,
+    });
+    response.status(201).json({
+      request: toolRequest,
+      jobKey,
+      profile,
+      executesOnApproval: false,
+      note: "Approve and run this request. Passing proves that FREEOS can move beyond macro phenotype controls into specific facial modeling targets. The default values are intentionally moderate capability-test values, not final art direction.",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "MPFB detail request failed.";
+    response.status(/not found/i.test(message) ? 404 : /Invalid task/i.test(message) ? 400 : 409).json({ error: message });
+  }
+});
+
 qualityExecutionRouter.post("/preflights/:taskId/acquisition-request", (request, response, next) => {
   try {
     const taskId = Number(request.params.taskId);
