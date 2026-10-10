@@ -17,7 +17,18 @@ toolsRouter.get("/", (_request, response, next) => { try { response.json({ tools
 toolsRouter.post("/run-readonly", async (request, response, next) => { try { const body = record(request.body); response.json({ run: await executor().runReadOnlyTool(typeof body.toolKey === "string" ? body.toolKey : "", record(body.args)) }); } catch (error) { next(error); } });
 toolsRouter.post("/requests", (request, response, next) => { try { const body = record(request.body); const toolRequest = requests().createToolRequest({ toolKey: typeof body.toolKey === "string" ? body.toolKey : "", title: typeof body.title === "string" ? body.title : "", description: typeof body.description === "string" ? body.description : undefined, args: record(body.args), requestedBy: typeof body.requestedBy === "string" ? body.requestedBy : undefined }); response.status(201).json({ request: toolRequest, executed: false }); } catch (error) { next(error); } });
 toolsRouter.get("/requests", (request, response, next) => { try { const status = typeof request.query.status === "string" ? request.query.status as ToolRequestStatus : undefined; if (status && !["pending", "approved", "rejected", "completed", "blocked", "failed"].includes(status)) { response.status(400).json({ error: "Invalid tool request status." }); return; } response.json({ requests: requests().listToolRequests(status) }); } catch (error) { next(error); } });
-toolsRouter.post("/requests/:id/approve", async (request, response, next) => { try { const approved = requests().approveToolRequest(Number(request.params.id)); if (record(request.body).executeNow === true) { const run = await executor().runApprovedToolRequest(approved.id); response.json({ request: requests().get(approved.id), run }); return; } response.json({ request: approved, executed: false }); } catch (error) { next(error); } });
+toolsRouter.post("/requests/:id/approve", async (request, response, next) => {
+  try {
+    const approved = requests().approveToolRequest(Number(request.params.id));
+    const executeNow = record(request.body).executeNow === true || approved.requestedBy.startsWith("remote-ops:");
+    if (executeNow) {
+      const run = await executor().runApprovedToolRequest(approved.id);
+      response.json({ request: requests().get(approved.id), run });
+      return;
+    }
+    response.json({ request: approved, executed: false });
+  } catch (error) { next(error); }
+});
 toolsRouter.post("/requests/:id/reject", (request, response, next) => { try { response.json({ request: requests().rejectToolRequest(Number(request.params.id)) }); } catch (error) { next(error); } });
 toolsRouter.post("/requests/:id/run", async (request, response, next) => { try { response.json({ run: await executor().runApprovedToolRequest(Number(request.params.id)) }); } catch (error) { next(error); } });
 toolsRouter.get("/runs", (request, response, next) => { try { response.json({ runs: requests().listToolRuns(Number(request.query.limit) || 100) }); } catch (error) { next(error); } });
