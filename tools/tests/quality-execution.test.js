@@ -6,6 +6,7 @@ import {
   deriveLocalCapabilities,
   inferQualityTier,
 } from "../../apps/api-server/dist/services/qualityExecution.service.js";
+import { generateWithOllama } from "../../apps/api-server/dist/services/ollama.service.js";
 import { buildSearxngQueryVariants } from "../../packages/research-core/dist/searxng.client.js";
 
 test("quality execution recognizes premium production intent", () => {
@@ -95,4 +96,26 @@ test("SearXNG fallback remains bounded and deduplicated", () => {
   assert.ok(variants.length >= 2);
   assert.ok(variants.length <= 5);
   assert.equal(new Set(variants).size, variants.length);
+});
+
+test("structured local planners automatically use Ollama JSON mode", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody = null;
+  try {
+    globalThis.fetch = async (_url, init) => {
+      requestBody = JSON.parse(String(init?.body ?? "{}"));
+      return new Response(JSON.stringify({ response: "{}" }), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    const result = await generateWithOllama({
+      model: "test-model",
+      system: "Return JSON only with the requested structured plan.",
+      prompt: "test",
+      options: { temperature: 0.1, top_p: 0.8, repeat_penalty: 1.0 },
+    });
+    assert.equal(result, "{}");
+    assert.equal(requestBody?.format, "json");
+    assert.equal(requestBody?.stream, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
