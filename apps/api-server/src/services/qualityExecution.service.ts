@@ -95,11 +95,11 @@ function fallbackPlan(objective: string, operatorKey: OperatorKey, tier: Quality
     { name: selected.name, canUseNow: selected.ready, relevance: "primary", reason: selected.ready ? "Configured production operator." : "Operator executable is not configured or available." },
     ...signals.map(name => ({ name, canUseNow: true, relevance: "installed-addon", reason: "Detected during local environment inspection and should be evaluated before acquiring another tool." })),
   ];
-  const gaps = ready ? [] : [{
+  const gaps: QualityPreflightPlan["gaps"] = ready ? [] : [{
     capability: characterWork ? "production-quality character workflow" : "task-specific native production adapter",
-    severity: "blocking" as const,
+    severity: "blocking",
     why: characterWork ? "The current Blender fixed-plan driver is a primitive scene builder and cannot honestly meet a production/premium character target by itself." : "The configured operator can be launched, but FREEOS does not yet have a task-specific native adapter that proves the requested deliverable can be produced autonomously.",
-    resolution: signals.length ? "learn-current-tool" as const : "build-adapter" as const,
+    resolution: signals.length ? "learn-current-tool" : "build-adapter",
   }];
   if (warnings.length) gaps.push({ capability: "current workflow research", severity: "medium", why: warnings.join(" "), resolution: "learn-current-tool" });
   return {
@@ -140,7 +140,7 @@ function cleanPlan(raw: Record<string, any>, fallback: QualityPreflightPlan, evi
   }));
   const allowedResolutions = new Set(["use-installed", "learn-current-tool", "acquire-free-tool", "build-adapter", "owner-decision"]);
   const allowedSeverity = new Set(["low", "medium", "high", "blocking"]);
-  const gaps = array(raw.gaps).slice(0, 24).map(item => {
+  const modelGaps: QualityPreflightPlan["gaps"] = array(raw.gaps).slice(0, 24).map(item => {
     const value = record(item);
     const severity = text(value.severity, "medium");
     const resolution = text(value.resolution, "learn-current-tool");
@@ -166,7 +166,11 @@ function cleanPlan(raw: Record<string, any>, fallback: QualityPreflightPlan, evi
       confidence: (["high", "medium", "low"].includes(confidence) ? confidence : "low") as "high" | "medium" | "low",
     };
   }).filter(item => item.sourceUrl);
-  const decision = raw.decision === "proceed" || raw.decision === "capability_expansion_required" ? raw.decision as QualityDecision : fallback.decision;
+  const modelDecision = raw.decision === "proceed" || raw.decision === "capability_expansion_required" ? raw.decision as QualityDecision : fallback.decision;
+  const hardCapabilityGap = fallback.decision === "capability_expansion_required" && fallback.gaps.some(item => item.severity === "blocking");
+  const mergedGaps = hardCapabilityGap
+    ? [...fallback.gaps, ...modelGaps.filter(item => !fallback.gaps.some(existing => existing.capability.toLowerCase() === item.capability.toLowerCase()))]
+    : (modelGaps.length ? modelGaps : fallback.gaps);
   return {
     qualityTarget: {
       tier,
@@ -175,11 +179,11 @@ function cleanPlan(raw: Record<string, any>, fallback: QualityPreflightPlan, evi
     },
     localCapabilities: localCapabilities.length ? localCapabilities : fallback.localCapabilities,
     workflow: workflow.length ? workflow : fallback.workflow,
-    gaps: gaps.length ? gaps : fallback.gaps,
+    gaps: mergedGaps,
     acquisitionCandidates,
     researchSummary: text(raw.researchSummary, fallback.researchSummary),
-    decision,
-    why: text(raw.why, fallback.why),
+    decision: hardCapabilityGap ? "capability_expansion_required" : modelDecision,
+    why: hardCapabilityGap ? `${fallback.why} Research can improve the resolution plan, but it cannot claim an execution adapter exists when it does not.` : text(raw.why, fallback.why),
   };
 }
 
