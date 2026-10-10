@@ -10,6 +10,8 @@ test("operator catalog exposes the production stack", () => {
   }
   const blender = items.find(item => item.key === "blender");
   assert.ok(blender.capabilities.includes("native-plan"));
+  assert.ok(blender.capabilities.includes("environment-discovery"));
+  for (const item of items) assert.ok(item.capabilities.includes("environment-discovery"), `${item.key} cannot participate in quality preflight`);
 });
 
 test("operator executable mapping rejects the wrong executable name", () => {
