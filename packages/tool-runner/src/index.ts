@@ -6,3 +6,4 @@ export * from "./toolRequests";
 export * from "./toolExecutor";
 export * from "./automationService";
 export * from "./operatorTools";
+export * from "./capabilityVerification";
