@@ -6,6 +6,7 @@ import {
   deriveLocalCapabilities,
   inferQualityTier,
 } from "../../apps/api-server/dist/services/qualityExecution.service.js";
+import { buildSearxngQueryVariants } from "../../packages/research-core/dist/searxng.client.js";
 
 test("quality execution recognizes premium production intent", () => {
   assert.equal(inferQualityTier("Build a polished recurring IP character at the highest quality possible"), "premium");
@@ -78,4 +79,20 @@ test("research prioritizes exact installed tool and Blender versions", () => {
   assert.match(queries[0], /MPFB \/ MakeHuman 2\.0\.17 Blender 4\.5\.3 LTS official documentation/i);
   assert.ok(queries.some(query => /KeenTools 2026\.2\.0 Blender 4\.5\.3 LTS official documentation/i.test(query)));
   assert.ok(queries.some(query => /Rigify 0\.6\.10 Blender 4\.5\.3 LTS official documentation/i.test(query)));
+});
+
+test("SearXNG fallback strips long task prose while preserving exact tool/version terms", () => {
+  const variants = buildSearxngQueryVariants(
+    "MPFB / MakeHuman 2.0.17 Blender 4.5.3 LTS official documentation Create a premium production-ready stylized male character with animation-ready topology and professional presentation renders",
+  );
+  assert.ok(variants.length >= 2);
+  assert.match(variants[0], /Create a premium production-ready stylized male character/i);
+  assert.ok(variants.some(query => /^MPFB \/ MakeHuman 2\.0\.17 Blender 4\.5\.3 LTS official documentation$/i.test(query)));
+});
+
+test("SearXNG fallback remains bounded and deduplicated", () => {
+  const variants = buildSearxngQueryVariants("Blender 4.5.3 LTS official documentation premium character workflow with anatomy rigging materials clothing hair facial animation and presentation quality");
+  assert.ok(variants.length >= 2);
+  assert.ok(variants.length <= 5);
+  assert.equal(new Set(variants).size, variants.length);
 });
