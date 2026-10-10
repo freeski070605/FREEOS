@@ -66,7 +66,18 @@ export function ApprovalHub({ compact = false, onChanged }: { compact?: boolean;
       onChanged?.();
       setMessage(notice);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Approval action failed.");
+      const actionMessage = error instanceof Error ? error.message : "Approval action failed.";
+      // A tool request is one-shot. Failed/blocked runs update the backend request
+      // status away from "approved"; refresh even when the action throws so the
+      // UI never leaves a stale Run approved button for a request that cannot be
+      // claimed again.
+      try {
+        await refresh();
+        onChanged?.();
+      } catch {
+        // Preserve the original action failure; the manual Refresh button remains available.
+      }
+      setMessage(actionMessage);
     } finally {
       setBusy(null);
     }
@@ -147,7 +158,7 @@ export function ApprovalHub({ compact = false, onChanged }: { compact?: boolean;
       {tools?.map((item) => {
         const remoteOpsAction = item.requestedBy.startsWith("remote-ops:");
         return <article className="queue-item" key={`t-${item.id}`}>
-          <div className="flex justify-between gap-3"><div><p className="m-0 text-sm font-semibold text-white">{item.title}</p><p className="meta">Tool · {item.toolKey} · {item.riskLevel}{remoteOpsAction ? " · Remote Ops" : ""}</p></div><span className={`badge ${item.status === "approved" ? "badge-ok" : "badge-warn"}`}>{item.status}</span></div>
+          <div className="flex justify-between gap-3"><div><p className="m-0 text-sm font-semibold text-white">{item.title}</p><p className="meta">Tool · {item.toolKey} · {item.riskLevel}{remoteOpsAction ? " · Remote Ops" : ""}</p></div><span className={`badge ${item.status === "approved" || item.status === "completed" ? "badge-ok" : "badge-warn"}`}>{item.status}</span></div>
           <p className="mb-0 mt-2 text-sm text-slate-400">{item.description || "No description."}</p>
           <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs text-slate-300">{JSON.stringify(item.args, null, 2)}</pre>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -156,6 +167,7 @@ export function ApprovalHub({ compact = false, onChanged }: { compact?: boolean;
               <button className={danger} disabled={!!busy} onClick={() => void act(`tr-${item.id}`, () => api.rejectToolRequest(item.id), "Tool request rejected.")}>Reject</button>
             </>}
             {item.status === "approved" && (remoteOpsAction ? <span className="meta mt-0">Approved — Remote Ops is claiming this action automatically.</span> : <button className={button} disabled={!!busy} onClick={() => void act(`run-${item.id}`, () => api.runToolRequest(item.id), "Approved request ran.")}>Run approved</button>)}
+            {(item.status === "blocked" || item.status === "failed") && <span className="meta mt-0">This one-shot request finished {item.status}; create a new request after correcting the cause.</span>}
           </div>
         </article>;
       })}
