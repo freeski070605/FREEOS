@@ -53,14 +53,33 @@ public class DesktopNative {
   function AssertControl {
     if ($env:COMPUTER_CONTROL_ENABLED -cne 'true') { throw 'Control locked' }
   }
+  function ConfiguredOperatorPaths {
+    $names = @(
+      'FREEOS_OPERATOR_BLENDER_EXE','FREEOS_OPERATOR_PREMIERE_EXE','FREEOS_OPERATOR_AFTER_EFFECTS_EXE','FREEOS_OPERATOR_PHOTOSHOP_EXE','FREEOS_OPERATOR_LIGHTROOM_EXE',
+      'FREEOS_OPERATOR_UNITY_EXE','FREEOS_OPERATOR_UNREAL_EXE','FREEOS_OPERATOR_COMFYUI_EXE','FREEOS_OPERATOR_OBS_EXE','FREEOS_OPERATOR_VSCODE_EXE'
+    )
+    $paths = @()
+    foreach ($name in $names) {
+      $value = [Environment]::GetEnvironmentVariable($name)
+      if ($value) { $paths += [IO.Path]::GetFullPath($value) }
+    }
+    return $paths
+  }
   function Target {
     AssertControl
     $p = Get-Process -Id ([int]$a.processId) -ErrorAction Stop
-    # Restricted benign applications; never type into terminals, browsers, credential dialogs, or file managers.
-    if ($p.ProcessName -notin @('notepad', 'mspaint', 'CalculatorApp', 'Calculator', 'calc')) { throw 'Target application is not allowed' }
-    $trusted = @((Join-Path $env:SystemRoot 'System32'), (Join-Path $env:SystemRoot 'SysWOW64'), (Join-Path $env:ProgramFiles 'WindowsApps'))
     $path = $p.Path
-    if (!$path -or !(@($trusted | Where-Object { $path.StartsWith($_ + '\', [StringComparison]::OrdinalIgnoreCase) }).Count)) { throw 'Target application location is not trusted' }
+    if (!$path) { throw 'Target path unavailable' }
+    $blockedNames = @('cmd','powershell','pwsh','WindowsTerminal','wt','regedit','wscript','cscript','mshta','rundll32','explorer','chrome','msedge','firefox','brave','opera')
+    if ($p.ProcessName -in $blockedNames) { throw 'Target application class is not allowed through Computer Operator' }
+    $benign = @(
+      (Join-Path $env:SystemRoot 'System32\notepad.exe'),
+      (Join-Path $env:SystemRoot 'System32\calc.exe'),
+      (Join-Path $env:SystemRoot 'System32\mspaint.exe')
+    )
+    $operatorPaths = @(ConfiguredOperatorPaths)
+    $allowed = @($benign + $operatorPaths | Where-Object { $_ -and ([string]::Equals([IO.Path]::GetFullPath($_), [IO.Path]::GetFullPath($path), [StringComparison]::OrdinalIgnoreCase)) }).Count -gt 0
+    if (!$allowed) { throw 'Target application is not an approved production operator' }
     $h = $p.MainWindowHandle
     if ($h -eq [IntPtr]::Zero -or ![DesktopNative]::IsWindowVisible($h)) { throw 'Target has no visible main window' }
     return $h
@@ -119,7 +138,7 @@ public class DesktopNative {
     }
     { $_ -in @('press','hotkey') } {
       $h = Target; AssertForeground $h
-      $keys=@{Tab=9;Escape=27;Left=37;Right=39;Up=38;Down=40;Home=36;End=35;PageUp=33;PageDown=34;Backspace=8;Space=32;CTRL=17;SHIFT=16;A=65;C=67;Z=90;Y=89;F=70}
+      $keys=@{Tab=9;Enter=13;Escape=27;Left=37;Right=39;Up=38;Down=40;Home=36;End=35;PageUp=33;PageDown=34;Backspace=8;Space=32;CTRL=17;SHIFT=16;A=65;C=67;S=83;O=79;Z=90;Y=89;F=70}
       $names=@([string]$a.key); if ($operation -eq 'hotkey') { $names=([string]$a.hotkey).Split('+') }
       $pressed=New-Object 'System.Collections.Generic.List[ushort]'
       try { foreach ($name in $names) { AssertForeground $h; if (!$keys.ContainsKey($name)) { throw 'Key blocked' }; $code=[ushort]$keys[$name]; $pressed.Add($code); [DesktopNative]::Key($code,0,0) } }
