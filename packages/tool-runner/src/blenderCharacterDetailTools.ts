@@ -73,13 +73,16 @@ export function normalizeMpfbDetailProfile(value: unknown): MpfbDetailProfile {
 }
 
 function tail(stdout: string, stderr: string): string {
-  return `${stderr}\n${stdout}`.trim().slice(-3000).replace(/[\r\n]+/g, " | ");
+  return `${stderr}\n${stdout}`.trim().slice(-4000).replace(/[\r\n]+/g, " | ");
 }
 
-function parseMarker(stdout: string): MpfbDetailResult {
+function parseMarker(stdout: string, stderr: string): MpfbDetailResult {
   const prefix = "FREEOS_MPFB_DETAIL_RESULT=";
   const line = stdout.split(/\r?\n/).reverse().find(item => item.startsWith(prefix));
-  if (!line) throw new ToolRunnerError("Blender exited without MPFB detail result evidence.", "blocked");
+  if (!line) {
+    const details = tail(stdout, stderr);
+    throw new ToolRunnerError(`Blender exited without MPFB detail result evidence.${details ? ` ${details}` : ""}`, "blocked");
+  }
   try {
     const parsed = JSON.parse(line.slice(prefix.length)) as MpfbDetailResult;
     if (!parsed?.ok || !parsed.detailTargetsVerified || !parsed.renderVerified || !Array.isArray(parsed.activeDetailShapeKeys) || parsed.activeDetailShapeKeys.length < 1) {
@@ -139,7 +142,7 @@ export async function runMpfbDetailTest(rootDir: string, rawJobKey: unknown, raw
     };
 
     const verifyEvidence = (): MpfbDetailResult => {
-      const marker = parseMarker(stdout);
+      const marker = parseMarker(stdout, stderr);
       const manifest = readManifest(manifestPath);
       if (manifest.jobKey !== marker.jobKey || manifest.blendFile !== marker.blendFile || manifest.renderFile !== marker.renderFile) {
         throw new ToolRunnerError("MPFB detail stdout and manifest evidence do not match.", "blocked");
@@ -165,14 +168,14 @@ export async function runMpfbDetailTest(rootDir: string, rawJobKey: unknown, raw
 
     const timeout = setTimeout(() => {
       child.kill();
-      finish(new ToolRunnerError("MPFB detail verification timed out.", "blocked"));
+      finish(new ToolRunnerError(`MPFB detail verification timed out.${tail(stdout, stderr) ? ` ${tail(stdout, stderr)}` : ""}`, "blocked"));
     }, 180_000);
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", chunk => { if (stdout.length < 2 * 1024 * 1024) stdout += chunk; tryFinish(); });
     child.stderr.on("data", chunk => { if (stderr.length < 512 * 1024) stderr += chunk; });
-    child.once("error", () => finish(new ToolRunnerError("Blender could not start for MPFB detail verification.", "blocked")));
+    child.once("error", (error) => finish(new ToolRunnerError(`Blender could not start for MPFB detail verification: ${error.message}`, "blocked")));
     child.once("close", code => {
       if (settled) return;
       try {
@@ -180,7 +183,7 @@ export async function runMpfbDetailTest(rootDir: string, rawJobKey: unknown, raw
         const manifest = verifyEvidence();
         finish(undefined, { ...manifest, stdoutTail: tail(stdout, stderr) });
       } catch (error) {
-        finish(error instanceof Error ? error : new ToolRunnerError("MPFB detail verification failed.", "blocked"));
+        finish(error instanceof Error ? error : new ToolRunnerError(`MPFB detail verification failed.${tail(stdout, stderr) ? ` ${tail(stdout, stderr)}` : ""}`, "blocked"));
       }
     });
   });
