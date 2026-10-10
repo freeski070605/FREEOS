@@ -35,6 +35,7 @@ export async function generateWithOllama(input: {
   prompt: string;
   system: string;
   timeoutMs?: number;
+  format?: "json";
   options?: {
     temperature: number;
     top_p: number;
@@ -43,6 +44,11 @@ export async function generateWithOllama(input: {
   };
 }): Promise<string> {
   try {
+    // Ollama's JSON mode materially reduces malformed structured output from local
+    // models. Existing structured FREEOS planners already say "Return JSON only",
+    // so detect that intent centrally instead of making every caller duplicate it.
+    const detectedJson = /\breturn\s+json\s+only\b|\bvalid\s+json\s+only\b|\bjson\s+only\b/i.test(input.system);
+    const format = input.format ?? (detectedJson ? "json" : undefined);
     const response = await fetch(`${config.ollamaBaseUrl}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -52,6 +58,7 @@ export async function generateWithOllama(input: {
         system: input.system,
         stream: false,
         think: false,
+        ...(format ? { format } : {}),
         options: { temperature: 0.2, top_p: 0.8, repeat_penalty: 1.1, num_predict: 500, ...input.options },
       }),
       signal: AbortSignal.timeout(input.timeoutMs ?? config.ollamaGenerateTimeoutMs),
