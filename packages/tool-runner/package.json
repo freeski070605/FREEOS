@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "npm run build --workspace @freeos/computer-core && npm run build --workspace @freeos/coding-core && npm run build --workspace @freeos/browser-core && npm run build --workspace @freeos/scheduler-core && npm run build --workspace @freeos/agent-core && tsc -p tsconfig.json"
+    "build": "npm run build --workspace @freeos/computer-core && npm run build --workspace @freeos/coding-core && npm run build --workspace @freeos/browser-core && npm run build --workspace @freeos/scheduler-core && npm run build --workspace @freeos/agent-core && npm run build --workspace @freeos/operator-core && tsc -p tsconfig.json"
   },
   "dependencies": {
     "@freeos/memory-core": "*",
@@ -16,7 +16,8 @@
     "@freeos/computer-core": "*",
     "@freeos/coding-core": "*",
     "@freeos/browser-core": "*",
-    "@freeos/scheduler-core": "*"
+    "@freeos/scheduler-core": "*",
+    "@freeos/operator-core": "*"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
