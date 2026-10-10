@@ -31,6 +31,7 @@ import { ragRouter } from "./routes/rag.routes";
 import { remoteOpsRouter } from "./routes/remoteOps.routes";
 import { operatorsRouter } from "./routes/operators.routes";
 import { remoteOpsService } from "./services/remoteOps.service";
+import { remoteOpsApprovalRunner } from "./services/remoteOpsApprovalRunner.service";
 import { registerDefaultTools, registerOperatorTools, getToolRegistry, ToolExecutor, ToolRequests } from "@freeos/tool-runner";
 import { Scheduler, configureScheduler } from "@freeos/scheduler-core";
 import { schedulerRouter } from "./routes/scheduler.routes";
@@ -99,6 +100,7 @@ const server = app.listen(config.port, "127.0.0.1", () => {
   console.log(`[FREEOS] API online at http://localhost:${config.port}`);
   console.log("[FREEOS] Dangerous actions are disabled.");
   remoteOpsService.start();
-  console.log("[FREEOS] Remote Ops task worker online; API remains loopback-only.");
+  remoteOpsApprovalRunner.start();
+  console.log("[FREEOS] Remote Ops task worker online; approved Remote Ops actions auto-run after explicit owner approval; API remains loopback-only.");
 });
-server.on("close", () => { scheduler.stop(); remoteOpsService.stop(); });
+server.on("close", () => { scheduler.stop(); remoteOpsApprovalRunner.stop(); remoteOpsService.stop(); });
