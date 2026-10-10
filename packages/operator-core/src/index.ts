@@ -1,4 +1,4 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { basename, extname, resolve, sep } from "node:path";
 
@@ -31,6 +31,14 @@ export interface OperatorStatus extends OperatorProfile {
   executablePath: string | null;
   executableExists: boolean;
   ready: boolean;
+}
+
+export interface BlenderOperatorResult {
+  operatorKey: "blender";
+  planPath: string;
+  exitCode: 0;
+  manifest: Record<string, unknown>;
+  stdout: string;
 }
 
 export class OperatorError extends Error {
@@ -124,13 +132,33 @@ function inside(root: string, candidate: string): string {
   return full;
 }
 
-export async function runBlenderPlan(rootDir: string, planPath: string): Promise<{ operatorKey: "blender"; planPath: string; exitCode: 0; stdout: string }> {
+function blenderPlanIdentity(fullPlan: string): { jobKey: string; manifestPath: string } {
+  let parsed: unknown;
+  try { parsed = JSON.parse(readFileSync(fullPlan, "utf8")); }
+  catch { throw new OperatorError("Blender plan is not valid JSON.", "validation"); }
+  const jobKey = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>).jobKey : null;
+  if (typeof jobKey !== "string" || !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(jobKey)) throw new OperatorError("Blender plan has an invalid jobKey.", "validation");
+  const rootDir = resolve(fullPlan, "..", "..", "..", "..", "..");
+  const manifestPath = resolve(rootDir, "generated", "operators", "blender", "jobs", jobKey, "manifest.json");
+  return { jobKey, manifestPath };
+}
+
+function diagnosticTail(stdout: string, stderr: string): string {
+  const combined = `${stderr}\n${stdout}`.trim();
+  return combined.slice(-2400).replace(/[\r\n]+/g, " | ");
+}
+
+export async function runBlenderPlan(rootDir: string, planPath: string): Promise<BlenderOperatorResult> {
   const executable = requireExecutable("blender");
   const plansRoot = resolve(rootDir, "generated", "operators", "blender", "plans");
   const fullPlan = inside(plansRoot, planPath);
   if (extname(fullPlan).toLowerCase() !== ".json" || !existsSync(fullPlan) || !statSync(fullPlan).isFile()) {
     throw new OperatorError("Blender plan must be an existing .json file inside generated/operators/blender/plans.", "validation");
   }
+  const plan = JSON.parse(readFileSync(fullPlan, "utf8")) as Record<string, unknown>;
+  const jobKey = typeof plan.jobKey === "string" && /^[a-z0-9][a-z0-9_-]{0,79}$/.test(plan.jobKey) ? plan.jobKey : null;
+  if (!jobKey) throw new OperatorError("Blender plan has an invalid jobKey.", "validation");
+  const manifestPath = inside(resolve(rootDir, "generated", "operators", "blender", "jobs"), resolve(rootDir, "generated", "operators", "blender", "jobs", jobKey, "manifest.json"));
   const driver = resolve(__dirname, "..", "scripts", "blender_driver.py");
   if (!existsSync(driver)) throw new OperatorError("FREEOS Blender driver is missing from operator-core.", "unavailable");
 
@@ -156,11 +184,27 @@ export async function runBlenderPlan(rootDir: string, planPath: string): Promise
     });
     child.once("close", code => {
       clearTimeout(timeout);
+      const tail = diagnosticTail(stdout, stderr);
       if (code !== 0) {
-        reject(new OperatorError(`Blender plan failed with exit code ${code ?? "unknown"}. ${stderr.slice(-1200)}`.trim(), "unavailable"));
+        reject(new OperatorError(`Blender plan failed with exit code ${code ?? "unknown"}.${tail ? ` ${tail}` : ""}`.trim(), "unavailable"));
         return;
       }
-      resolveResult({ operatorKey: "blender", planPath: fullPlan, exitCode: 0, stdout: stdout.slice(-4000).trim() });
+      if (!stdout.includes("FREEOS_OPERATOR_RESULT=")) {
+        reject(new OperatorError(`Blender exited without FREEOS completion evidence.${tail ? ` ${tail}` : ""}`.trim(), "unavailable"));
+        return;
+      }
+      if (!existsSync(manifestPath) || !statSync(manifestPath).isFile()) {
+        reject(new OperatorError(`Blender reported completion but the manifest was not created for ${jobKey}.`, "unavailable"));
+        return;
+      }
+      let manifest: Record<string, unknown>;
+      try { manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>; }
+      catch { reject(new OperatorError("Blender manifest could not be parsed.", "unavailable")); return; }
+      if (manifest.ok !== true || typeof manifest.blendFile !== "string") {
+        reject(new OperatorError("Blender manifest did not verify a saved .blend deliverable.", "unavailable"));
+        return;
+      }
+      resolveResult({ operatorKey: "blender", planPath: fullPlan, exitCode: 0, manifest, stdout: stdout.slice(-4000).trim() });
     });
   });
 }
