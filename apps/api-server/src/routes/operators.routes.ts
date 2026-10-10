@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getOperatorStatus, listOperators, type OperatorKey } from "@freeos/operator-core";
+import { getOperatorStatus, inspectOperatorEnvironment, listOperators, type OperatorKey } from "@freeos/operator-core";
 import { getToolRegistry, ToolRequests } from "@freeos/tool-runner";
 
 export const operatorsRouter = Router();
@@ -17,6 +17,10 @@ operatorsRouter.get("/", (_request, response, next) => {
 
 operatorsRouter.get("/:key", (request, response, next) => {
   try { response.json({ operator: getOperatorStatus(key(request.params.key)) }); } catch (error) { next(error); }
+});
+
+operatorsRouter.get("/:key/environment", async (request, response, next) => {
+  try { response.json({ inventory: await inspectOperatorEnvironment(key(request.params.key)) }); } catch (error) { next(error); }
 });
 
 operatorsRouter.post("/:key/launch-request", (request, response, next) => {
