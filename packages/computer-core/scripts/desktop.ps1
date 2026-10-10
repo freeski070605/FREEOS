@@ -54,23 +54,31 @@ public class DesktopNative {
     if ($env:COMPUTER_CONTROL_ENABLED -cne 'true') { throw 'Control locked' }
   }
   function ConfiguredOperatorPaths {
-    $names = @(
-      'FREEOS_OPERATOR_BLENDER_EXE','FREEOS_OPERATOR_PREMIERE_EXE','FREEOS_OPERATOR_AFTER_EFFECTS_EXE','FREEOS_OPERATOR_PHOTOSHOP_EXE','FREEOS_OPERATOR_LIGHTROOM_EXE',
-      'FREEOS_OPERATOR_UNITY_EXE','FREEOS_OPERATOR_UNREAL_EXE','FREEOS_OPERATOR_COMFYUI_EXE','FREEOS_OPERATOR_OBS_EXE','FREEOS_OPERATOR_VSCODE_EXE'
-    )
+    $map = @{
+      FREEOS_OPERATOR_BLENDER_EXE=@('blender.exe')
+      FREEOS_OPERATOR_PREMIERE_EXE=@('Adobe Premiere Pro.exe')
+      FREEOS_OPERATOR_AFTER_EFFECTS_EXE=@('AfterFX.exe')
+      FREEOS_OPERATOR_PHOTOSHOP_EXE=@('Photoshop.exe')
+      FREEOS_OPERATOR_LIGHTROOM_EXE=@('Lightroom.exe')
+      FREEOS_OPERATOR_UNITY_EXE=@('Unity.exe')
+      FREEOS_OPERATOR_UNREAL_EXE=@('UnrealEditor.exe')
+      FREEOS_OPERATOR_COMFYUI_EXE=@('ComfyUI.exe')
+      FREEOS_OPERATOR_OBS_EXE=@('obs64.exe','obs32.exe')
+      FREEOS_OPERATOR_VSCODE_EXE=@('Code.exe')
+    }
     $paths = @()
-    foreach ($name in $names) {
+    foreach ($name in $map.Keys) {
       $value = [Environment]::GetEnvironmentVariable($name)
-      if ($value) { $paths += [IO.Path]::GetFullPath($value) }
+      if (!$value) { continue }
+      $full = [IO.Path]::GetFullPath($value)
+      if ([IO.Path]::GetFileName($full) -in $map[$name]) { $paths += $full }
     }
     return $paths
   }
-  function Target {
-    AssertControl
-    $p = Get-Process -Id ([int]$a.processId) -ErrorAction Stop
+  function AssertApprovedProcess([System.Diagnostics.Process]$p) {
     $path = $p.Path
     if (!$path) { throw 'Target path unavailable' }
-    $blockedNames = @('cmd','powershell','pwsh','WindowsTerminal','wt','regedit','wscript','cscript','mshta','rundll32','explorer','chrome','msedge','firefox','brave','opera')
+    $blockedNames = @('cmd','powershell','pwsh','WindowsTerminal','wt','regedit','wscript','cscript','mshta','rundll32','explorer','chrome','msedge','firefox','brave','opera','putty','puttytel','kitty','mintty')
     if ($p.ProcessName -in $blockedNames) { throw 'Target application class is not allowed through Computer Operator' }
     $benign = @(
       (Join-Path $env:SystemRoot 'System32\notepad.exe'),
@@ -80,13 +88,22 @@ public class DesktopNative {
     $operatorPaths = @(ConfiguredOperatorPaths)
     $allowed = @($benign + $operatorPaths | Where-Object { $_ -and ([string]::Equals([IO.Path]::GetFullPath($_), [IO.Path]::GetFullPath($path), [StringComparison]::OrdinalIgnoreCase)) }).Count -gt 0
     if (!$allowed) { throw 'Target application is not an approved production operator' }
+  }
+  function Target {
+    AssertControl
+    $p = Get-Process -Id ([int]$a.processId) -ErrorAction Stop
+    AssertApprovedProcess $p
+    $foreground = [DesktopNative]::GetForegroundWindow()
+    if ($foreground -ne [IntPtr]::Zero -and [DesktopNative]::Pid($foreground) -eq [uint32]$p.Id -and [DesktopNative]::IsWindowVisible($foreground)) {
+      return $foreground
+    }
     $h = $p.MainWindowHandle
     if ($h -eq [IntPtr]::Zero -or ![DesktopNative]::IsWindowVisible($h)) { throw 'Target has no visible main window' }
     return $h
   }
   function AssertForeground([IntPtr]$handle) {
     AssertControl
-    if ([DesktopNative]::GetForegroundWindow() -ne $handle) { throw 'Target is not the active main window; approve a focus action first' }
+    if ([DesktopNative]::GetForegroundWindow() -ne $handle) { throw 'Target is not the active approved window; approve a focus action first' }
   }
   switch ($operation) {
     'status' {
@@ -109,13 +126,20 @@ public class DesktopNative {
       } finally { $bitmap.Dispose() }
       $result = @{width=$bounds.Width;height=$bounds.Height}
     }
-    'focus' { $h = Target; if (![DesktopNative]::SetForegroundWindow($h)) { throw 'Windows refused foreground focus' }; AssertForeground $h; $result=@{focused=$true;processId=$a.processId} }
+    'focus' {
+      $p = Get-Process -Id ([int]$a.processId) -ErrorAction Stop
+      AssertApprovedProcess $p
+      $h = $p.MainWindowHandle
+      if ($h -eq [IntPtr]::Zero -or ![DesktopNative]::IsWindowVisible($h)) { throw 'Target has no visible main window' }
+      if (![DesktopNative]::SetForegroundWindow($h)) { throw 'Windows refused foreground focus' }
+      $result=@{focused=$true;processId=$a.processId}
+    }
     { $_ -in @('move','click') } {
       $h = Target; AssertForeground $h
       $point = New-Object DesktopNative+POINT; $point.X=[int]$a.x; $point.Y=[int]$a.y
       $inside = @([System.Windows.Forms.Screen]::AllScreens | Where-Object { $_.Bounds.Contains($point.X,$point.Y) }).Count -gt 0
       if (!$inside) { throw 'Coordinates are outside current monitor bounds' }
-      if ($operation -eq 'click' -and [DesktopNative]::GetAncestor([DesktopNative]::WindowFromPoint($point),2) -ne $h) { throw 'Click must target the approved active main window' }
+      if ($operation -eq 'click' -and [DesktopNative]::GetAncestor([DesktopNative]::WindowFromPoint($point),2) -ne $h) { throw 'Click must target the active approved application window' }
       if (![DesktopNative]::SetCursorPos($point.X,$point.Y)) { throw 'Cursor move failed' }
       if ($operation -eq 'click') {
         $count = 1; if ($a.button -eq 'double') { $count=2 }
