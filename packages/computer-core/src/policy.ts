@@ -21,25 +21,31 @@ export const ALLOWED_KEYS = ["Tab", "Enter", "Escape", "Left", "Right", "Up", "D
 export const ALLOWED_HOTKEYS = ["CTRL+A", "CTRL+C", "CTRL+S", "CTRL+SHIFT+S", "CTRL+O", "CTRL+Z", "CTRL+Y", "CTRL+F", "SHIFT+TAB"] as const;
 export type ComputerArgs = Record<string, unknown>;
 
-const OPERATOR_ENV_VARS = [
-  "FREEOS_OPERATOR_BLENDER_EXE",
-  "FREEOS_OPERATOR_PREMIERE_EXE",
-  "FREEOS_OPERATOR_AFTER_EFFECTS_EXE",
-  "FREEOS_OPERATOR_PHOTOSHOP_EXE",
-  "FREEOS_OPERATOR_LIGHTROOM_EXE",
-  "FREEOS_OPERATOR_UNITY_EXE",
-  "FREEOS_OPERATOR_UNREAL_EXE",
-  "FREEOS_OPERATOR_COMFYUI_EXE",
-  "FREEOS_OPERATOR_OBS_EXE",
-  "FREEOS_OPERATOR_VSCODE_EXE",
-] as const;
+const OPERATOR_EXECUTABLES: Record<string, string[]> = {
+  FREEOS_OPERATOR_BLENDER_EXE: ["blender.exe"],
+  FREEOS_OPERATOR_PREMIERE_EXE: ["Adobe Premiere Pro.exe"],
+  FREEOS_OPERATOR_AFTER_EFFECTS_EXE: ["AfterFX.exe"],
+  FREEOS_OPERATOR_PHOTOSHOP_EXE: ["Photoshop.exe"],
+  FREEOS_OPERATOR_LIGHTROOM_EXE: ["Lightroom.exe"],
+  FREEOS_OPERATOR_UNITY_EXE: ["Unity.exe"],
+  FREEOS_OPERATOR_UNREAL_EXE: ["UnrealEditor.exe"],
+  FREEOS_OPERATOR_COMFYUI_EXE: ["ComfyUI.exe"],
+  FREEOS_OPERATOR_OBS_EXE: ["obs64.exe", "obs32.exe"],
+  FREEOS_OPERATOR_VSCODE_EXE: ["Code.exe"],
+};
 const BLOCKED_EXECUTABLES = new Set(["cmd.exe", "powershell.exe", "pwsh.exe", "wt.exe", "regedit.exe", "reg.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "explorer.exe"]);
 
 export function configuredComputerExecutables(): string[] {
   const windows = process.env.SystemRoot || "C:\\Windows";
   const base = [win32.join(windows, "System32", "notepad.exe"), win32.join(windows, "System32", "calc.exe"), win32.join(windows, "System32", "mspaint.exe")];
-  const configured = OPERATOR_ENV_VARS.map(key => process.env[key]?.trim()).filter((value): value is string => !!value);
-  return [...new Set([...base, ...configured])].filter(path => !BLOCKED_EXECUTABLES.has(win32.basename(path).toLowerCase()));
+  const configured = Object.entries(OPERATOR_EXECUTABLES).flatMap(([key, expectedNames]) => {
+    const value = process.env[key]?.trim();
+    if (!value) return [];
+    const file = win32.basename(value);
+    if (BLOCKED_EXECUTABLES.has(file.toLowerCase())) return [];
+    return expectedNames.some(name => name.toLowerCase() === file.toLowerCase()) ? [value] : [];
+  });
+  return [...new Set([...base, ...configured])];
 }
 
 export function validateComputerArgs(key: string, input: ComputerArgs): ComputerArgs {
