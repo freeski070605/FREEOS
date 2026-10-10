@@ -1,0 +1,32 @@
+name: Operator Foundation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/operator-core/**'
+      - 'packages/computer-core/**'
+      - 'packages/tool-runner/**'
+      - 'apps/api-server/**'
+      - 'apps/dashboard/**'
+      - 'tools/tests/operators.test.js'
+      - 'package.json'
+      - '.github/workflows/operator-foundation.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install workspaces
+        run: npm install --ignore-scripts
+      - name: Build FREEOS
+        run: npm run build
+      - name: Test production operators
+        run: npm run test:operators
