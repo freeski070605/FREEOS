@@ -1,6 +1,9 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { basename, extname, resolve, sep } from "node:path";
+import { createHash } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { once } from "node:events";
+import { basename, extname, relative, resolve, sep } from "node:path";
 
 export type OperatorKey =
   | "blender"
@@ -49,6 +52,18 @@ export interface OperatorEnvironmentInventory {
   inspectedAt: string;
 }
 
+export interface CapabilityArtifactDownload {
+  sourceUrl: string;
+  finalUrl: string;
+  fileName: string;
+  relativePath: string;
+  bytes: number;
+  sha256: string;
+  contentType: string;
+  quarantined: true;
+  executed: false;
+}
+
 export interface BlenderOperatorResult {
   operatorKey: "blender";
   planPath: string;
@@ -80,6 +95,7 @@ export const OPERATOR_PROFILES: OperatorProfile[] = [
 const blockedExecutableNames = new Set([
   "cmd.exe", "powershell.exe", "pwsh.exe", "wt.exe", "regedit.exe", "reg.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "explorer.exe",
 ]);
+const allowedArtifactSuffixes = [".zip", ".7z", ".tar", ".tar.gz", ".tgz", ".gz", ".whl", ".exe", ".msi", ".blend", ".json"];
 
 function profile(key: string): OperatorProfile {
   const found = OPERATOR_PROFILES.find(item => item.key === key);
@@ -191,6 +207,103 @@ export async function inspectOperatorEnvironment(key: OperatorKey): Promise<Oper
     return { operator, availableOperators, deepInspection: "blender", blender: await inspectBlenderEnvironment(), inspectedAt };
   }
   return { operator, availableOperators, deepInspection: "status-only", inspectedAt };
+}
+
+function privateAddress(address: string): boolean {
+  const value = address.toLowerCase();
+  if (value === "::1" || value.startsWith("fc") || value.startsWith("fd") || value.startsWith("fe80:")) return true;
+  const parts = value.split(".").map(Number);
+  if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  if (parts[0] === 10 || parts[0] === 127 || parts[0] === 0) return true;
+  if (parts[0] === 169 && parts[1] === 254) return true;
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
+  return false;
+}
+
+async function validatedPublicDownloadUrl(raw: string): Promise<URL> {
+  let parsed: URL;
+  try { parsed = new URL(raw); } catch { throw new OperatorError("Capability download URL is invalid.", "validation"); }
+  if (parsed.protocol !== "https:") throw new OperatorError("Capability downloads require HTTPS.", "blocked");
+  if (parsed.username || parsed.password) throw new OperatorError("Credential-bearing capability download URLs are blocked.", "blocked");
+  const host = parsed.hostname.toLowerCase();
+  if (!host || host === "localhost" || host.endsWith(".local")) throw new OperatorError("Local/private capability download hosts are blocked.", "blocked");
+  let addresses: Array<{ address: string }>;
+  try { addresses = await lookup(host, { all: true, verbatim: true }); }
+  catch { throw new OperatorError("Capability download host could not be resolved.", "unavailable"); }
+  if (!addresses.length || addresses.some(item => privateAddress(item.address))) throw new OperatorError("Capability download resolved to a private or local address.", "blocked");
+  return parsed;
+}
+
+function safeArtifactName(value: string): string {
+  const decoded = (() => { try { return decodeURIComponent(value); } catch { return value; } })();
+  const clean = decoded.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^[_\.]+/, "").slice(0, 120);
+  if (!clean) throw new OperatorError("Capability artifact filename is invalid.", "validation");
+  const lower = clean.toLowerCase();
+  if (!allowedArtifactSuffixes.some(suffix => lower.endsWith(suffix))) throw new OperatorError(`Capability artifact type is not allowed. Allowed: ${allowedArtifactSuffixes.join(", ")}.`, "blocked");
+  return clean;
+}
+
+async function fetchPublicArtifact(raw: string): Promise<{ response: Response; finalUrl: URL }> {
+  let current = await validatedPublicDownloadUrl(raw);
+  for (let redirects = 0; redirects <= 5; redirects++) {
+    const response = await fetch(current, { redirect: "manual", headers: { "User-Agent": "FREEOS-Capability-Acquisition/1.0" } });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) throw new OperatorError("Capability download redirect is missing a destination.", "unavailable");
+      current = await validatedPublicDownloadUrl(new URL(location, current).href);
+      continue;
+    }
+    if (!response.ok) throw new OperatorError(`Capability download returned HTTP ${response.status}.`, "unavailable");
+    return { response, finalUrl: current };
+  }
+  throw new OperatorError("Capability download exceeded the redirect limit.", "blocked");
+}
+
+export async function downloadCapabilityArtifact(rootDir: string, sourceUrl: string, suggestedName?: string): Promise<CapabilityArtifactDownload> {
+  if (typeof sourceUrl !== "string" || !sourceUrl.trim()) throw new OperatorError("sourceUrl is required.", "validation");
+  const { response, finalUrl } = await fetchPublicArtifact(sourceUrl.trim());
+  const pathName = basename(finalUrl.pathname) || "capability.zip";
+  const fileName = safeArtifactName(suggestedName?.trim() || pathName);
+  const quarantineRoot = resolve(rootDir, "data", "operator-acquisitions", "quarantine");
+  mkdirSync(quarantineRoot, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "");
+  const destination = inside(quarantineRoot, resolve(quarantineRoot, `${stamp}-${fileName}`));
+  const configuredMax = Number(process.env.FREEOS_ACQUISITION_MAX_BYTES);
+  const maxBytes = Number.isFinite(configuredMax) && configuredMax > 0 ? Math.min(configuredMax, 20 * 1024 * 1024 * 1024) : 8 * 1024 * 1024 * 1024;
+  const declared = Number(response.headers.get("content-length") ?? 0);
+  if (declared > maxBytes) throw new OperatorError(`Capability artifact exceeds the configured ${maxBytes} byte limit.`, "blocked");
+  if (!response.body) throw new OperatorError("Capability download returned no body.", "unavailable");
+
+  const output = createWriteStream(destination, { flags: "wx" });
+  const hash = createHash("sha256");
+  let bytes = 0;
+  try {
+    const reader = response.body.getReader();
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) throw new OperatorError(`Capability artifact exceeded the configured ${maxBytes} byte limit while downloading.`, "blocked");
+      const chunk = Buffer.from(value);
+      hash.update(chunk);
+      if (!output.write(chunk)) await once(output, "drain");
+    }
+    output.end();
+    await once(output, "finish");
+  } catch (error) {
+    output.destroy();
+    try { if (existsSync(destination)) unlinkSync(destination); } catch { /* best-effort quarantine cleanup */ }
+    throw error;
+  }
+  return {
+    sourceUrl: sourceUrl.trim(), finalUrl: finalUrl.href, fileName,
+    relativePath: relative(resolve(rootDir), destination).replace(/\\/g, "/"), bytes,
+    sha256: hash.digest("hex"), contentType: response.headers.get("content-type") ?? "application/octet-stream",
+    quarantined: true, executed: false,
+  };
 }
 
 export async function runBlenderPlan(rootDir: string, planPath: string): Promise<BlenderOperatorResult> {
