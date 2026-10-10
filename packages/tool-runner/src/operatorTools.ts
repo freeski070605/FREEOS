@@ -2,14 +2,16 @@ import { downloadCapabilityArtifact, getOperatorStatus, inspectOperatorEnvironme
 import type { JsonObject, ToolDefinition, ToolRiskLevel } from "./tool.types";
 import { ToolRunnerError } from "./tool.types";
 import { getToolRegistry, type ToolRegistry } from "./toolRegistry";
+import { runMpfbBaseSmokeTest } from "./blenderCharacterTools";
 
 const OPERATOR_TOOLS: Array<Omit<ToolDefinition, "id" | "createdAt" | "updatedAt">> = [
   { toolKey: "operator.apps.list", name: "List production operators", description: "Lists configured creative/development operators and readiness without launching anything.", category: "operator", riskLevel: "read_only" as ToolRiskLevel, enabled: true, requiresApproval: false },
   { toolKey: "operator.status", name: "Production operator status", description: "Checks one configured operator and its exact executable readiness.", category: "operator", riskLevel: "read_only" as ToolRiskLevel, enabled: true, requiresApproval: false },
-  { toolKey: "operator.environment.inspect", name: "Inspect production environment", description: "Inventories the selected production operator and other configured operators. Blender inspection also inventories available/enabled addons so FREEOS can use existing tools before seeking new ones.", category: "operator", riskLevel: "read_only" as ToolRiskLevel, enabled: true, requiresApproval: false },
+  { toolKey: "operator.environment.inspect", name: "Inspect production environment", description: "Inventories the selected production operator and other configured operators. Blender inspection also inventories available/enabled addons and registered addon operators so FREEOS can use existing tools before seeking new ones.", category: "operator", riskLevel: "read_only" as ToolRiskLevel, enabled: true, requiresApproval: false },
   { toolKey: "operator.capability.download_candidate", name: "Download capability candidate", description: "Downloads one explicitly approved HTTPS tool/model/plugin artifact into a FREEOS quarantine folder, records SHA-256 evidence, and never executes or installs it automatically.", category: "operator", riskLevel: "medium_risk" as ToolRiskLevel, enabled: true, requiresApproval: true },
   { toolKey: "operator.app.launch", name: "Launch production application", description: "Launches one explicitly configured production application. Requires owner approval.", category: "operator", riskLevel: "medium_risk" as ToolRiskLevel, enabled: true, requiresApproval: true },
   { toolKey: "operator.blender.run_plan", name: "Run governed Blender plan", description: "Executes a validated JSON scene plan through FREEOS's fixed Blender driver. Arbitrary Python and shell execution are not accepted.", category: "operator", riskLevel: "medium_risk" as ToolRiskLevel, enabled: true, requiresApproval: true },
+  { toolKey: "operator.blender.mpfb.smoke_test", name: "Verify MPFB base-human capability", description: "Runs one fixed MPFB create-human smoke test in background Blender, saves a diagnostic blend/render/manifest under the FREEOS workspace, and verifies real mesh and render evidence. It does not accept arbitrary Python.", category: "operator", riskLevel: "medium_risk" as ToolRiskLevel, enabled: true, requiresApproval: true },
 ];
 
 export function registerOperatorTools(registry: ToolRegistry = getToolRegistry()): ToolDefinition[] {
@@ -47,6 +49,9 @@ export async function executeOperatorTool(registry: ToolRegistry, toolKey: strin
         const path = typeof args.planPath === "string" ? args.planPath.trim() : "";
         if (!path) throw new ToolRunnerError("planPath is required.", "validation");
         return await runBlenderPlan(registry.rootDir, path);
+      }
+      case "operator.blender.mpfb.smoke_test": {
+        return await runMpfbBaseSmokeTest(registry.rootDir, args.jobKey);
       }
       default: throw new ToolRunnerError(`Unknown operator tool: ${toolKey}.`, "not_found");
     }
