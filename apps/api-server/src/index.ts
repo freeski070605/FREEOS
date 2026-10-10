@@ -20,6 +20,7 @@ import { sourceEvidenceInspectionRouter } from "./routes/sourceEvidenceInspectio
 import { evidencePromotionRouter } from "./routes/evidencePromotion.routes";
 import { projectStateObservationRouter } from "./routes/projectStateObservation.routes";
 import { skillAcademyRouter } from "./routes/skillAcademy.routes";
+import { qualityExecutionRouter } from "./routes/qualityExecution.routes";
 import { projectsRouter } from "./routes/projects.routes";
 import { systemRouter } from "./routes/system.routes";
 import { researchRouter } from "./routes/research.routes";
@@ -76,6 +77,7 @@ app.use("/source-evidence", sourceEvidenceInspectionRouter);
 app.use("/evidence-promotion", evidencePromotionRouter);
 app.use("/project-state", projectStateObservationRouter);
 app.use("/skill-academy", skillAcademyRouter);
+app.use("/quality-execution", qualityExecutionRouter);
 app.use("/projects", projectsRouter);
 app.use("/research", researchRouter);
 app.use("/voice", voiceRouter);
