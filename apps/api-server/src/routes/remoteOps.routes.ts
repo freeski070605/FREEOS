@@ -20,7 +20,7 @@ remoteOpsRouter.get("/tasks", (request, response, next) => {
 remoteOpsRouter.post("/tasks", (request, response, next) => {
   try {
     const input = body(request.body);
-    response.status(201).json({ task: remoteOpsService.enqueue({ kind: input.kind, agentId: input.agentId, projectKey: input.projectKey, objective: input.objective }) });
+    response.status(201).json({ task: remoteOpsService.enqueue({ kind: input.kind, agentId: input.agentId, operatorKey: input.operatorKey, projectKey: input.projectKey, objective: input.objective }) });
   } catch (error) { next(error); }
 });
 
