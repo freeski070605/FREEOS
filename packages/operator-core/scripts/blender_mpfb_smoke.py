@@ -74,6 +74,30 @@ def aim_at(obj, target):
     obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
 
 
+def apply_diagnostic_material(meshes):
+    material = bpy.data.materials.get("FREEOS_MPFB_Diagnostic")
+    if material is None:
+        material = bpy.data.materials.new("FREEOS_MPFB_Diagnostic")
+    material.use_nodes = True
+    principled = material.node_tree.nodes.get("Principled BSDF") if material.node_tree else None
+    if principled is not None:
+        principled.inputs["Base Color"].default_value = (0.34, 0.18, 0.10, 1.0)
+        principled.inputs["Roughness"].default_value = 0.58
+        if "Emission Color" in principled.inputs:
+            principled.inputs["Emission Color"].default_value = (0.028, 0.012, 0.006, 1.0)
+        if "Emission Strength" in principled.inputs:
+            principled.inputs["Emission Strength"].default_value = 0.16
+
+    applied = 0
+    for obj in meshes:
+        if obj.type != "MESH":
+            continue
+        if len(obj.data.materials) == 0:
+            obj.data.materials.append(material)
+            applied += 1
+    return material.name, applied
+
+
 def add_camera_and_lights(character_objects):
     center, radius, size = bounds_for_objects(character_objects)
     bpy.ops.object.camera_add()
@@ -88,9 +112,9 @@ def add_camera_and_lights(character_objects):
     bpy.context.scene.camera = camera
 
     light_specs = [
-        ("FREEOS_Key", (-radius * 2.2, -radius * 2.0, center.z + radius * 2.4), 1000.0, radius * 1.8),
-        ("FREEOS_Fill", (radius * 2.0, -radius * 1.0, center.z + radius * 1.2), 550.0, radius * 1.5),
-        ("FREEOS_Rim", (0.0, radius * 2.2, center.z + radius * 2.0), 850.0, radius * 1.3),
+        ("FREEOS_Key", (-radius * 2.0, -radius * 2.2, center.z + radius * 2.2), 1800.0, radius * 1.8),
+        ("FREEOS_Fill", (radius * 2.0, -radius * 1.2, center.z + radius * 1.0), 1050.0, radius * 1.6),
+        ("FREEOS_Rim", (0.0, radius * 2.2, center.z + radius * 2.0), 1200.0, radius * 1.4),
     ]
     for name, location, energy, size_value in light_specs:
         bpy.ops.object.light_add(type="AREA", location=location)
@@ -115,7 +139,11 @@ def render_and_verify(path):
         pass
     if scene.world is None:
         scene.world = bpy.data.worlds.new("FREEOS_MPFB_World")
-    scene.world.color = (0.035, 0.035, 0.045)
+    scene.world.color = (0.055, 0.055, 0.070)
+    try:
+        scene.view_settings.look = "AgX - Medium High Contrast"
+    except Exception:
+        pass
     bpy.ops.render.render(write_still=True)
     if not os.path.isfile(path) or os.path.getsize(path) < 2048:
         raise RuntimeError("MPFB smoke-test render was not created")
@@ -124,7 +152,7 @@ def render_and_verify(path):
     try:
         pixels = image.pixels
         total_pixels = max(1, len(pixels) // 4)
-        stride = max(1, total_pixels // 512)
+        stride = max(1, total_pixels // 1024)
         values = []
         for index in range(0, total_pixels, stride):
             offset = index * 4
@@ -132,10 +160,12 @@ def render_and_verify(path):
                 break
             r, g, b = pixels[offset], pixels[offset + 1], pixels[offset + 2]
             values.append(0.2126 * r + 0.7152 * g + 0.0722 * b)
-            if len(values) >= 512:
+            if len(values) >= 1024:
                 break
-        if not values or max(values) - min(values) < 0.015:
+        if not values or max(values) - min(values) < 0.02:
             raise RuntimeError("MPFB smoke-test render appears blank or nearly uniform")
+        if max(values) < 0.08:
+            raise RuntimeError("MPFB smoke-test render is too dark to serve as useful diagnostic evidence")
     finally:
         bpy.data.images.remove(image)
 
@@ -175,7 +205,8 @@ def main():
 
     shape_keys = basemesh.data.shape_keys
     shape_key_count = len(shape_keys.key_blocks) if shape_keys else 0
-    material_count = len(basemesh.data.materials)
+    source_material_count = len(basemesh.data.materials)
+    diagnostic_material_name, diagnostic_material_applied_count = apply_diagnostic_material(meshes)
 
     add_camera_and_lights(meshes)
     render_path = ensure_inside(root, os.path.join(job_dir, "mpfb_base_preview.png"))
@@ -188,7 +219,7 @@ def main():
     manifest = {
         "ok": True,
         "jobKey": job_key,
-        "adapter": "mpfb-base-smoke-v1",
+        "adapter": "mpfb-base-smoke-v2",
         "operator": "mpfb.create_human",
         "baseHumanVerified": True,
         "renderVerified": True,
@@ -198,12 +229,16 @@ def main():
         "vertexCount": vertex_count,
         "polygonCount": polygon_count,
         "shapeKeyCount": shape_key_count,
-        "materialCount": material_count,
+        "materialCount": source_material_count,
+        "diagnosticMaterial": diagnostic_material_name,
+        "diagnosticMaterialAppliedCount": diagnostic_material_applied_count,
         "createdObjectCount": len(created),
     }
     with open(manifest_path, "w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
-    print("FREEOS_MPFB_SMOKE_RESULT=" + json.dumps(manifest, separators=(",", ":")))
+        handle.flush()
+        os.fsync(handle.fileno())
+    print("FREEOS_MPFB_SMOKE_RESULT=" + json.dumps(manifest, separators=(",", ":")), flush=True)
 
 
 if __name__ == "__main__":
