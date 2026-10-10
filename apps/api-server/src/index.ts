@@ -30,7 +30,7 @@ import { commandRouter } from "./routes/command.routes";
 import { ragRouter } from "./routes/rag.routes";
 import { remoteOpsRouter } from "./routes/remoteOps.routes";
 import { remoteOpsService } from "./services/remoteOps.service";
-import { registerDefaultTools, getToolRegistry, ToolExecutor, ToolRequests } from "@freeos/tool-runner";
+import { registerDefaultTools, registerOperatorTools, getToolRegistry, ToolExecutor, ToolRequests } from "@freeos/tool-runner";
 import { Scheduler, configureScheduler } from "@freeos/scheduler-core";
 import { schedulerRouter } from "./routes/scheduler.routes";
 import { computerRouter } from "./routes/computer.routes";
@@ -41,6 +41,7 @@ import { agentsRouter } from "./routes/agents.routes";
 const app = express();
 registerDefaultTools();
 const registry = getToolRegistry();
+registerOperatorTools(registry);
 const scheduler = configureScheduler(new Scheduler(registry.database, {
   getTool: key => registry.getToolByKey(key),
   runReadOnly: async (key, args) => {
