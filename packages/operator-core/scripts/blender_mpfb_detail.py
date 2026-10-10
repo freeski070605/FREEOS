@@ -38,13 +38,50 @@ def ensure_inside(root, candidate):
     return candidate
 
 
-def dynamic_import(absolute_package_str, key):
-    for module_name in list(sys.modules.keys()):
-        if module_name.endswith(absolute_package_str):
+def load_new_human_properties():
+    candidates = [
+        "mpfb.ui.new_human.newhuman.newhumanpanel",
+        "bl_ext.blender_org.mpfb.ui.new_human.newhuman.newhumanpanel",
+    ]
+    errors = []
+    for module_name in candidates:
+        try:
+            module = importlib.import_module(module_name)
+            props = getattr(module, "NEW_HUMAN_PROPERTIES", None)
+            if props is not None:
+                return props, module_name
+        except Exception as exc:
+            errors.append(f"{module_name}: {exc}")
+    raise RuntimeError("Could not load MPFB NEW_HUMAN_PROPERTIES: " + " | ".join(errors))
+
+
+def import_mpfb_service(property_module, service_module, key):
+    """Import an MPFB service without assuming the Blender extension package prefix."""
+    package_root = property_module.split(".ui.", 1)[0] if ".ui." in property_module else ""
+    candidates = []
+    if package_root:
+        candidates.append(f"{package_root}.services.{service_module}")
+    candidates.append(f"mpfb.services.{service_module}")
+
+    errors = []
+    for module_name in candidates:
+        try:
             module = importlib.import_module(module_name)
             if hasattr(module, key):
                 return getattr(module, key), module_name
-    raise RuntimeError(f"No loaded MPFB module ending with {absolute_package_str} exposes {key}")
+            errors.append(f"{module_name}: missing {key}")
+        except Exception as exc:
+            errors.append(f"{module_name}: {exc}")
+
+    # Last-resort compatibility with MPFB's own script-sample import quirk.
+    suffix = f"mpfb.services.{service_module}"
+    for module_name in list(sys.modules.keys()):
+        if module_name.endswith(suffix):
+            module = importlib.import_module(module_name)
+            if hasattr(module, key):
+                return getattr(module, key), module_name
+
+    raise RuntimeError(f"Could not import MPFB service {service_module}.{key}: " + " | ".join(errors))
 
 
 def clear_scene():
@@ -64,23 +101,6 @@ def operator_registered(namespace, name):
         return operator
     except Exception as exc:
         raise RuntimeError(f"Required Blender operator {namespace}.{name} is not registered: {exc}")
-
-
-def load_new_human_properties():
-    candidates = [
-        "mpfb.ui.new_human.newhuman.newhumanpanel",
-        "bl_ext.blender_org.mpfb.ui.new_human.newhuman.newhumanpanel",
-    ]
-    errors = []
-    for module_name in candidates:
-        try:
-            module = importlib.import_module(module_name)
-            props = getattr(module, "NEW_HUMAN_PROPERTIES", None)
-            if props is not None:
-                return props, module_name
-        except Exception as exc:
-            errors.append(f"{module_name}: {exc}")
-    raise RuntimeError("Could not load MPFB NEW_HUMAN_PROPERTIES: " + " | ".join(errors))
 
 
 def bounds_for_objects(objects):
@@ -258,8 +278,8 @@ def main():
     if len(basemesh.data.vertices) < 1000 or len(basemesh.data.polygons) < 1000:
         raise RuntimeError("MPFB detail result did not meet minimum mesh evidence")
 
-    TargetService, target_service_module = dynamic_import("mpfb.services.targetservice", "TargetService")
-    LocationService, location_service_module = dynamic_import("mpfb.services.locationservice", "LocationService")
+    TargetService, target_service_module = import_mpfb_service(props_module, "targetservice", "TargetService")
+    LocationService, location_service_module = import_mpfb_service(props_module, "locationservice", "LocationService")
     targets_root = LocationService.get_mpfb_data("targets")
 
     mapping = {
@@ -309,7 +329,7 @@ def main():
     manifest = {
         "ok": True,
         "jobKey": job_key,
-        "adapter": "mpfb-detail-targets-v1",
+        "adapter": "mpfb-detail-targets-v2",
         "operator": "mpfb.create_human+TargetService.load_target",
         "detailTargetsVerified": True,
         "renderVerified": True,
