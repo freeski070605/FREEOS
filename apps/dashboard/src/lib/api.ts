@@ -145,6 +145,9 @@ async function requestJson(path: string, init?: RequestInit, timeoutMs = 7000): 
     return payload;
   } catch (error) {
     if (import.meta.env.DEV) console.error(`[FREEOS API] ${path} failed:`, error);
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      throw new Error(`FREEOS request timed out after ${Math.round(timeoutMs / 1000)} seconds. The local action may still be finishing; refresh its status before retrying.`);
+    }
     throw error instanceof Error ? error : new Error("The local API request failed.");
   }
 }
@@ -226,7 +229,7 @@ export const api = {
   createToolRequest: async (input: { toolKey: string; title: string; description?: string; args?: Record<string, unknown> }): Promise<ToolRequest> => { const data = record(await requestJson("/tools/requests", { method: "POST", body: JSON.stringify(input) }), "/tools/requests"); return data.request as ToolRequest; },
   approveToolRequest: async (id: number): Promise<ToolRequest> => { const data = record(await requestJson(`/tools/requests/${id}/approve`, { method: "POST", body: "{}" }), "/tools/requests/:id/approve"); return data.request as ToolRequest; },
   rejectToolRequest: async (id: number): Promise<ToolRequest> => { const data = record(await requestJson(`/tools/requests/${id}/reject`, { method: "POST", body: "{}" }), "/tools/requests/:id/reject"); return data.request as ToolRequest; },
-  runToolRequest: async (id: number): Promise<ToolRun> => { const data = record(await requestJson(`/tools/requests/${id}/run`, { method: "POST", body: "{}" }, 40000), "/tools/requests/:id/run"); return data.run as ToolRun; },
+  runToolRequest: async (id: number): Promise<ToolRun> => { const data = record(await requestJson(`/tools/requests/${id}/run`, { method: "POST", body: "{}" }, 210000), "/tools/requests/:id/run"); return data.run as ToolRun; },
   toolRuns: async (): Promise<ToolRun[]> => { const data = record(await requestJson("/tools/runs"), "/tools/runs"); return Array.isArray(data.runs) ? data.runs as ToolRun[] : []; },
   automationsStatus: async () => record(await requestJson("/automations/status"), "/automations/status") as unknown as AutomationStatus,
   automations: async (): Promise<AutomationRule[]> => { const data = record(await requestJson("/automations"), "/automations"); return Array.isArray(data.rules) ? data.rules as AutomationRule[] : []; },
