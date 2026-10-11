@@ -22,6 +22,7 @@ data/vector-db/*
 !data/vector-db/.gitkeep
 data/voice/*
 data/browser/
+data/adobe-worker/
 !data/voice/.gitkeep
 !data/voice/recordings/
 !data/voice/output/

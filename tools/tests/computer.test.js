@@ -35,7 +35,7 @@ test("argument and application policy rejects execution hosts, scripts, credenti
   for (const text of ["x".repeat(4001),"hello\nworld","password=example","api_key=example"]) assert.throws(()=>validateComputerArgs("computer.keyboard.type",{processId:1,text}));
   assert.throws(()=>validateComputerArgs("computer.keyboard.hotkey",{processId:1,hotkey:"WIN+R"}));
   assert.throws(()=>validateComputerArgs("computer.keyboard.hotkey",{processId:1,hotkey:"CTRL+V"}));
-  assert.throws(()=>validateComputerArgs("computer.keyboard.press",{processId:1,key:"Enter"}));
+  assert.throws(()=>validateComputerArgs("computer.keyboard.press",{processId:1,key:"F1"}));
   assert.throws(()=>validateComputerArgs("computer.mouse.move",{processId:1,x:0.5,y:0}));
   assert.throws(()=>validateComputerArgs("computer.window.focus",{processId:-1}));
   assert.throws(()=>validateComputerArgs("computer.status",{script:"untrusted"}));

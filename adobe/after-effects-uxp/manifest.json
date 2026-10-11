@@ -1,0 +1,1 @@
+{"manifestVersion":5,"id":"com.freeos.aftereffects.bridge","name":"FREEOS After Effects Bridge","version":"0.1.0","host":{"app":"aftereffects","minVersion":"27.0.0"},"main":"index.html","entrypoints":[{"type":"panel","id":"freeosBridge","label":{"default":"FREEOS Bridge"}}],"requiredPermissions":{"network":{"domains":["ws://127.0.0.1:4319"]}}}

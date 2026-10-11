@@ -1,0 +1,3 @@
+# After Effects bridge
+
+After Effects UXP host API operations require After Effects 27.0 or newer per Adobe's [host API reference](https://developer.adobe.com/after-effects/uxp/after-effects-api/). Load `adobe/after-effects-uxp` with UXP Developer Tool, open the FREEOS Bridge panel, and enter the AIO bridge token. The bridge advertises project inspection, open, save, save as, active composition inspection, and duplicate composition. A duplicate must use a `FREEOS_` name. Unsupported layer, effect, tracking, render queue, and older-version scripting operations remain unavailable until adapters are implemented and validated on the target host.

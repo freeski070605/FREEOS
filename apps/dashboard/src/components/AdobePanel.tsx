@@ -1,0 +1,19 @@
+import { useCallback, useEffect, useState } from "react";
+
+interface Capability { application: string; action: string; method: string; available: boolean; reason?: string }
+interface Job { jobId: string; state: string; method: string; progress?: number; error?: string; timestamp: string }
+interface Status { enabled: boolean; online: boolean; lastHeartbeat?: string; identity?: { hostname: string; addresses?: string[]; version: string; platform: string; hardware?: { cpu: string; logicalCores: number; ramBytes: number; gpu?: string }; applications: Record<string, { installed: boolean; running: boolean; path?: string; version?: string }> }; capabilities: Capability[]; jobs: Job[] }
+const base = (import.meta.env.VITE_API_BASE_URL || "http://localhost:3001").replace(/\/$/, "");
+
+export function AdobePanel() {
+  const [status, setStatus] = useState<Status>();
+  const [error, setError] = useState("");
+  const refresh = useCallback(async () => { try { const response = await fetch(`${base}/adobe/status`); if (!response.ok) throw new Error(`HTTP ${response.status}`); setStatus(await response.json()); setError(""); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } }, []);
+  useEffect(() => { void refresh(); const timer = setInterval(() => void refresh(), 5000); return () => clearInterval(timer); }, [refresh]);
+  return <div className="space-y-4">
+    <section className="panel"><p className="eyebrow">Adobe workstation</p><h2 className="section-title">AIO worker {status?.online ? "online" : "offline"}</h2><p className="section-copy">{status?.identity?.hostname || "No worker registered"} · {status?.identity?.addresses?.join(", ") || "IP unavailable"} · {status?.identity?.platform || "Windows"} · worker {status?.identity?.version || "unknown"} · last heartbeat {status?.lastHeartbeat ? new Date(status.lastHeartbeat).toLocaleString() : "none"}</p>{status?.identity?.hardware && <p className="meta">{status.identity.hardware.cpu} · {status.identity.hardware.logicalCores} logical cores · {Math.round(status.identity.hardware.ramBytes / 1073741824)} GB RAM{status.identity.hardware.gpu ? ` · ${status.identity.hardware.gpu}` : ""}</p>}{error && <p className="notice">{error}</p>}<button className="button mt-3" onClick={() => void refresh()}>Refresh</button></section>
+    <section className="panel"><h3 className="section-title">Applications</h3><div className="mt-3 grid gap-2 md:grid-cols-3">{Object.entries(status?.identity?.applications || {}).map(([name, app]) => <article className="queue-item" key={name}><p className="m-0 font-semibold text-white">{name}</p><p className="meta">{app.installed ? app.running ? "Running" : "Installed" : "Unavailable"}{app.version ? ` · ${app.version}` : ""}</p><p className="meta break-all">{app.path || "No installation found"}</p></article>)}</div></section>
+    <section className="panel"><h3 className="section-title">Capabilities</h3><div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{(status?.capabilities || []).map(item => <div className="queue-item" key={`${item.application}.${item.action}`}><p className="m-0 text-sm text-white">{item.application} · {item.action}</p><p className="meta">{item.available ? item.method : item.reason || "Unavailable"}</p></div>)}</div></section>
+    <section className="panel"><h3 className="section-title">Recent jobs</h3><div className="mt-3 space-y-2">{(status?.jobs || []).map(job => <div className="queue-item" key={job.jobId}><p className="m-0 text-sm text-white">{job.jobId} · {job.state}</p><p className="meta">{job.method} · {Math.round((job.progress || 0) * 100)}% · {new Date(job.timestamp).toLocaleString()}{job.error ? ` · ${job.error}` : ""}</p></div>)}{!status?.jobs?.length && <p className="meta">No Adobe jobs yet.</p>}</div></section>
+  </div>;
+}

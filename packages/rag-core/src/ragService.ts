@@ -1,4 +1,4 @@
-import Database from "better-sqlite3";
+﻿import Database from "better-sqlite3";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { RagConfig } from "./rag.config";
@@ -426,15 +426,30 @@ export class RagService {
     }
   }
 
-  private async embeddingSearch(query: string, projectKey?: string, topK: number = 8): Promise<RagSearchResult[]> {
-    const embedding = await embedChunkWithOllama(query, this.config.embeddingModel, process.env.OLLAMA_BASE_URL);
+  private async embeddingSearch(
+    query: string,
+    projectKey?: string,
+    topK: number = 8,
+  ): Promise<RagSearchResult[]> {
+    const embedding = await embedChunkWithOllama(
+      query,
+      this.config.embeddingModel,
+      process.env.OLLAMA_BASE_URL,
+    );
 
     if (!embedding || embedding.length === 0) {
-      // Fall back to keyword search
       return this.keywordSearch(query, projectKey, topK);
     }
 
-    // Search embeddings using cosine similarity
+    // A project-scoped search may retrieve:
+    //   1. documents belonging to that project
+    //   2. intentionally GLOBAL documents (project_key IS NULL)
+    //
+    // It must never retrieve documents owned by another project.
+    const projectSql = projectKey
+      ? " AND (d.project_key = ? OR d.project_key IS NULL)"
+      : "";
+
     const results = this.#db
       .prepare(`
         SELECT
@@ -447,9 +462,9 @@ export class RagService {
         FROM rag_embeddings e
         JOIN rag_chunks c ON e.chunk_id = c.id
         JOIN rag_documents d ON c.document_id = d.id
-        WHERE 1=1
+        WHERE 1=1${projectSql}
       `)
-      .all() as Array<{
+      .all(...(projectKey ? [projectKey] : [])) as Array<{
         chunkId: number;
         documentId: number;
         documentPath: string;
@@ -458,25 +473,42 @@ export class RagService {
         content: string;
       }>;
 
-    // Calculate similarity scores
-    const scored = results.map((r) => {
-      const embRow = this.#db.prepare("SELECT embedding_json FROM rag_embeddings WHERE chunk_id = ?").get(r.chunkId) as Row;
-      const chunkEmbedding = JSON.parse(String(embRow.embedding_json)) as number[];
-      const score = cosineSimilarity(embedding, chunkEmbedding);
-      return { ...r, score };
+    const scored = results.flatMap((result) => {
+      const embeddingRow = this.#db
+        .prepare(
+          "SELECT embedding_json FROM rag_embeddings WHERE chunk_id = ?",
+        )
+        .get(result.chunkId) as Row | undefined;
+
+      if (!embeddingRow?.embedding_json) {
+        return [];
+      }
+
+      try {
+        const chunkEmbedding = JSON.parse(
+          String(embeddingRow.embedding_json),
+        ) as number[];
+
+        return [{
+          ...result,
+          score: cosineSimilarity(embedding, chunkEmbedding),
+        }];
+      } catch {
+        return [];
+      }
     });
 
     return scored
       .sort((a, b) => b.score - a.score)
       .slice(0, topK)
-      .map((r) => ({
-        chunkId: r.chunkId,
-        documentId: r.documentId,
-        documentPath: r.documentPath,
-        documentName: r.documentName,
-        chunkIndex: r.chunkIndex,
-        content: r.content,
-        score: r.score,
+      .map((result) => ({
+        chunkId: result.chunkId,
+        documentId: result.documentId,
+        documentPath: result.documentPath,
+        documentName: result.documentName,
+        chunkIndex: result.chunkIndex,
+        content: result.content,
+        score: result.score,
         model: this.config.embeddingModel,
       }));
   }
@@ -606,3 +638,4 @@ function cosineSimilarity(a: number[], b: number[]): number {
   const denom = Math.sqrt(normA) * Math.sqrt(normB);
   return denom === 0 ? 0 : dotProduct / denom;
 }
+

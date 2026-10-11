@@ -1,6 +1,6 @@
 ﻿# FREEOS Knowledge Inventory
 
-Generated: 2026-10-04 19:57:53
+Generated: 2026-10-05 07:12:48
 
 This report separates stored knowledge from live observations and base-model knowledge.
 
@@ -12,10 +12,10 @@ This report separates stored knowledge from live observations and base-model kno
 | Approved memories | 6 |
 | Global approved memories | 4 |
 | Project notes | 0 |
-| RAG documents | 28 |
-| RAG sources | 3 |
-| Files under docs | 19 |
-| Files under data/documents | 7 |
+| RAG documents | 45 |
+| RAG sources | 4 |
+| Files under docs | 28 |
+| Files under data/documents | 15 |
 | Files under data/projects | 8 |
 | Agent definitions |  |
 | Historical agent runs | 4 |
@@ -140,6 +140,23 @@ No project notes.
 - **V1_RELEASE_NOTES.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\docs\V1_RELEASE_NOTES.md
 - **V1_SMOKE_TEST_CHECKLIST.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\docs\V1_SMOKE_TEST_CHECKLIST.md
 - **VOICE_SETUP_WINDOWS.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\docs\VOICE_SETUP_WINDOWS.md
+- **00_KNOWLEDGE_CHARTER.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\data\documents\core\00_KNOWLEDGE_CHARTER.md
+- **01_DFB_ECOSYSTEM.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\data\documents\core\01_DFB_ECOSYSTEM.md
+- **02_OWNER_OPERATING_PRINCIPLES.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\data\documents\core\02_OWNER_OPERATING_PRINCIPLES.md
+- **03_DECISION_FRAMEWORK.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\data\documents\core\03_DECISION_FRAMEWORK.md
+- **04_SHARED_GLOSSARY.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\data\documents\core\04_SHARED_GLOSSARY.md
+- **05_EDUCATION_CURRICULUM.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\data\documents\core\05_EDUCATION_CURRICULUM.md
+- **06_EXPERIENCE_LEARNING.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\data\documents\core\06_EXPERIENCE_LEARNING.md
+- **07_KNOWLEDGE_GAP_REGISTER.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\data\documents\core\07_KNOWLEDGE_GAP_REGISTER.md
+- **01_OWNER_AND_DFB_FOUNDATION.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\docs\knowledge\01_OWNER_AND_DFB_FOUNDATION.md
+- **02_FREEOS_OPERATING_MODEL.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\docs\knowledge\02_FREEOS_OPERATING_MODEL.md
+- **03_DFB_SOLUTIONS.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\docs\knowledge\03_DFB_SOLUTIONS.md
+- **04_ENTERTAINMENT_IP.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\docs\knowledge\04_ENTERTAINMENT_IP.md
+- **05_REEMTEAM.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\docs\knowledge\05_REEMTEAM.md
+- **06_DFB_SOUNDS_AND_DIGITAL_DREW.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\docs\knowledge\06_DFB_SOUNDS_AND_DIGITAL_DREW.md
+- **07_TRANSPORTATION_CLIENTS_AND_INCUBATION.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\docs\knowledge\07_TRANSPORTATION_CLIENTS_AND_INCUBATION.md
+- **08_DFB_EXECUTIVE_LAYER.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\docs\knowledge\08_DFB_EXECUTIVE_LAYER.md
+- **README.md** | project: GLOBAL/UNSCOPED | E:\FREEOS\docs\knowledge\README.md
 
 ## Knowledge Domains Still Requiring Audit
 

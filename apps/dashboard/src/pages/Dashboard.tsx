@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ActivityTimeline } from "../components/ActivityTimeline";
 import { AgentsPanel } from "../components/AgentsPanel";
+import { AdobePanel } from "../components/AdobePanel";
 import { ApprovalHub } from "../components/ApprovalHub";
 import { AutomationPanel } from "../components/AutomationPanel";
 import { BackupPanel } from "../components/BackupPanel";
@@ -32,6 +33,7 @@ type Tab =
   | "browser"
   | "coding"
   | "computer"
+  | "adobe"
   | "voice"
   | "tools"
   | "automations"
@@ -57,6 +59,7 @@ const advancedTabs: TabSpec[] = [
   ["browser", "Browser", "◎"],
   ["coding", "Coding", "</>"],
   ["computer", "Computer", "▣"],
+  ["adobe", "Adobe Workstation", "Ae"],
   ["voice", "Voice", "◉"],
   ["tools", "Tools", "⌘"],
   ["automations", "Automations", "↻"],
@@ -287,6 +290,7 @@ export function Dashboard() {
           {tab === "voice" && <VoicePanel projects={projects} />}
           {tab === "coding" && <CodingPanel />}
           {tab === "computer" && <ComputerPanel />}
+          {tab === "adobe" && <AdobePanel />}
           {tab === "tools" && <ToolRunnerPanel />}
           {tab === "automations" && <AutomationPanel />}
           {tab === "activity" && <ActivityTimeline />}

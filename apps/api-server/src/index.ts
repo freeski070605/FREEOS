@@ -40,6 +40,8 @@ import { computerRouter } from "./routes/computer.routes";
 import { codingRouter } from "./routes/coding.routes";
 import { browserRouter } from "./routes/browser.routes";
 import { agentsRouter } from "./routes/agents.routes";
+import { adobeRouter } from "./routes/adobe.routes";
+import { adobeService } from "./services/adobe.service";
 
 const app = express();
 registerDefaultTools();
@@ -86,6 +88,7 @@ app.use("/computer", computerRouter);
 app.use("/coding", codingRouter);
 app.use("/browser", browserRouter);
 app.use("/agents", agentsRouter);
+app.use("/adobe", adobeRouter);
 app.use("/operators", operatorsRouter);
 app.use("/scheduler", schedulerRouter);
 app.use("/automations", automationsRouter);
@@ -102,7 +105,8 @@ const server = app.listen(config.port, "127.0.0.1", () => {
   console.log(`[FREEOS] API online at http://localhost:${config.port}`);
   console.log("[FREEOS] Dangerous actions are disabled.");
   remoteOpsService.start();
+  adobeService.start();
   remoteOpsApprovalRunner.start();
   console.log("[FREEOS] Remote Ops task worker online; approved Remote Ops actions auto-run after explicit owner approval; API remains loopback-only.");
 });
-server.on("close", () => { scheduler.stop(); remoteOpsApprovalRunner.stop(); remoteOpsService.stop(); });
+server.on("close", () => { scheduler.stop(); remoteOpsApprovalRunner.stop(); remoteOpsService.stop(); adobeService.stop(); });

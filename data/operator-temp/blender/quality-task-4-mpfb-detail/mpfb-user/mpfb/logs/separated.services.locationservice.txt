@@ -1,0 +1,1 @@
+[INFO ] Not adding link to MakeHuman user data, since neither explicit path nor auto-discovery is set in preferences.

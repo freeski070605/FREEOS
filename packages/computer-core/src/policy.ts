@@ -25,6 +25,7 @@ const OPERATOR_EXECUTABLES: Record<string, string[]> = {
   FREEOS_OPERATOR_BLENDER_EXE: ["blender.exe"],
   FREEOS_OPERATOR_PREMIERE_EXE: ["Adobe Premiere Pro.exe"],
   FREEOS_OPERATOR_AFTER_EFFECTS_EXE: ["AfterFX.exe"],
+  FREEOS_MEDIA_ENCODER_PATH: ["Adobe Media Encoder.exe"],
   FREEOS_OPERATOR_PHOTOSHOP_EXE: ["Photoshop.exe"],
   FREEOS_OPERATOR_LIGHTROOM_EXE: ["Lightroom.exe"],
   FREEOS_OPERATOR_UNITY_EXE: ["Unity.exe"],

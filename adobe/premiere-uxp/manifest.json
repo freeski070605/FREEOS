@@ -1,0 +1,1 @@
+{"manifestVersion":5,"id":"com.freeos.premiere.bridge","name":"FREEOS Premiere Bridge","version":"0.1.0","host":{"app":"premierepro","minVersion":"25.6.0"},"main":"index.html","entrypoints":[{"type":"panel","id":"freeosBridge","label":{"default":"FREEOS Bridge"}}],"requiredPermissions":{"network":{"domains":["ws://127.0.0.1:4319"]}}}
