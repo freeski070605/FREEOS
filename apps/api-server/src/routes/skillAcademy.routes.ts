@@ -9,6 +9,7 @@ import {
   listPracticeSessions,
 } from "../services/skillAcademy.service";
 import { buildSkillTeachingContext } from "../services/skillTeachingContext.service";
+import { assessEditingKnowledgeGap, bootstrapEditingAcademy } from "../services/editingAcademy.service";
 
 export const skillAcademyRouter = Router();
 
@@ -52,6 +53,27 @@ skillAcademyRouter.post("/bootstrap", (_request, response, next) => {
       durableMemoryCreated: false,
       rule: "Bootstrap creates the competency scaffold only. It does not claim FREEOS has learned or mastered the seeded skills.",
     });
+  } catch (error) { next(error); }
+});
+
+skillAcademyRouter.post("/editing/bootstrap", (_request, response, next) => {
+  try {
+    response.status(201).json({
+      editingAcademy: bootstrapEditingAcademy(),
+      masteryChanged: false,
+      rule: "This imports owner-approved advanced editing knowledge and style guidance. Mastery still requires evaluated practice evidence.",
+    });
+  } catch (error) { next(error); }
+});
+
+skillAcademyRouter.get("/editing/gap", (request, response, next) => {
+  try {
+    const query = text(request.query.query);
+    if (!query) {
+      response.status(400).json({ error: "query is required." });
+      return;
+    }
+    response.json(assessEditingKnowledgeGap(query));
   } catch (error) { next(error); }
 });
 
