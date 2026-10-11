@@ -2,7 +2,11 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import process from "node:process";
 
-const target = process.argv.slice(2).join(" ").trim();
+const raw = process.argv.slice(2).join(" ").trim();
+const target = raw.length >= 2 && ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'")))
+  ? raw.slice(1, -1).trim()
+  : raw;
+
 if (!target) {
   console.error('Usage: npm run audio:analyze -- "C:\\path\\to\\song.mp3"');
   process.exit(2);
