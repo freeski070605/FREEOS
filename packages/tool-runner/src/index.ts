@@ -5,6 +5,7 @@ export * from "./toolRegistry";
 export * from "./toolRequests";
 export * from "./toolExecutor";
 export * from "./mediaAudioTool";
+export * from "./mediaVideoTool";
 export * from "./automationService";
 export * from "./operatorTools";
 export * from "./capabilityVerification";
