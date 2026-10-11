@@ -23,7 +23,7 @@ Write-Host "[FREEOS Media] upgrading pip..."
 & $venvPython -m pip install --upgrade pip
 
 Write-Host "[FREEOS Media] installing CPU audio/video-analysis dependencies..."
-& $venvPython -m pip install --upgrade numpy scipy librosa soundfile opencv-python-headless
+& $venvPython -m pip install --upgrade numpy scipy librosa soundfile "opencv-python-headless==4.13.0.92"
 
 $audioScript = Join-Path $pkg "python/audio_analyze.py"
 $videoScript = Join-Path $pkg "python/video_analyze.py"
