@@ -109,12 +109,15 @@ function readManifest(path: string): MpfbDetailResult {
 
 function blenderTempEnvironment(rootDir: string, jobKey: string): NodeJS.ProcessEnv {
   const tempDir = inside(rootDir, resolve(rootDir, "data", "operator-temp", "blender", jobKey));
+  const mpfbUserHome = inside(rootDir, resolve(tempDir, "mpfb-user"));
   mkdirSync(tempDir, { recursive: true });
+  mkdirSync(mpfbUserHome, { recursive: true });
   return {
     ...process.env,
     TEMP: tempDir,
     TMP: tempDir,
     TMPDIR: tempDir,
+    FREEOS_MPFB_USER_HOME: mpfbUserHome,
   };
 }
 
@@ -124,13 +127,19 @@ export async function runMpfbDetailTest(rootDir: string, rawJobKey: unknown, raw
   const blender = getOperatorStatus("blender");
   if (!blender.ready || !blender.executablePath) throw new ToolRunnerError("Blender Operator is not ready.", "blocked");
 
+  const bootstrapScript = inside(rootDir, resolve(rootDir, "packages", "operator-core", "scripts", "blender_mpfb_bootstrap.py"));
   const script = inside(rootDir, resolve(rootDir, "packages", "operator-core", "scripts", "blender_mpfb_detail.py"));
+  if (!existsSync(bootstrapScript)) throw new ToolRunnerError("FREEOS isolated MPFB bootstrap driver is missing.", "blocked");
   if (!existsSync(script)) throw new ToolRunnerError("FREEOS MPFB detail driver is missing.", "blocked");
   const manifestPath = inside(rootDir, resolve(rootDir, "generated", "operators", "blender", "mpfb-detail", jobKey, "manifest.json"));
   const childEnv = blenderTempEnvironment(rootDir, jobKey);
 
   const args = [
-    "--background", "--python", script, "--", "--root", resolve(rootDir), "--job-key", jobKey,
+    "--background",
+    "--factory-startup",
+    "--python", bootstrapScript,
+    "--python", script,
+    "--", "--root", resolve(rootDir), "--job-key", jobKey,
     "--nose-volume", String(profile.noseVolume),
     "--nose-width", String(profile.noseWidth),
     "--chin-prominence", String(profile.chinProminence),
