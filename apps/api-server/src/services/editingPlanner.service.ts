@@ -116,11 +116,12 @@ function parsePlan(text: string, allowedClipIds: Set<string>, duration: number):
     if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > duration + 0.1) throw new Error(`Planner decision ${index} has invalid timing.`);
     if (!allowedClipIds.has(clipId)) throw new Error(`Planner decision ${index} references unknown clip '${clipId}'.`);
     if (action !== "cut" && action !== "hold" && action !== "punch-in") throw new Error(`Planner decision ${index} has invalid action.`);
+    const typedAction: EditingDecision["action"] = action;
     return {
       start,
       end,
       clipId,
-      action,
+      action: typedAction,
       confidence: Math.max(0, Math.min(1, number(d.confidence, 0.5))),
       rationale: typeof d.rationale === "string" ? d.rationale.slice(0, 500) : "",
     };
