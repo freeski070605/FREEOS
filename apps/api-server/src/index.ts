@@ -33,7 +33,7 @@ import { remoteOpsRouter } from "./routes/remoteOps.routes";
 import { operatorsRouter } from "./routes/operators.routes";
 import { remoteOpsService } from "./services/remoteOps.service";
 import { remoteOpsApprovalRunner } from "./services/remoteOpsApprovalRunner.service";
-import { registerDefaultTools, registerOperatorTools, registerMediaAudioAnalyzer, getToolRegistry, ToolExecutor, ToolRequests } from "@freeos/tool-runner";
+import { registerDefaultTools, registerOperatorTools, registerMediaAudioAnalyzer, registerMediaVideoAnalyzer, getToolRegistry, ToolExecutor, ToolRequests } from "@freeos/tool-runner";
 import { Scheduler, configureScheduler } from "@freeos/scheduler-core";
 import { schedulerRouter } from "./routes/scheduler.routes";
 import { computerRouter } from "./routes/computer.routes";
@@ -48,6 +48,7 @@ registerDefaultTools();
 const registry = getToolRegistry();
 registerOperatorTools(registry);
 registerMediaAudioAnalyzer(path => adobeService.run("media", "media.audio.analyze", { path }));
+registerMediaVideoAnalyzer((path, sampleFps) => adobeService.run("media", "media.video.analyze", { path, ...(sampleFps === undefined ? {} : { sampleFps }) }));
 const scheduler = configureScheduler(new Scheduler(registry.database, {
   getTool: key => registry.getToolByKey(key),
   runReadOnly: async (key, args) => {
