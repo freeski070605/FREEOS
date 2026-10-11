@@ -5,6 +5,18 @@ import { parseAudioAnalysis, type AudioAnalysis } from "./types";
 
 const extensions = new Set([".mp3", ".wav", ".m4a", ".aac", ".flac", ".mov", ".mp4"]);
 const script = resolve(__dirname, "../../python/audio_analyze.py");
+
+function normalizeInputPath(input: string): string {
+  let value = input.trim();
+  if (value.length >= 2) {
+    const first = value[0];
+    const last = value[value.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) value = value.slice(1, -1).trim();
+  }
+  value = value.replace(/[\u0000-\u001F]+$/g, "").trim();
+  return value;
+}
+
 export function audioBackendStatus(options: { python?: string; ffmpeg?: string; ffprobe?: string } = {}) {
   const python = options.python || process.env.FREEOS_AUDIO_PYTHON || resolve(__dirname, "../../.venv/Scripts/python.exe");
   const ffmpeg = options.ffmpeg || process.env.FREEOS_FFMPEG_PATH || "ffmpeg";
@@ -32,9 +44,11 @@ export function runBounded(exe: string, args: string[], timeoutMs: number, maxBy
 }
 
 export async function analyzeAudio(path: string, options: { python?: string; ffmpeg?: string; ffprobe?: string; timeoutMs?: number } = {}): Promise<AudioAnalysis> {
-  const file = resolve(path);
-  if (!extensions.has(extname(file).toLowerCase())) throw new Error("Unsupported audio/video extension.");
-  if (!existsSync(file) || !statSync(file).isFile()) throw new Error("Audio/media file does not exist.");
+  const normalized = normalizeInputPath(path);
+  const file = resolve(normalized);
+  const extension = extname(file).toLowerCase();
+  if (!extensions.has(extension)) throw new Error(`Unsupported audio/video extension '${extension || "(none)"}' for path: ${JSON.stringify(normalized)}`);
+  if (!existsSync(file) || !statSync(file).isFile()) throw new Error(`Audio/media file does not exist: ${file}`);
   const backend = audioBackendStatus(options);
   if (!backend.available) throw new Error(backend.reason);
   const probe = JSON.parse(await runBounded(backend.ffprobe, ["-v", "error", "-show_streams", "-show_format", "-of", "json", file], 30000, 2_000_000));
