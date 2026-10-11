@@ -8,7 +8,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import WebSocket, { WebSocketServer } from "ws";
 import { executeComputerTool, listProcesses, getComputerStatus, listWindows, captureScreen } from "@freeos/computer-core";
-import { analyzeRender, analyzeAudio, audioBackendStatus } from "@freeos/media-intelligence";
+import { analyzeRender, analyzeAudio, audioBackendStatus, analyzeVideo, videoBackendStatus } from "@freeos/media-intelligence";
 import { assertCapability, parseWireMessage, resolveAllowedPath, type AdobeCommand, type AdobeResult, type Capability, type WorkerIdentity, type WireMessage } from "@freeos/adobe-protocol";
 
 dotenv.config({ path: resolve(__dirname, "../../../.env") });
@@ -33,6 +33,8 @@ const ffmpegExecutable = env.FREEOS_FFMPEG_PATH || "ffmpeg";
 const ffmpegAvailable = spawnSync(ffmpegExecutable, ["-version"], { windowsHide: true, timeout: 3000, stdio: "ignore" }).status === 0;
 let audioStatus = audioBackendStatus();
 let audioStatusAt = Date.now();
+let videoStatus = videoBackendStatus();
+let videoStatusAt = Date.now();
 if (existsSync(historyPath)) {
   for (const line of readFileSync(historyPath, "utf8").split(/\r?\n/).filter(Boolean).slice(-1000)) {
     try { const item = JSON.parse(line) as AdobeResult; if (item.jobId && item.state) jobs.set(item.jobId, item); } catch { /* retain valid history */ }
@@ -88,6 +90,7 @@ async function identity(): Promise<WorkerIdentity> {
 }
 async function refreshCapabilities(): Promise<Capability[]> {
   if (Date.now() - audioStatusAt > 60000) { audioStatus = audioBackendStatus(); audioStatusAt = Date.now(); }
+  if (Date.now() - videoStatusAt > 60000) { videoStatus = videoBackendStatus(); videoStatusAt = Date.now(); }
   const id = await identity();
   const base: Capability[] = Object.entries(id.applications).flatMap(([application, state]) => [
     { application: application as Capability["application"], action: "app.launch", method: state.installed ? "filesystem" as const : "unavailable" as const, available: state.installed },
@@ -96,6 +99,7 @@ async function refreshCapabilities(): Promise<Capability[]> {
   base.push({ application: "media", action: "media.probe", method: probeAvailable ? "filesystem" : "unavailable", available: probeAvailable, reason: probeAvailable ? undefined : "ffprobe was not found." });
   base.push({ application: "media", action: "media.review", method: ffmpegAvailable ? "filesystem" : "unavailable", available: ffmpegAvailable, reason: ffmpegAvailable ? undefined : "ffmpeg was not found." });
   base.push({ application: "media", action: "media.audio.analyze", method: audioStatus.available ? "filesystem" : "unavailable", available: audioStatus.available, reason: audioStatus.reason });
+  base.push({ application: "media", action: "media.video.analyze", method: videoStatus.available ? "filesystem" : "unavailable", available: videoStatus.available, reason: videoStatus.reason });
   base.push({ application: "media", action: "ui.status", method: "ui", available: true });
   base.push({ application: "media", action: "ui.windows", method: "ui", available: true });
   base.push({ application: "media", action: "ui.capture", method: "ui", available: env.COMPUTER_SCREEN_CAPTURE_ENABLED === "true", reason: env.COMPUTER_SCREEN_CAPTURE_ENABLED === "true" ? undefined : "Computer screen capture is disabled." });
@@ -143,6 +147,11 @@ async function run(command: AdobeCommand): Promise<AdobeResult> {
   if (command.action === "media.audio.analyze") {
     const path = resolveAllowedPath(command.args.path, env.FREEOS_ADOBE_ALLOWED_MEDIA_ROOTS || "");
     return result(command, "complete", "filesystem", await analyzeAudio(path));
+  }
+  if (command.action === "media.video.analyze") {
+    const path = resolveAllowedPath(command.args.path, env.FREEOS_ADOBE_ALLOWED_MEDIA_ROOTS || "");
+    const sampleFps = command.args.sampleFps === undefined ? undefined : Number(command.args.sampleFps);
+    return result(command, "complete", "filesystem", await analyzeVideo(path, sampleFps === undefined ? {} : { sampleFps }));
   }
   const bridge = bridges.get(command.application);
   if (["project.open", "project.saveas"].includes(command.action)) resolveAllowedPath(command.args.path, env.FREEOS_ADOBE_ALLOWED_PROJECT_ROOTS || "");
