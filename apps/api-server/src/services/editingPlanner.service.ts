@@ -51,43 +51,77 @@ function number(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function strongest(items: unknown[], limit: number): unknown[] {
-  return [...items]
-    .sort((a, b) => number((b as JsonObject)?.strength, 0) - number((a as JsonObject)?.strength, 0))
-    .slice(0, limit)
-    .sort((a, b) => number((a as JsonObject)?.time, 0) - number((b as JsonObject)?.time, 0));
+function mean(values: number[]): number | null {
+  const finite = values.filter(Number.isFinite);
+  return finite.length ? finite.reduce((a, b) => a + b, 0) / finite.length : null;
 }
 
 function compactAudio(raw: unknown): JsonObject {
   const a = asObject(raw, "audio analysis");
-  const take = (key: string) => a[key];
-  const beats = Array.isArray(take("beats")) ? take("beats") as unknown[] : [];
-  const energy = Array.isArray(take("energyCurve")) ? take("energyCurve") as unknown[] : [];
-  const transients = Array.isArray(take("transients")) ? take("transients") as unknown[] : [];
+  const energy = Array.isArray(a.energyCurve) ? a.energyCurve as JsonObject[] : [];
+  const transients = Array.isArray(a.transients) ? a.transients as JsonObject[] : [];
+  const beats = Array.isArray(a.beats) ? a.beats as JsonObject[] : [];
+  const windowSeconds = 4;
+  const duration = number(a.durationSeconds, 0);
+  const windows: JsonObject[] = [];
+  for (let start = 0; start < duration; start += windowSeconds) {
+    const end = Math.min(duration, start + windowSeconds);
+    const energies = energy.filter((e) => number(e.time, -1) >= start && number(e.time, -1) < end).map((e) => number(e.rms, NaN));
+    const peaks = energy.filter((e) => number(e.time, -1) >= start && number(e.time, -1) < end).map((e) => number(e.peak, NaN));
+    const windowTransients = transients.filter((e) => number(e.time, -1) >= start && number(e.time, -1) < end);
+    const windowBeats = beats.filter((e) => number(e.time, -1) >= start && number(e.time, -1) < end);
+    windows.push({
+      start,
+      end,
+      energyMean: mean(energies),
+      peakMean: mean(peaks),
+      transientCount: windowTransients.length,
+      strongestTransient: windowTransients.reduce((m, e) => Math.max(m, number(e.strength, 0)), 0),
+      beatCount: windowBeats.length,
+    });
+  }
   return {
-    durationSeconds: take("durationSeconds"),
-    tempo: take("tempo"),
-    beats: beats.filter((_, i) => i % 2 === 0).slice(0, 500),
-    downbeats: Array.isArray(take("downbeats")) ? take("downbeats") : [],
-    sections: Array.isArray(take("sections")) ? take("sections") : [],
-    energyCurve: energy.filter((_, i) => i % 4 === 0),
-    transients: strongest(transients, 300),
-    loudness: take("loudness"),
-    silenceRegions: take("silenceRegions"),
-    intro: take("intro"),
-    outro: take("outro"),
-    analysisVersion: take("analysisVersion"),
+    durationSeconds: a.durationSeconds,
+    tempo: a.tempo,
+    downbeats: Array.isArray(a.downbeats) ? a.downbeats : [],
+    sections: Array.isArray(a.sections) ? a.sections : [],
+    loudness: a.loudness,
+    silenceRegions: a.silenceRegions,
+    intro: a.intro,
+    outro: a.outro,
+    windows,
+    analysisVersion: a.analysisVersion,
   };
 }
 
 function compactVideo(raw: unknown, input: EditingPlannerClipInput): JsonObject {
   const v = asObject(raw, `video analysis for ${input.id}`);
   const timeline = Array.isArray(v.timeline) ? v.timeline as JsonObject[] : [];
-  const sourceSampleFps = Math.max(0.25, number(v.sampleFps, 2));
-  // Preserve roughly one observation every two seconds. The planner needs temporal
-  // evidence, not thousands of near-duplicate frames that overwhelm a local model.
-  const stride = Math.max(1, Math.round(sourceSampleFps * 2));
-  const compactTimeline = timeline.filter((_, i) => i % stride === 0 || i === timeline.length - 1);
+  const duration = number(v.durationSeconds, 0);
+  const windowSeconds = 4;
+  const windows: JsonObject[] = [];
+  for (let start = 0; start < duration; start += windowSeconds) {
+    const end = Math.min(duration, start + windowSeconds);
+    const frames = timeline.filter((f) => number(f.time, -1) >= start && number(f.time, -1) < end);
+    if (!frames.length) continue;
+    const faces = frames.filter((f) => number(f.faceCount, 0) > 0);
+    const largestFaces = faces.map((f) => f.largestFace).filter((f): f is JsonObject => !!f && typeof f === "object" && !Array.isArray(f));
+    windows.push({
+      start,
+      end,
+      sharpness: mean(frames.map((f) => number(f.sharpness, NaN))),
+      brightness: mean(frames.map((f) => number(f.brightness, NaN))),
+      motion: mean(frames.map((f) => number(f.motion, NaN))),
+      sceneChangeMax: frames.reduce((m, f) => Math.max(m, number(f.sceneChange, 0)), 0),
+      facePresence: faces.length / frames.length,
+      multiFacePresence: frames.filter((f) => number(f.faceCount, 0) > 1).length / frames.length,
+      primaryFaceArea: mean(largestFaces.map((f) => number(f.areaRatio, NaN))),
+      primaryFaceCenterX: mean(largestFaces.map((f) => number(f.centerX, NaN))),
+      primaryFaceCenterY: mean(largestFaces.map((f) => number(f.centerY, NaN))),
+      underexposedFraction: mean(frames.map((f) => number(f.underexposedFraction, NaN))),
+      overexposedFraction: mean(frames.map((f) => number(f.overexposedFraction, NaN))),
+    });
+  }
   return {
     id: input.id,
     timelineOffsetSeconds: input.timelineOffsetSeconds ?? 0,
@@ -95,39 +129,27 @@ function compactVideo(raw: unknown, input: EditingPlannerClipInput): JsonObject 
     width: v.width,
     height: v.height,
     fps: v.fps,
-    sampleFps: v.sampleFps,
-    evidenceIntervalSeconds: stride / sourceSampleFps,
     summary: v.summary,
-    sceneChanges: v.sceneChanges,
+    sceneChanges: Array.isArray(v.sceneChanges) ? (v.sceneChanges as unknown[]).slice(0, 100) : [],
     qualityFlags: v.qualityFlags,
     analysisVersion: v.analysisVersion,
-    timeline: compactTimeline.map((f) => ({
-      time: f.time,
-      sharpness: f.sharpness,
-      brightness: f.brightness,
-      motion: f.motion,
-      sceneChange: f.sceneChange,
-      faceCount: f.faceCount,
-      largestFace: f.largestFace,
-      underexposedFraction: f.underexposedFraction,
-      overexposedFraction: f.overexposedFraction,
-    })),
+    windows,
   };
+}
+
+function unwrapPlan(parsed: JsonObject): JsonObject {
+  if (Array.isArray(parsed.decisions)) return parsed;
+  if (parsed.plan && typeof parsed.plan === "object" && !Array.isArray(parsed.plan)) return parsed.plan as JsonObject;
+  return parsed;
 }
 
 function parsePlan(text: string, allowedClipIds: Set<string>, duration: number): EditingPlan {
   let parsed: JsonObject;
-  try { parsed = asObject(JSON.parse(text), "editing plan"); }
+  try { parsed = unwrapPlan(asObject(JSON.parse(text), "editing plan")); }
   catch { throw new Error("FREEOS creative planner returned malformed JSON."); }
 
-  // Accept a harmless { plan: {...} } wrapper if the local model adds one.
-  if (parsed.plan && typeof parsed.plan === "object" && !Array.isArray(parsed.plan)) parsed = parsed.plan as JsonObject;
-
   const rawDecisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
-  if (!rawDecisions.length) {
-    const keys = Object.keys(parsed).join(", ") || "(none)";
-    throw new Error(`FREEOS creative planner returned no edit decisions. Top-level keys: ${keys}.`);
-  }
+  if (!rawDecisions.length) throw new Error("FREEOS creative planner returned no edit decisions.");
 
   const decisions: EditingDecision[] = rawDecisions.map((item, index) => {
     const d = asObject(item, `decision ${index}`);
@@ -168,14 +190,14 @@ function parsePlan(text: string, allowedClipIds: Set<string>, duration: number):
   };
 }
 
-async function repairPlan(text: string, allowedClipIds: string[], duration: number): Promise<string> {
+async function askPlanner(system: string, evidenceBundle: unknown): Promise<string> {
   return generateWithOllama({
     model: config.defaultModel,
-    system: `Return valid JSON only. Repair the supplied FREEOS editing-planner response into the exact required schema. Do not create new clip ids or claim new measurements. Preserve the creative choices already present whenever possible. The required top-level key decisions must be a non-empty array.\nSchema: {"version":"freeos-creative-planner-v1","durationSeconds":number,"creativeSummary":string,"decisions":[{"start":number,"end":number,"clipId":string,"action":"cut|hold|punch-in","confidence":number,"rationale":string}],"cautions":[string],"evidence":{"audioAnalysisVersion":string,"videoAnalysisVersions":{"clipId":string}}}`,
-    prompt: JSON.stringify({ allowedClipIds, durationSeconds: duration, plannerResponse: text }),
+    system,
+    prompt: JSON.stringify(evidenceBundle),
     format: "json",
-    timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 180_000),
-    options: { temperature: 0.05, top_p: 0.7, repeat_penalty: 1.05, num_predict: 5000 },
+    timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 480_000),
+    options: { temperature: 0.3, top_p: 0.85, repeat_penalty: 1.05, num_predict: 3000 },
   });
 }
 
@@ -203,44 +225,39 @@ export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promi
     durationSeconds: duration,
     userIntent: input.userIntent ?? "Create the strongest complete performance edit from the available synchronized footage.",
     excludedClipIds: input.clips.filter((clip) => clip.exclude).map((clip) => clip.id),
+    evidenceWindowSeconds: 4,
     audio,
     clips: videos,
   };
 
   const system = `You are FREEOS's creative video editing planner. Return valid JSON only.
-You make the creative editing decisions yourself from measured evidence. Do not use a fixed weighted scoring formula, do not mechanically cut on every beat, and do not assume that face presence alone means a shot is preferable. Infer visual roles from the evidence, consider musical dynamics and performance continuity, and choose cuts deliberately.
-The analyzers provide observations, not creative judgments. Respect excluded clips. Never invent measurements, lyrics, sections, beats, sync, or footage that are absent from the evidence. If evidence is uncertain, reflect that in confidence or cautions.
-You MUST return a non-empty decisions array. Do not return analysis prose outside the JSON and do not replace decisions with recommendations or strategy.
+You make the creative editing decisions yourself from measured evidence. Do not use a fixed weighted scoring formula, do not mechanically cut on every beat, and do not assume face presence alone makes a shot preferable. Infer each camera's visual role from evidence, consider musical dynamics, continuity, contrast, pacing, and source availability, and make deliberate choices.
+The supplied windows are condensed measurements from the analyzers; they are evidence, not rankings. Respect excluded clips. Never invent lyrics, sections, beats, sync, camera contents, or measurements that are absent. If evidence is uncertain, lower confidence or add a caution.
+Produce a complete chronological edit plan. Favor concise rationales so the output stays small.
 Output exactly this shape:
 {"version":"freeos-creative-planner-v1","durationSeconds":number,"creativeSummary":string,"decisions":[{"start":number,"end":number,"clipId":string,"action":"cut|hold|punch-in","confidence":number,"rationale":string}],"cautions":[string],"evidence":{"audioAnalysisVersion":string,"videoAnalysisVersions":{"clipId":string}}}
-Decisions must be chronological, non-overlapping, use only supplied clip ids, remain within durationSeconds, and cover the intended edit as completely as the available source timing permits. A timelineOffsetSeconds means source time 0 aligns to that sequence time. If no source covers the tail of the song, end the final decision at the latest genuinely covered time and explain that gap in cautions.`;
+The decisions array MUST contain at least one item. Decisions must be chronological, non-overlapping, use only supplied clip ids, remain within durationSeconds, and cover the intended edit as completely as source timing permits. timelineOffsetSeconds means source time 0 aligns to that sequence time.`;
 
-  const text = await generateWithOllama({
-    model: config.defaultModel,
-    system,
-    prompt: JSON.stringify(evidenceBundle),
-    format: "json",
-    timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 300_000),
-    options: { temperature: 0.3, top_p: 0.88, repeat_penalty: 1.05, num_predict: 6000 },
-  });
-
-  const allowed = new Set(included.map((clip) => clip.id));
-  let plan: EditingPlan;
+  let text = await askPlanner(system, evidenceBundle);
   try {
-    plan = parsePlan(text, allowed, duration);
+    const plan = parsePlan(text, new Set(included.map((clip) => clip.id)), duration);
+    plan.evidence.audioAnalysisVersion = typeof audio.analysisVersion === "string" ? audio.analysisVersion : undefined;
+    plan.evidence.videoAnalysisVersions = Object.fromEntries(videos.map((video) => [String(video.id), typeof video.analysisVersion === "string" ? video.analysisVersion : undefined]));
+    return plan;
   } catch (firstError) {
-    console.warn("[FREEOS Editing Planner] first planner response failed validation; attempting one local repair pass.", firstError);
-    console.warn("[FREEOS Editing Planner] response excerpt:", text.slice(0, 2000));
-    const repaired = await repairPlan(text, [...allowed], duration);
-    try {
-      plan = parsePlan(repaired, allowed, duration);
-    } catch (repairError) {
-      console.error("[FREEOS Editing Planner] repair response excerpt:", repaired.slice(0, 2000));
-      throw repairError;
-    }
+    console.error("[FREEOS Editing Planner] response excerpt:", text.slice(0, 2000));
+    const repairSystem = `Return valid JSON only. Repair the supplied FREEOS edit-plan candidate so it has a non-empty chronological decisions array and exactly matches the required schema. Preserve the candidate's creative intent where possible. Use only these clip ids: ${included.map((clip) => clip.id).join(", ")}. Duration is ${duration}. Do not invent evidence. Required shape: {"version":"freeos-creative-planner-v1","durationSeconds":number,"creativeSummary":string,"decisions":[{"start":number,"end":number,"clipId":string,"action":"cut|hold|punch-in","confidence":number,"rationale":string}],"cautions":[string],"evidence":{"audioAnalysisVersion":string,"videoAnalysisVersions":{"clipId":string}}}`;
+    text = await generateWithOllama({
+      model: config.defaultModel,
+      system: repairSystem,
+      prompt: text.slice(0, 12000),
+      format: "json",
+      timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 240_000),
+      options: { temperature: 0.1, top_p: 0.8, repeat_penalty: 1.05, num_predict: 2500 },
+    });
+    const plan = parsePlan(text, new Set(included.map((clip) => clip.id)), duration);
+    plan.evidence.audioAnalysisVersion = typeof audio.analysisVersion === "string" ? audio.analysisVersion : undefined;
+    plan.evidence.videoAnalysisVersions = Object.fromEntries(videos.map((video) => [String(video.id), typeof video.analysisVersion === "string" ? video.analysisVersion : undefined]));
+    return plan;
   }
-
-  plan.evidence.audioAnalysisVersion = typeof audio.analysisVersion === "string" ? audio.analysisVersion : undefined;
-  plan.evidence.videoAnalysisVersions = Object.fromEntries(videos.map((video) => [String(video.id), typeof video.analysisVersion === "string" ? video.analysisVersion : undefined]));
-  return plan;
 }
