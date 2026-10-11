@@ -1,6 +1,7 @@
 import { config } from "../config";
 import { adobeService } from "./adobe.service";
 import { generateWithOllama } from "./ollama.service";
+import { bootstrapEditingAcademy, buildEditingKnowledgeContext } from "./editingAcademy.service";
 
 type JsonObject = Record<string, unknown>;
 
@@ -39,6 +40,8 @@ export interface EditingPlan {
   evidence: {
     audioAnalysisVersion?: string;
     videoAnalysisVersions: Record<string, string | undefined>;
+    editingKnowledgeUnits?: number;
+    editingKnowledgeGap?: boolean;
   };
 }
 
@@ -207,6 +210,14 @@ export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promi
   if (!included.length) throw new Error("At least one non-excluded clip is required.");
   if (new Set(included.map((clip) => clip.id)).size !== included.length) throw new Error("Clip ids must be unique.");
 
+  // Idempotent owner-directed seed: knowledge is durable, mastery remains evidence-based.
+  bootstrapEditingAcademy();
+  const intent = input.userIntent ?? "Create the strongest complete performance edit from the available synchronized footage.";
+  const editingKnowledge = buildEditingKnowledgeContext(intent);
+  if (editingKnowledge.gap.needsMoreKnowledge) {
+    throw new Error(`Editing Academy knowledge gap: ${editingKnowledge.gap.reason} Query: ${editingKnowledge.gap.query}`);
+  }
+
   const sampleFps = Math.max(0.5, Math.min(4, input.sampleFps ?? 2));
   const [audioRaw, ...videoRaw] = await Promise.all([
     adobeService.run("media", "media.audio.analyze", { path: input.audioPath }),
@@ -223,16 +234,24 @@ export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promi
     project: input.project,
     sequence: input.sequence,
     durationSeconds: duration,
-    userIntent: input.userIntent ?? "Create the strongest complete performance edit from the available synchronized footage.",
+    userIntent: intent,
     excludedClipIds: input.clips.filter((clip) => clip.exclude).map((clip) => clip.id),
     evidenceWindowSeconds: 4,
+    editingKnowledge: {
+      relevantUnits: editingKnowledge.gap.relevantUnits,
+      relevantCompetencies: editingKnowledge.gap.relevantCompetencies,
+      lowMasteryCompetencies: editingKnowledge.gap.lowMasteryCompetencies,
+    },
     audio,
     clips: videos,
   };
 
   const system = `You are FREEOS's creative video editing planner. Return valid JSON only.
-You make the creative editing decisions yourself from measured evidence. Do not use a fixed weighted scoring formula, do not mechanically cut on every beat, and do not assume face presence alone makes a shot preferable. Infer each camera's visual role from evidence, consider musical dynamics, continuity, contrast, pacing, and source availability, and make deliberate choices.
-The supplied windows are condensed measurements from the analyzers; they are evidence, not rankings. Respect excluded clips. Never invent lyrics, sections, beats, sync, camera contents, or measurements that are absent. If evidence is uncertain, lower confidence or add a caution.
+You make the creative editing decisions yourself from measured evidence and the owner-approved Editing Academy knowledge below. The academy is guidance, not a preset system: combine, adapt, or reject techniques according to the footage, song, user intent, and project context. Do not use a fixed weighted scoring formula, do not mechanically cut on every beat, and do not assume face presence alone makes a shot preferable. Infer each camera's visual role from evidence, consider musical dynamics, continuity, contrast, pacing, and source availability, and make deliberate choices.
+
+${editingKnowledge.context}
+
+The supplied analysis windows are condensed measurements from analyzers; they are evidence, not rankings. Respect excluded clips. Never invent lyrics, sections, beats, sync, camera contents, or measurements that are absent. If evidence is uncertain, lower confidence or add a caution. The reported mastery level describes demonstrated practice, not whether the knowledge is available; low mastery should make you more conservative and explicit in rationale.
 Produce a complete chronological edit plan. Favor concise rationales so the output stays small.
 Output exactly this shape:
 {"version":"freeos-creative-planner-v1","durationSeconds":number,"creativeSummary":string,"decisions":[{"start":number,"end":number,"clipId":string,"action":"cut|hold|punch-in","confidence":number,"rationale":string}],"cautions":[string],"evidence":{"audioAnalysisVersion":string,"videoAnalysisVersions":{"clipId":string}}}
@@ -243,6 +262,8 @@ The decisions array MUST contain at least one item. Decisions must be chronologi
     const plan = parsePlan(text, new Set(included.map((clip) => clip.id)), duration);
     plan.evidence.audioAnalysisVersion = typeof audio.analysisVersion === "string" ? audio.analysisVersion : undefined;
     plan.evidence.videoAnalysisVersions = Object.fromEntries(videos.map((video) => [String(video.id), typeof video.analysisVersion === "string" ? video.analysisVersion : undefined]));
+    plan.evidence.editingKnowledgeUnits = editingKnowledge.gap.relevantUnits;
+    plan.evidence.editingKnowledgeGap = editingKnowledge.gap.needsMoreKnowledge;
     return plan;
   } catch (firstError) {
     console.error("[FREEOS Editing Planner] response excerpt:", text.slice(0, 2000));
@@ -258,6 +279,8 @@ The decisions array MUST contain at least one item. Decisions must be chronologi
     const plan = parsePlan(text, new Set(included.map((clip) => clip.id)), duration);
     plan.evidence.audioAnalysisVersion = typeof audio.analysisVersion === "string" ? audio.analysisVersion : undefined;
     plan.evidence.videoAnalysisVersions = Object.fromEntries(videos.map((video) => [String(video.id), typeof video.analysisVersion === "string" ? video.analysisVersion : undefined]));
+    plan.evidence.editingKnowledgeUnits = editingKnowledge.gap.relevantUnits;
+    plan.evidence.editingKnowledgeGap = editingKnowledge.gap.needsMoreKnowledge;
     return plan;
   }
 }
