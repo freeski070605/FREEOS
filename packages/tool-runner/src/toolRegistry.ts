@@ -8,6 +8,7 @@ import { CONTROL_KEYS, OBSERVATION_KEYS } from "@freeos/computer-core";
 type Row = Record<string, unknown>;
 
 export const DEFAULT_TOOLS: Array<Omit<ToolDefinition, "id" | "createdAt" | "updatedAt">> = [
+  { toolKey: "media.audio.analyze", name: "Analyze audio", description: "Read song timing, dynamics, transients, silence, and loudness from the AIO media worker. Requires an allowed AIO file path.", category: "media", riskLevel: "read_only", enabled: true, requiresApproval: false },
   ...["agents.status", "agents.templates.list", "agents.list", "agents.get", "agents.run.preview", "agents.runs.list", "agents.run.get"].map(toolKey => ({ toolKey, name: toolKey, description: "Project-specific agent inspection or preview.", category: "agents", riskLevel: "read_only" as ToolRiskLevel, enabled: true, requiresApproval: false })),
   ...["agents.create", "agents.update", "agents.enable", "agents.disable", "agents.delete"].map(toolKey => ({ toolKey, name: toolKey, description: "Agent configuration change; human approval required.", category: "agents", riskLevel: "medium_risk" as ToolRiskLevel, enabled: true, requiresApproval: true })),
   ...["scheduler.status", "scheduler.schedules.list", "scheduler.schedule.get", "scheduler.schedule.preview", "scheduler.runs.list"].map(toolKey => ({ toolKey, name: toolKey, description: "Scheduler status, history, and preview.", category: "scheduler", riskLevel: "read_only" as ToolRiskLevel, enabled: true, requiresApproval: false })),

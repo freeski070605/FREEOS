@@ -9,6 +9,7 @@ import { browserAuditArgs, isBrowserActionKey } from "@freeos/browser-core";
 import { AgentStore } from "@freeos/agent-core";
 import { getMemoryStore } from "@freeos/memory-core";
 import { executeOperatorTool, isOperatorTool } from "./operatorTools";
+import { executeMediaAudioTool } from "./mediaAudioTool";
 
 export class ToolExecutor {
   readonly requests: ToolRequests;
@@ -52,7 +53,7 @@ export class ToolExecutor {
     const auditArgs = toolKey.startsWith("browser.") ? browserAuditArgs(toolKey, args) : toolKey === "coding.change.preview" ? { summary: args.summary, files: Array.isArray(args.files) ? args.files.map((file: any) => ({ path: file?.path, operation: file?.operation })) : [] } : computerAuditArgs(toolKey, args);
     const run = this.requests.startRun(toolKey, auditArgs, requestId);
     try {
-      const output = isOperatorTool(toolKey) ? await executeOperatorTool(this.registry, toolKey, args) : await executeSafeTool(this.registry, toolKey, args, { requestId: requestId ?? undefined, toolRunId: run.id });
+      const output = toolKey === "media.audio.analyze" ? await executeMediaAudioTool(args) : isOperatorTool(toolKey) ? await executeOperatorTool(this.registry, toolKey, args) : await executeSafeTool(this.registry, toolKey, args, { requestId: requestId ?? undefined, toolRunId: run.id });
       const auditOutput = toolKey.startsWith("browser.") ? { redacted: true } : toolKey === "coding.file.read" || toolKey === "coding.search" || toolKey === "coding.git.diff" || toolKey === "coding.git.diff_file" || toolKey === "coding.change.preview" || toolKey === "coding.command.run" ? { redacted: true } : computerAuditOutput(toolKey, output);
       const finished = this.requests.finishRun(run.id, "completed", auditOutput, null);
       return { ...finished, output };

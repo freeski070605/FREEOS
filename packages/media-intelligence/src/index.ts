@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+export { analyzeAudio, audioBackendStatus, runBounded } from "./audio/analyzeAudio";
+export { parseAudioAnalysis, type AudioAnalysis } from "./audio/types";
 
 export interface RenderIssue { kind: "black-frame" | "silence"; start: number; end: number; severity: number }
 export interface RenderAnalysis { issues: RenderIssue[]; stderrExcerpt: string; exitCode: number }
