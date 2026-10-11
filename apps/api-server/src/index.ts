@@ -33,7 +33,7 @@ import { remoteOpsRouter } from "./routes/remoteOps.routes";
 import { operatorsRouter } from "./routes/operators.routes";
 import { remoteOpsService } from "./services/remoteOps.service";
 import { remoteOpsApprovalRunner } from "./services/remoteOpsApprovalRunner.service";
-import { registerDefaultTools, registerOperatorTools, getToolRegistry, ToolExecutor, ToolRequests } from "@freeos/tool-runner";
+import { registerDefaultTools, registerOperatorTools, registerMediaAudioAnalyzer, getToolRegistry, ToolExecutor, ToolRequests } from "@freeos/tool-runner";
 import { Scheduler, configureScheduler } from "@freeos/scheduler-core";
 import { schedulerRouter } from "./routes/scheduler.routes";
 import { computerRouter } from "./routes/computer.routes";
@@ -47,6 +47,7 @@ const app = express();
 registerDefaultTools();
 const registry = getToolRegistry();
 registerOperatorTools(registry);
+registerMediaAudioAnalyzer(path => adobeService.run("media", "media.audio.analyze", { path }));
 const scheduler = configureScheduler(new Scheduler(registry.database, {
   getTool: key => registry.getToolByKey(key),
   runReadOnly: async (key, args) => {
