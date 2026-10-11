@@ -42,6 +42,27 @@ class AdobeService {
     this.socket.send(JSON.stringify({ type: "command", command }));
     return id;
   }
+  async run(application: AdobeCommand["application"], action: string, args: Record<string, unknown>, timeoutMs = 600000): Promise<unknown> {
+    const jobId = this.submit(application, action, args);
+    const startedAt = Date.now();
+    return await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn: () => void) => { if (settled) return; settled = true; clearInterval(timer); fn(); };
+      const timer = setInterval(() => {
+        if (Date.now() - startedAt > timeoutMs) {
+          try { this.cancel(jobId); } catch { /* best effort */ }
+          finish(() => reject(new Error(`Adobe worker job timed out: ${application}.${action}.`)));
+          return;
+        }
+        const job = this.jobs.get(jobId);
+        if (!job) return;
+        if (job.state === "complete") { finish(() => resolve(job.output)); return; }
+        if (job.state === "failed") { finish(() => reject(new Error(job.error || `Adobe worker job failed: ${application}.${action}.`))); return; }
+        if (job.state === "cancelled") { finish(() => reject(new Error(`Adobe worker job was cancelled: ${application}.${action}.`))); }
+      }, 100);
+      timer.unref();
+    });
+  }
   cancel(id: string): void {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) throw new Error("Adobe worker is offline.");
     this.socket.send(JSON.stringify({ type: "cancel", jobId: id }));
