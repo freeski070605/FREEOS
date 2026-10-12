@@ -77,17 +77,23 @@ function sectionEvidence(audio: JsonObject, videos: JsonObject[], start: number,
 }
 '@
 
-if (-not $content.Contains($oldEvidence)) {
-  throw 'Could not find sectionEvidence block. Repo may already be patched or changed.'
+if ($content.Contains($oldEvidence)) {
+  $content = $content.Replace($oldEvidence, $newEvidence)
+} elseif (-not $content.Contains('const sectionAudio = audioWindows.filter')) {
+  throw 'Could not find sectionEvidence block and it does not appear already patched.'
 }
-$content = $content.Replace($oldEvidence, $newEvidence)
 
-$oldSystem = 'Required shape: {\"decisions\":[{\"start\":number,\"end\":number,\"clipId\":string,\"action\":\"cut|hold|punch-in\",\"confidence\":number,\"rationale\":string}],\"cautions\":[string]}. Decisions must be chronological, non-overlapping, and cover this section as completely as available evidence permits. Keep rationales short.`;'
-$newSystem = 'Return ONLY the required object. The first top-level key must be \"decisions\". NEVER repeat, summarize, rename, or echo the supplied evidence. Do not output videoAnalysisResult, segments, clips, audio, reasoning, or markdown. Required shape: {\"decisions\":[{\"start\":number,\"end\":number,\"clipId\":string,\"action\":\"cut|hold|punch-in\",\"confidence\":number,\"rationale\":string}],\"cautions\":[string]}. Decisions must be chronological, non-overlapping, and cover this section as completely as available evidence permits. Keep rationales under 80 characters.`;'
-if (-not $content.Contains($oldSystem)) {
-  throw 'Could not find sectionSystem schema text.'
+$oldSystem = @'
+Required shape: {"decisions":[{"start":number,"end":number,"clipId":string,"action":"cut|hold|punch-in","confidence":number,"rationale":string}],"cautions":[string]}. Decisions must be chronological, non-overlapping, and cover this section as completely as available evidence permits. Keep rationales short.`;
+'@
+$newSystem = @'
+Return ONLY the required object. The first top-level key must be "decisions". NEVER repeat, summarize, rename, or echo the supplied evidence. Do not output videoAnalysisResult, segments, clips, audio, reasoning, or markdown. Required shape: {"decisions":[{"start":number,"end":number,"clipId":string,"action":"cut|hold|punch-in","confidence":number,"rationale":string}],"cautions":[string]}. Decisions must be chronological, non-overlapping, and cover this section as completely as available evidence permits. Keep rationales under 80 characters.`;
+'@
+if ($content.Contains($oldSystem)) {
+  $content = $content.Replace($oldSystem, $newSystem)
+} elseif (-not $content.Contains('NEVER repeat, summarize, rename, or echo the supplied evidence')) {
+  throw 'Could not find sectionSystem schema text and it does not appear already patched.'
 }
-$content = $content.Replace($oldSystem, $newSystem)
 
 $oldPredict = @'
       timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 150_000),
@@ -99,21 +105,16 @@ $newPredict = @'
       numPredict: 700,
       temperature: 0.2,
 '@
-if (-not $content.Contains($oldPredict)) {
-  throw 'Could not find primary section generation settings.'
+if ($content.Contains($oldPredict)) {
+  $content = $content.Replace($oldPredict, $newPredict)
+} elseif (-not $content.Contains('      numPredict: 700,')) {
+  throw 'Could not find primary section generation settings and they do not appear already patched.'
 }
-$content = $content.Replace($oldPredict, $newPredict)
 
-$oldCatchCall = @'
-      sectionText = await generateJson({
-        system: `Return valid JSON only. Repair this section edit plan. Preserve its creative intent. Use only clip ids ${included.map((clip) => clip.id).join(", ")}. All decisions must stay within ${sectionStart}-${sectionEnd} absolute timeline seconds, be chronological and non-overlapping, and respect source availability. Required shape: {"decisions":[{"start":number,"end":number,"clipId":string,"action":"cut|hold|punch-in","confidence":number,"rationale":string}],"cautions":[string]}.`,
-        prompt: sectionText.slice(0, 8000),
-        timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 90_000),
-        numPredict: 1000,
-        temperature: 0.1,
-      });
-'@
-$newCatchCall = @'
+# Replace the entire retry generateJson block structurally so this works whether or not
+# the earlier availability patch changed the retry prompt text.
+$retryPattern = '(?s)      sectionText = await generateJson\(\{\r?\n        system: `Return valid JSON only\..*?\r?\n        temperature: 0\.1,\r?\n      \}\);'
+$retryReplacement = @'
       const availability = evidence.clips.map((clip) => ({
         id: clip.id,
         availableStart: clip.availableStart,
@@ -134,10 +135,11 @@ $newCatchCall = @'
         temperature: 0.05,
       });
 '@
-if (-not $content.Contains($oldCatchCall)) {
-  throw 'Could not find repair generation block.'
+if ([regex]::IsMatch($content, $retryPattern)) {
+  $content = [regex]::Replace($content, $retryPattern, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $retryReplacement }, 1)
+} elseif (-not $content.Contains('Create a fresh section edit plan; do NOT repair or echo')) {
+  throw 'Could not find retry generation block and it does not appear already patched.'
 }
-$content = $content.Replace($oldCatchCall, $newCatchCall)
 
 Set-Content -LiteralPath $path -Value $content -Encoding UTF8
 Write-Host '[FREEOS] Patched staged planner to prevent evidence-echo JSON runaway.' -ForegroundColor Green
