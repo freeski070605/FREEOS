@@ -52,6 +52,44 @@ interface CreativeBrief {
   cautions: string[];
 }
 
+const creativeBriefSchema: JsonObject = {
+  type: "object",
+  additionalProperties: false,
+  required: ["creativeSummary", "principles", "cautions"],
+  properties: {
+    creativeSummary: { type: "string", maxLength: 2400 },
+    principles: { type: "array", maxItems: 12, items: { type: "string", maxLength: 220 } },
+    cautions: { type: "array", maxItems: 20, items: { type: "string", maxLength: 220 } },
+  },
+};
+
+const sectionPlanSchema: JsonObject = {
+  type: "object",
+  additionalProperties: false,
+  required: ["decisions", "cautions"],
+  properties: {
+    decisions: {
+      type: "array",
+      minItems: 1,
+      maxItems: 24,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["start", "end", "clipId", "action", "confidence", "rationale"],
+        properties: {
+          start: { type: "number" },
+          end: { type: "number" },
+          clipId: { type: "string", maxLength: 120 },
+          action: { type: "string", enum: ["cut", "hold", "punch-in"] },
+          confidence: { type: "number", minimum: 0, maximum: 1 },
+          rationale: { type: "string", maxLength: 180 },
+        },
+      },
+    },
+    cautions: { type: "array", maxItems: 10, items: { type: "string", maxLength: 220 } },
+  },
+};
+
 function asObject(value: unknown, label: string): JsonObject {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object.`);
   return value as JsonObject;
@@ -161,9 +199,15 @@ function parseCreativeBrief(text: string): CreativeBrief {
   };
 }
 
-function parseSectionDecisions(text: string, allowedClipIds: Set<string>, sectionStart: number, sectionEnd: number, videos: JsonObject[]): EditingDecision[] {
+function parseSectionPlan(text: string): { decisions: unknown[]; cautions: string[] } {
   const parsed = asObject(JSON.parse(text), "section plan");
-  const raw = Array.isArray(parsed.decisions) ? parsed.decisions : [];
+  return {
+    decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
+    cautions: Array.isArray(parsed.cautions) ? parsed.cautions.filter((v): v is string => typeof v === "string") : [],
+  };
+}
+
+function validateSectionDecisions(raw: unknown[], allowedClipIds: Set<string>, sectionStart: number, sectionEnd: number, videos: JsonObject[]): EditingDecision[] {
   if (!raw.length) throw new Error(`FREEOS returned no decisions for section ${sectionStart}-${sectionEnd}.`);
   const decisions = raw.map((item, index): EditingDecision => {
     const d = asObject(item, `section decision ${index}`);
@@ -193,38 +237,63 @@ function parseSectionDecisions(text: string, allowedClipIds: Set<string>, sectio
 
 function sectionEvidence(audio: JsonObject, videos: JsonObject[], start: number, end: number) {
   const audioWindows = Array.isArray(audio.windows) ? audio.windows as JsonObject[] : [];
+  const sectionAudio = audioWindows.filter((w) => number(w.end, 0) > start && number(w.start, 0) < end);
   return {
     start,
     end,
     audio: {
       tempo: audio.tempo,
       loudness: audio.loudness,
-      sections: audio.sections,
-      silenceRegions: audio.silenceRegions,
-      windows: audioWindows.filter((w) => number(w.end, 0) > start && number(w.start, 0) < end),
+      windows: sectionAudio.map((w) => ({
+        start: w.start,
+        end: w.end,
+        energyMean: w.energyMean,
+        transientCount: w.transientCount,
+        strongestTransient: w.strongestTransient,
+        beatCount: w.beatCount,
+      })),
     },
     clips: videos.map((video) => {
       const windows = Array.isArray(video.windows) ? video.windows as JsonObject[] : [];
+      const sectionWindows = windows.filter((w) => number(w.timelineEnd, 0) > start && number(w.timelineStart, 0) < end);
       return {
         id: video.id,
-        timelineAvailableStart: video.timelineAvailableStart,
-        timelineAvailableEnd: video.timelineAvailableEnd,
-        summary: video.summary,
-        qualityFlags: video.qualityFlags,
-        windows: windows.filter((w) => number(w.timelineEnd, 0) > start && number(w.timelineStart, 0) < end),
+        availableStart: video.timelineAvailableStart,
+        availableEnd: video.timelineAvailableEnd,
+        windows: sectionWindows.map((w) => ({
+          start: w.timelineStart,
+          end: w.timelineEnd,
+          sharpness: w.sharpness,
+          brightness: w.brightness,
+          motion: w.motion,
+          facePresence: w.facePresence,
+          multiFacePresence: w.multiFacePresence,
+          primaryFaceArea: w.primaryFaceArea,
+          sceneChangeMax: w.sceneChangeMax,
+          underexposedFraction: w.underexposedFraction,
+          overexposedFraction: w.overexposedFraction,
+        })),
       };
-    }).filter((video) => number(video.timelineAvailableEnd, 0) > start && number(video.timelineAvailableStart, 0) < end),
+    }).filter((video) => number(video.availableEnd, 0) > start && number(video.availableStart, 0) < end),
   };
 }
 
-async function generateJson(input: { model?: string; system: string; prompt: unknown; timeoutMs: number; numPredict: number; temperature?: number }): Promise<string> {
+async function generateJson(input: {
+  model?: string;
+  system: string;
+  prompt: unknown;
+  schema: JsonObject;
+  timeoutMs: number;
+  numPredict: number;
+  temperature?: number;
+}): Promise<string> {
   return generateWithOllama({
     model: input.model ?? config.defaultModel,
     system: input.system,
     prompt: typeof input.prompt === "string" ? input.prompt : JSON.stringify(input.prompt),
-    format: "json",
+    format: input.schema,
     timeoutMs: input.timeoutMs,
-    options: { temperature: input.temperature ?? 0.25, top_p: 0.85, repeat_penalty: 1.05, num_predict: input.numPredict },
+    options: { temperature: input.temperature ?? 0.2, top_p: 0.82, repeat_penalty: 1.08, num_predict: input.numPredict },
   });
 }
 
@@ -261,7 +330,7 @@ export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promi
     qualityFlags: video.qualityFlags,
   }));
 
-  const briefSystem = `You are FREEOS's senior editing director. Return valid JSON only. Build a concise creative direction from the user's intent, owner-approved Editing Academy guidance, song-level evidence, and camera summaries. Do not output cuts yet. Do not invent footage, lyrics, or musical structure. The academy is judgment guidance, not a preset. Required shape: {"creativeSummary":string,"principles":[string],"cautions":[string]}.\n\n${editingKnowledge.context}`;
+  const briefSystem = `You are FREEOS's senior editing director. Build a concise creative direction from the user's intent, owner-approved Editing Academy guidance, song-level evidence, and camera summaries. Do not output cuts yet. Do not invent footage, lyrics, or musical structure. The academy is judgment guidance, not a preset.\n\n${editingKnowledge.context}`;
   const briefText = await generateJson({
     system: briefSystem,
     prompt: {
@@ -273,9 +342,10 @@ export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promi
       audio: { tempo: audio.tempo, loudness: audio.loudness, sections: audio.sections, silenceRegions: audio.silenceRegions, intro: audio.intro, outro: audio.outro },
       clips: summaries,
     },
+    schema: creativeBriefSchema,
     timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 180_000),
-    numPredict: 900,
-    temperature: 0.3,
+    numPredict: 1000,
+    temperature: 0.25,
   });
   const brief = parseCreativeBrief(briefText);
 
@@ -286,40 +356,53 @@ export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promi
   for (let sectionStart = 0; sectionStart < availableEnd; sectionStart += sectionSeconds) {
     const sectionEnd = Math.min(availableEnd, sectionStart + sectionSeconds);
     const evidence = sectionEvidence(audio, videos, sectionStart, sectionEnd);
-    const sectionSystem = `You are FREEOS's section editor. Return valid JSON only. Make the actual creative edit decisions for ONLY timeline ${sectionStart.toFixed(3)} to ${sectionEnd.toFixed(3)} seconds. Use the creative direction and measured section evidence. Apply Editing Academy principles as judgment, never as fixed rules. Do not mechanically cut on beats, alternate cameras, or rank shots by one metric. Use absolute timeline seconds. Respect every clip's availability. Continue naturally from previousClipId when useful, but change when the performance, visual role, contrast, musical phrase, or creative direction motivates it. Do not invent visual content, lyrics, sync, or musical events. Required shape: {"decisions":[{"start":number,"end":number,"clipId":string,"action":"cut|hold|punch-in","confidence":number,"rationale":string}],"cautions":[string]}. Decisions must be chronological, non-overlapping, and cover this section as completely as available evidence permits. Keep rationales short.`;
+    const availability = evidence.clips.map((clip) => ({ id: clip.id, start: clip.availableStart, end: clip.availableEnd }));
+    const sectionSystem = `You are FREEOS's section editor. Make the actual creative edit decisions for ONLY timeline ${sectionStart.toFixed(3)} to ${sectionEnd.toFixed(3)} seconds. Use absolute timeline seconds. Respect every clip's supplied availability. Apply the creative brief and Editing Academy judgment, but never mechanically cut on beats, alternate cameras, or rank shots by one metric. Do not invent visual content, lyrics, sync, or musical events. The output schema is enforced externally, so output only the edit plan data and never repeat the evidence.`;
     const sectionPrompt = {
       userIntent: intent,
       creativeBrief: brief,
       previousClipId: previousClipId || null,
-      editingKnowledgeCompetencies: editingKnowledge.gap.relevantCompetencies,
+      availability,
       evidence,
     };
 
     let sectionText = await generateJson({
       system: sectionSystem,
       prompt: sectionPrompt,
-      timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 150_000),
-      numPredict: 1400,
-      temperature: 0.3,
+      schema: sectionPlanSchema,
+      timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 180_000),
+      numPredict: 1800,
+      temperature: 0.2,
     });
 
+    let parsedSection: { decisions: unknown[]; cautions: string[] };
     let sectionDecisions: EditingDecision[];
     try {
-      sectionDecisions = parseSectionDecisions(sectionText, allowedClipIds, sectionStart, sectionEnd, videos);
+      parsedSection = parseSectionPlan(sectionText);
+      sectionDecisions = validateSectionDecisions(parsedSection.decisions, allowedClipIds, sectionStart, sectionEnd, videos);
     } catch (error) {
+      const failure = error instanceof Error ? error.message : String(error);
+      console.error(`[FREEOS Editing Planner] section ${sectionStart}-${sectionEnd} validation failure: ${failure}`);
       console.error(`[FREEOS Editing Planner] section ${sectionStart}-${sectionEnd} response excerpt:`, sectionText.slice(0, 1600));
       sectionText = await generateJson({
-        system: `Return valid JSON only. Repair this section edit plan. Preserve its creative intent. Use only clip ids ${included.map((clip) => clip.id).join(", ")}. All decisions must stay within ${sectionStart}-${sectionEnd} absolute timeline seconds, be chronological and non-overlapping, and respect source availability. Required shape: {"decisions":[{"start":number,"end":number,"clipId":string,"action":"cut|hold|punch-in","confidence":number,"rationale":string}],"cautions":[string]}.`,
-        prompt: sectionText.slice(0, 8000),
-        timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 90_000),
-        numPredict: 1000,
-        temperature: 0.1,
+        system: `Create a fresh section edit plan for ${sectionStart.toFixed(3)}-${sectionEnd.toFixed(3)} seconds. Use only the supplied clip ids and availability ranges. Preserve the creative brief, but do not copy the previous malformed result or repeat evidence. The output schema is enforced externally.`,
+        prompt: {
+          previousClipId: previousClipId || null,
+          creativeBrief: brief,
+          availability,
+          evidence,
+          previousFailure: failure,
+        },
+        schema: sectionPlanSchema,
+        timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 150_000),
+        numPredict: 1800,
+        temperature: 0.05,
       });
-      sectionDecisions = parseSectionDecisions(sectionText, allowedClipIds, sectionStart, sectionEnd, videos);
+      parsedSection = parseSectionPlan(sectionText);
+      sectionDecisions = validateSectionDecisions(parsedSection.decisions, allowedClipIds, sectionStart, sectionEnd, videos);
     }
 
-    const parsedSection = asObject(JSON.parse(sectionText), "section plan");
-    if (Array.isArray(parsedSection.cautions)) sectionCautions.push(...parsedSection.cautions.filter((v): v is string => typeof v === "string"));
+    sectionCautions.push(...parsedSection.cautions);
     decisions.push(...sectionDecisions);
     previousClipId = sectionDecisions.at(-1)?.clipId ?? previousClipId;
   }
@@ -335,7 +418,7 @@ export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promi
   ])).slice(0, 50);
 
   return {
-    version: "freeos-creative-planner-v2-staged",
+    version: "freeos-creative-planner-v3-structured",
     durationSeconds: duration,
     creativeSummary: brief.creativeSummary,
     decisions,
@@ -345,7 +428,7 @@ export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promi
       videoAnalysisVersions: Object.fromEntries(videos.map((video) => [String(video.id), typeof video.analysisVersion === "string" ? video.analysisVersion : undefined])),
       editingKnowledgeUnits: editingKnowledge.gap.relevantUnits,
       editingKnowledgeGap: editingKnowledge.gap.needsMoreKnowledge,
-      plannerMode: "academy-guided-staged",
+      plannerMode: "academy-guided-staged-structured",
     },
   };
 }
