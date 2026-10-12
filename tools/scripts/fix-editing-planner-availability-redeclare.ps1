@@ -4,17 +4,17 @@ $path = Join-Path $PSScriptRoot '..\..\apps\api-server\src\services\editingPlann
 $path = [System.IO.Path]::GetFullPath($path)
 $lines = Get-Content -LiteralPath $path
 
-$matches = @()
+$availabilityIndexes = @()
 for ($i = 0; $i -lt $lines.Count; $i++) {
-  if ($lines[$i] -match '^\s*const availability = ') { $matches += $i }
+  if ($lines[$i] -match '^\s*const availability = ') { $availabilityIndexes += $i }
 }
 
-if ($matches.Count -lt 2) {
+if ($availabilityIndexes.Count -lt 2) {
   Write-Host '[FREEOS] No duplicate availability declaration found; nothing to fix.' -ForegroundColor Yellow
   exit 0
 }
 
-$second = $matches[1]
+$second = $availabilityIndexes[1]
 $lines[$second] = $lines[$second] -replace 'const availability =', 'const retryAvailability ='
 
 $updatedUsage = $false
