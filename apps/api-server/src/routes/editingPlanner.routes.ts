@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { buildCreativeEditPlan, type EditingPlannerRequest } from "../services/editingPlanner.service";
+import { buildEditingDryRun, type EditingDryRunRequest } from "../services/editingExecution.service";
 
 export const editingPlannerRouter = Router();
 
@@ -18,6 +19,18 @@ editingPlannerRouter.post("/plan", async (request, response, next) => {
 
     const plan = await buildCreativeEditPlan(body as EditingPlannerRequest);
     response.json({ plan });
+  } catch (error) {
+    next(error);
+  }
+});
+
+editingPlannerRouter.post("/dry-run", (request, response, next) => {
+  try {
+    const body = request.body as Partial<EditingDryRunRequest>;
+    if (!body || typeof body !== "object") return response.status(400).json({ error: "JSON body required." });
+    if (!Array.isArray(body.decisions)) return response.status(400).json({ error: "decisions must be an array." });
+    const dryRun = buildEditingDryRun(body as EditingDryRunRequest);
+    response.json({ dryRun });
   } catch (error) {
     next(error);
   }
