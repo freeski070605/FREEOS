@@ -22,7 +22,7 @@ function Replace-Exact {
     }
 
     if (-not $text.Contains($Old)) {
-        throw "$Label: expected source fragment was not found. Refusing blind patch."
+        throw "${Label}: expected source fragment was not found. Refusing blind patch."
     }
 
     $updated = $text.Replace($Old, $New)
