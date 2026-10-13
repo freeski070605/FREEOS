@@ -99,6 +99,171 @@ async function renameSequenceCommand(command) {
   await project.setActiveSequence(sequence);
   return result;
 }
+function tick(seconds) {
+  if (!Number.isFinite(seconds)) throw new Error("Invalid timeline time.");
+  return premiere.TickTime.createWithSeconds(seconds);
+}
+async function applyAssembly(command) {
+  const project = await activeProject();
+  const sequence = await project.getActiveSequence();
+  if (!sequence) throw new Error("No active sequence.");
+
+  const activeId = await sequenceId(sequence);
+  const expectedId = command.args.sequenceId;
+  if (typeof expectedId !== "string" || activeId !== expectedId) throw new Error("Refusing assembly: active sequence does not match sequenceId.");
+  if (!/^BLAKEO_FREEOS_(PASS_\d{2}|FINAL)$/.test(sequence.name)) throw new Error("Refusing assembly outside a FREEOS Blakeo working sequence.");
+
+  const decisions = Array.isArray(command.args.decisions) ? command.args.decisions : [];
+  if (!decisions.length || decisions.length > 100) throw new Error("decisions must contain 1-100 segments.");
+
+  let previousEnd = -Infinity;
+  for (const decision of decisions) {
+    if (!decision || typeof decision.clipId !== "string" || !decision.clipId.trim()) throw new Error("Every decision requires clipId.");
+    if (!Number.isFinite(decision.start) || !Number.isFinite(decision.end) || decision.start < 0 || decision.end <= decision.start) throw new Error("Every decision requires a valid start/end interval.");
+    if (decision.start < previousEnd - 0.0005) throw new Error("Assembly decisions overlap or are not sorted.");
+    previousEnd = decision.end;
+  }
+
+  const sourceVideoTrackCount = await sequence.getVideoTrackCount();
+  const sourceAudioTrackCount = await sequence.getAudioTrackCount();
+  if (sourceVideoTrackCount < 1) throw new Error("No source video tracks found.");
+
+  for (let i = 0; i < sourceVideoTrackCount; i++) {
+    const track = await sequence.getVideoTrack(i);
+    if (track.name === "FREEOS_OUTPUT_VIDEO") throw new Error("FREEOS output track already exists; refusing duplicate assembly.");
+  }
+
+  const sourceCandidates = [];
+  for (let trackIndex = 0; trackIndex < sourceVideoTrackCount; trackIndex++) {
+    const track = await sequence.getVideoTrack(trackIndex);
+    const items = track.getTrackItems(premiere.Constants.TrackItemType.CLIP, false);
+    for (const item of items) {
+      sourceCandidates.push({
+        trackIndex,
+        item,
+        projectItem: await item.getProjectItem(),
+        projectItemId: (await item.getProjectItem()).getId(),
+        name: await item.getName(),
+        start: (await item.getStartTime()).seconds,
+        sourceIn: (await item.getInPoint()).seconds
+      });
+    }
+  }
+
+  const sources = new Map();
+  for (const decision of decisions) {
+    if (sources.has(decision.clipId)) continue;
+    const token = decision.clipId.toLowerCase();
+    const matches = sourceCandidates.filter(candidate => candidate.projectItemId === decision.clipId || candidate.name.toLowerCase().includes(token));
+    if (matches.length !== 1) throw new Error(`Source ${decision.clipId} matched ${matches.length} video items; expected exactly one.`);
+    sources.set(decision.clipId, matches[0]);
+  }
+
+  const editor = premiere.SequenceEditor.getEditor(sequence);
+  const outputVideoIndex = sourceVideoTrackCount;
+  const outputAudioIndex = sourceAudioTrackCount;
+  const applied = [];
+
+  for (let segmentIndex = 0; segmentIndex < decisions.length; segmentIndex++) {
+    const decision = decisions[segmentIndex];
+    const source = sources.get(decision.clipId);
+    const duration = decision.end - decision.start;
+    const sourceIn = source.sourceIn + (decision.start - source.start);
+    const sourceOut = sourceIn + duration;
+    if (sourceIn < -0.0005) throw new Error(`Segment ${segmentIndex} starts before available source media.`);
+
+    let inserted = false;
+    project.lockedAccess(() => {
+      inserted = project.executeTransaction(compound => {
+        compound.addAction(editor.createInsertProjectItemAction(
+          source.projectItem,
+          tick(decision.start),
+          outputVideoIndex,
+          outputAudioIndex,
+          true
+        ));
+      }, `FREEOS insert segment ${segmentIndex + 1}`);
+    });
+    if (!inserted) throw new Error(`Premiere declined insert for segment ${segmentIndex}.`);
+
+    const outputVideoTrack = await sequence.getVideoTrack(outputVideoIndex);
+    const videoItems = outputVideoTrack.getTrackItems(premiere.Constants.TrackItemType.CLIP, false);
+    let videoItem = null;
+    let bestDelta = Infinity;
+    for (const item of videoItems) {
+      const itemProjectId = (await item.getProjectItem()).getId();
+      const itemStart = (await item.getStartTime()).seconds;
+      const delta = Math.abs(itemStart - decision.start);
+      if (itemProjectId === source.projectItemId && delta < bestDelta) { videoItem = item; bestDelta = delta; }
+    }
+    if (!videoItem || bestDelta > 0.1) throw new Error(`Inserted video segment ${segmentIndex} could not be identified.`);
+
+    let videoTrimmed = false;
+    project.lockedAccess(() => {
+      videoTrimmed = project.executeTransaction(compound => {
+        compound.addAction(videoItem.createSetInPointAction(tick(sourceIn)));
+        compound.addAction(videoItem.createSetOutPointAction(tick(sourceOut)));
+        compound.addAction(videoItem.createSetEndAction(tick(decision.end)));
+      }, `FREEOS trim video segment ${segmentIndex + 1}`);
+    });
+    if (!videoTrimmed) throw new Error(`Premiere declined video trim for segment ${segmentIndex}.`);
+
+    if ((await sequence.getAudioTrackCount()) > outputAudioIndex) {
+      const outputAudioTrack = await sequence.getAudioTrack(outputAudioIndex);
+      const audioItems = outputAudioTrack.getTrackItems(premiere.Constants.TrackItemType.CLIP, false);
+      let audioItem = null;
+      let audioDelta = Infinity;
+      for (const item of audioItems) {
+        const itemProjectId = (await item.getProjectItem()).getId();
+        const itemStart = (await item.getStartTime()).seconds;
+        const delta = Math.abs(itemStart - decision.start);
+        if (itemProjectId === source.projectItemId && delta < audioDelta) { audioItem = item; audioDelta = delta; }
+      }
+      if (audioItem && audioDelta <= 0.1) {
+        let audioTrimmed = false;
+        project.lockedAccess(() => {
+          audioTrimmed = project.executeTransaction(compound => {
+            compound.addAction(audioItem.createSetInPointAction(tick(sourceIn)));
+            compound.addAction(audioItem.createSetOutPointAction(tick(sourceOut)));
+            compound.addAction(audioItem.createSetEndAction(tick(decision.end)));
+          }, `FREEOS trim muted source audio ${segmentIndex + 1}`);
+        });
+        if (!audioTrimmed) throw new Error(`Premiere declined audio trim for segment ${segmentIndex}.`);
+      }
+    }
+
+    applied.push({ clipId: decision.clipId, start: decision.start, end: decision.end, sourceIn, sourceOut });
+  }
+
+  const outputVideoTrack = await sequence.getVideoTrack(outputVideoIndex);
+  for (let i = 0; i < sourceVideoTrackCount; i++) await (await sequence.getVideoTrack(i)).setMute(true);
+  await outputVideoTrack.setMute(false);
+
+  if ((await sequence.getAudioTrackCount()) > outputAudioIndex) {
+    const outputAudioTrack = await sequence.getAudioTrack(outputAudioIndex);
+    await outputAudioTrack.setMute(true);
+  }
+
+  if (typeof outputVideoTrack.createSetNameAction === "function") {
+    executeLocked(project, "FREEOS name output video track", () => outputVideoTrack.createSetNameAction("FREEOS_OUTPUT_VIDEO"));
+  }
+  if ((await sequence.getAudioTrackCount()) > outputAudioIndex) {
+    const outputAudioTrack = await sequence.getAudioTrack(outputAudioIndex);
+    if (typeof outputAudioTrack.createSetNameAction === "function") {
+      executeLocked(project, "FREEOS name muted source audio track", () => outputAudioTrack.createSetNameAction("FREEOS_SOURCE_AUDIO_MUTED"));
+    }
+  }
+
+  return {
+    sequenceId: activeId,
+    sequenceName: sequence.name,
+    outputVideoTrackIndex: outputVideoIndex,
+    outputAudioTrackIndex: outputAudioIndex,
+    applied,
+    sourceVideoTracksMuted: sourceVideoTrackCount,
+    sourceAudioMuted: true
+  };
+}
 async function sequenceMarkers() {
   const sequence = await (await activeProject()).getActiveSequence(); if (!sequence) throw new Error("No active sequence.");
   const markers = await premiere.Markers.getMarkers(sequence);
@@ -120,6 +285,7 @@ const actions = {
   "sequence.settings": sequenceSettings,
   "sequence.clone": cloneSequence,
   "sequence.rename": renameSequenceCommand,
+  "sequence.applyAssembly": applyAssembly,
 };
 function connect() {
   if (!secret) return;
