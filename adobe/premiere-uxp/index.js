@@ -37,6 +37,22 @@ async function inspectSequence() {
   }
   return { id: sequence.guid, name: sequence.name, timebase: await sequence.getTimebase(), end: (await sequence.getEndTime()).seconds, playhead: (await sequence.getPlayerPosition()).seconds, tracks };
 }
+function executeLocked(project, transactionName, makeAction) {
+  let ok = false;
+  project.lockedAccess(() => {
+    const action = makeAction();
+    ok = project.executeTransaction(compound => compound.addAction(action), transactionName);
+  });
+  return ok;
+}
+async function renameSequence(project, sequence, name) {
+  const rawItem = await sequence.getProjectItem();
+  const item = premiere.ProjectItem.cast(rawItem);
+  if (!item || typeof item.createSetNameAction !== "function") throw new Error("Sequence project item does not expose createSetNameAction after ProjectItem.cast().");
+  const ok = executeLocked(project, "FREEOS name working sequence", () => item.createSetNameAction(name));
+  if (!ok) throw new Error("Premiere declined the sequence rename.");
+  return { id: sequence.guid, name };
+}
 async function cloneSequence(command) {
   const project = await activeProject(); const active = await project.getActiveSequence();
   if (!active) throw new Error("No active sequence.");
@@ -46,14 +62,27 @@ async function cloneSequence(command) {
   if (typeof name !== "string" || !/^BLAKEO_FREEOS_(PASS_\d{2}|FINAL)$/.test(name)) throw new Error("Working sequence must use the FREEOS Blakeo naming convention.");
   if ((await project.getSequences()).some(item => item.name === name)) throw new Error("Working sequence name already exists.");
   const before = new Set((await project.getSequences()).map(item => item.guid));
-  const ok = project.executeTransaction(compound => compound.addAction(active.createCloneAction()), "FREEOS duplicate working sequence");
+  const ok = executeLocked(project, "FREEOS duplicate working sequence", () => active.createCloneAction());
   if (!ok) throw new Error("Premiere declined the sequence clone.");
   const after = await project.getSequences(); const clone = after.find(item => !before.has(item.guid));
   if (!clone) throw new Error("Clone action completed but no new sequence was found.");
-  const item = await clone.getProjectItem();
-  if (!project.executeTransaction(compound => compound.addAction(item.createSetNameAction(name)), "FREEOS name working sequence")) throw new Error("Premiere declined the sequence rename.");
+  await renameSequence(project, clone, name);
   await project.setActiveSequence(clone);
   return { id: clone.guid, name, sourceId: active.guid };
+}
+async function renameSequenceCommand(command) {
+  const project = await activeProject();
+  const sequenceId = command.args.sequenceId;
+  const name = command.args.name;
+  if (typeof sequenceId !== "string" || !sequenceId) throw new Error("sequenceId required.");
+  if (typeof name !== "string" || !/^BLAKEO_FREEOS_(PASS_\d{2}|FINAL)$/.test(name)) throw new Error("Working sequence must use the FREEOS Blakeo naming convention.");
+  const sequences = await project.getSequences();
+  const sequence = sequences.find(item => item.guid === sequenceId);
+  if (!sequence) throw new Error("Target sequence was not found.");
+  if (sequences.some(item => item.guid !== sequenceId && item.name === name)) throw new Error("Working sequence name already exists.");
+  const result = await renameSequence(project, sequence, name);
+  await project.setActiveSequence(sequence);
+  return result;
 }
 async function sequenceMarkers() {
   const sequence = await (await activeProject()).getActiveSequence(); if (!sequence) throw new Error("No active sequence.");
@@ -75,6 +104,7 @@ const actions = {
   "sequence.markers": sequenceMarkers,
   "sequence.settings": sequenceSettings,
   "sequence.clone": cloneSequence,
+  "sequence.rename": renameSequenceCommand,
 };
 function connect() {
   if (!secret) return;
@@ -86,7 +116,7 @@ function connect() {
     try {
       const message = JSON.parse(event.data); if (message.type !== "bridge-command" || message.command.application !== "premiere") return;
       command = message.command; const action = actions[command.action]; if (!action) throw new Error("Action unavailable in Premiere bridge.");
-      if (!["project.inspect", "project.items", "project.open", "sequence.inspect", "sequence.markers", "sequence.settings", "sequence.clone", "project.save", "project.saveas"].includes(command.action)) { const sequence = await (await activeProject()).getActiveSequence(); if (sequence && sequence.name.toUpperCase().includes("MASTER_SYNC")) throw new Error("Refusing mutation on master sequence."); }
+      if (!["project.inspect", "project.items", "project.open", "sequence.inspect", "sequence.markers", "sequence.settings", "sequence.clone", "sequence.rename", "project.save", "project.saveas"].includes(command.action)) { const sequence = await (await activeProject()).getActiveSequence(); if (sequence && sequence.name.toUpperCase().includes("MASTER_SYNC")) throw new Error("Refusing mutation on master sequence."); }
       const output = await action(command);
       socket.send(JSON.stringify({ type: "bridge-result", result: { id: command.id, jobId: command.id, state: "complete", method: "native", output, progress: 1, timestamp: new Date().toISOString() } }));
     } catch (error) { if (command && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "bridge-result", result: { id: command.id, jobId: command.id, state: "failed", method: "native", error: String(error), progress: 0, timestamp: new Date().toISOString() } })); }
