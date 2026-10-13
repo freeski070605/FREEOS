@@ -106,7 +106,7 @@ Replace-OneOf `
     -Path $workerPath `
     -OldCandidates @($upgradeOld, $upgradeQuery) `
     -New $upgradeNew `
-    -AlreadyPresent 'socket.close(1008, "Unauthorized bridge")' `
+    -AlreadyPresent 'if (request.url !== "/adobe/bridge" || !protocols.includes("freeos-v1"))' `
     -Label "Adobe worker bridge upgrade handshake"
 
 $uxpOld = 'socket = new WebSocket("ws://127.0.0.1:4319/adobe/bridge", ["freeos-v1", secret]);'
@@ -117,14 +117,14 @@ Replace-OneOf `
     -Path $premierePath `
     -OldCandidates @($uxpOld, $uxpQuery) `
     -New $uxpNew `
-    -AlreadyPresent 'type: "bridge-register", token: secret, application: "premiere"' `
+    -AlreadyPresent 'socket = new WebSocket("ws://127.0.0.1:4319/adobe/bridge", ["freeos-v1"]);' `
     -Label "Premiere UXP bridge socket"
 
 Replace-OneOf `
     -Path $afterEffectsPath `
     -OldCandidates @($uxpOld, $uxpQuery) `
     -New $uxpNew `
-    -AlreadyPresent 'type: "bridge-register", token: secret, application: "after-effects"' `
+    -AlreadyPresent 'socket = new WebSocket("ws://127.0.0.1:4319/adobe/bridge", ["freeos-v1"]);' `
     -Label "After Effects UXP bridge socket"
 
 $premOld = 'socket.send(JSON.stringify({ type: "bridge-register", application: "premiere", capabilities:'
