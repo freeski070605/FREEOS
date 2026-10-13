@@ -6,9 +6,13 @@ let secret = "";
 const status = value => { const element = document.getElementById("status"); if (element) element.textContent = value; };
 const capability = (action, available) => ({ application: "premiere", action, method: available ? "native" : "unavailable", available, version: host.version });
 async function activeProject() { const project = await premiere.Project.getActiveProject(); if (!project) throw new Error("No active Premiere project."); return project; }
+async function sequenceId(sequence) {
+  const item = await sequence.getProjectItem();
+  return item.getId();
+}
 async function inspectProject() {
   const project = await activeProject(); const sequences = await project.getSequences(); const active = await project.getActiveSequence();
-  return { id: project.guid, name: project.name, path: project.path, activeSequenceId: active && active.guid, sequences: sequences.map(sequence => ({ id: sequence.guid, name: sequence.name })) };
+  return { id: project.path, name: project.name, path: project.path, activeSequenceId: active ? await sequenceId(active) : null, sequences: await Promise.all(sequences.map(async sequence => ({ id: await sequenceId(sequence), name: sequence.name }))) };
 }
 async function projectItems() {
   const root = await (await activeProject()).getRootItem(); const queue = [{ folder: root, parentId: null }]; const output = [];
@@ -35,7 +39,7 @@ async function inspectSequence() {
       tracks.push({ kind, index, id: track.id, name: track.name, muted: await track.isMuted(), clips: await Promise.all(items.map(async item => ({ id: (await item.getProjectItem()).getId(), name: await item.getName(), start: (await item.getStartTime()).seconds, end: (await item.getEndTime()).seconds, sourceIn: (await item.getInPoint()).seconds, sourceOut: (await item.getOutPoint()).seconds }))) });
     }
   }
-  return { id: sequence.guid, name: sequence.name, timebase: await sequence.getTimebase(), end: (await sequence.getEndTime()).seconds, playhead: (await sequence.getPlayerPosition()).seconds, tracks };
+  return { id: await sequenceId(sequence), name: sequence.name, timebase: await sequence.getTimebase(), end: (await sequence.getEndTime()).seconds, playhead: (await sequence.getPlayerPosition()).seconds, tracks };
 }
 function executeLocked(project, transactionName, makeAction) {
   let ok = false;
@@ -51,35 +55,46 @@ async function renameSequence(project, sequence, name) {
   if (!item || typeof item.createSetNameAction !== "function") throw new Error("Sequence project item does not expose createSetNameAction after ProjectItem.cast().");
   const ok = executeLocked(project, "FREEOS name working sequence", () => item.createSetNameAction(name));
   if (!ok) throw new Error("Premiere declined the sequence rename.");
-  return { id: sequence.guid, name };
+  return { id: await sequenceId(sequence), name };
 }
 async function cloneSequence(command) {
   const project = await activeProject(); const active = await project.getActiveSequence();
   if (!active) throw new Error("No active sequence.");
   if (project.path !== command.args.projectPath) throw new Error("Project path changed since backup; clone refused.");
-  if (command.args.sourceId && active.guid !== command.args.sourceId) throw new Error("Active sequence does not match sourceId.");
+  const activeId = await sequenceId(active);
+  if (command.args.sourceId && activeId !== command.args.sourceId) throw new Error("Active sequence does not match sourceId.");
   const name = command.args.name;
   if (typeof name !== "string" || !/^BLAKEO_FREEOS_(PASS_\d{2}|FINAL)$/.test(name)) throw new Error("Working sequence must use the FREEOS Blakeo naming convention.");
   if ((await project.getSequences()).some(item => item.name === name)) throw new Error("Working sequence name already exists.");
-  const before = new Set((await project.getSequences()).map(item => item.guid));
+  const before = new Set(await Promise.all((await project.getSequences()).map(sequenceId)));
   const ok = executeLocked(project, "FREEOS duplicate working sequence", () => active.createCloneAction());
   if (!ok) throw new Error("Premiere declined the sequence clone.");
-  const after = await project.getSequences(); const clone = after.find(item => !before.has(item.guid));
+  const after = await project.getSequences();
+  let clone = null;
+  for (const candidate of after) {
+    const id = await sequenceId(candidate);
+    if (!before.has(id)) { clone = candidate; break; }
+  }
   if (!clone) throw new Error("Clone action completed but no new sequence was found.");
   await renameSequence(project, clone, name);
   await project.setActiveSequence(clone);
-  return { id: clone.guid, name, sourceId: active.guid };
+  return { id: await sequenceId(clone), name, sourceId: activeId };
 }
 async function renameSequenceCommand(command) {
   const project = await activeProject();
-  const sequenceId = command.args.sequenceId;
+  const targetId = command.args.sequenceId;
   const name = command.args.name;
-  if (typeof sequenceId !== "string" || !sequenceId) throw new Error("sequenceId required.");
+  if (typeof targetId !== "string" || !targetId) throw new Error("sequenceId required.");
   if (typeof name !== "string" || !/^BLAKEO_FREEOS_(PASS_\d{2}|FINAL)$/.test(name)) throw new Error("Working sequence must use the FREEOS Blakeo naming convention.");
   const sequences = await project.getSequences();
-  const sequence = sequences.find(item => item.guid === sequenceId);
+  let sequence = null;
+  for (const candidate of sequences) {
+    if (await sequenceId(candidate) === targetId) { sequence = candidate; break; }
+  }
   if (!sequence) throw new Error("Target sequence was not found.");
-  if (sequences.some(item => item.guid !== sequenceId && item.name === name)) throw new Error("Working sequence name already exists.");
+  for (const candidate of sequences) {
+    if (await sequenceId(candidate) !== targetId && candidate.name === name) throw new Error("Working sequence name already exists.");
+  }
   const result = await renameSequence(project, sequence, name);
   await project.setActiveSequence(sequence);
   return result;
@@ -97,7 +112,7 @@ async function sequenceSettings() {
 const actions = {
   "project.inspect": inspectProject,
   "project.items": projectItems,
-  "project.open": async command => { if (typeof command.args.path !== "string") throw new Error("Path required."); const project = await premiere.Project.open(command.args.path); return { id: project.guid, name: project.name, path: project.path }; },
+  "project.open": async command => { if (typeof command.args.path !== "string") throw new Error("Path required."); const project = await premiere.Project.open(command.args.path); return { id: project.path, name: project.name, path: project.path }; },
   "project.save": async () => ({ saved: await (await activeProject()).save() }),
   "project.saveas": async command => { if (typeof command.args.path !== "string") throw new Error("Path required."); return { saved: await (await activeProject()).saveAs(command.args.path) }; },
   "sequence.inspect": inspectSequence,
