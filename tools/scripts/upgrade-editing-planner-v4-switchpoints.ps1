@@ -185,7 +185,7 @@ $content = Replace-Between $content 'function sectionEvidence' 'async function g
 
 # Convert section planning to switchpoints and dynamic schema.
 $content = $content.Replace('const availability = evidence.clips.map((clip) => ({ id: clip.id, start: clip.availableStart, end: clip.availableEnd }));', 'const availability = evidence.availability;')
-$content = $content.Replace('schema: sectionPlanSchema,', 'schema: buildSectionPlanSchema(sectionStart, sectionEnd, videos),')
+$content = [regex]::Replace($content, 'schema:\s*(?:sectionPlanSchema|buildSectionPlanSchema\([^\r\n]*\)),', 'schema: buildSectionPlanSchema(sectionStart, sectionEnd, videos),')
 $content = $content.Replace('let parsedSection: { decisions: unknown[]; cautions: string[] };', 'let parsedSection: { switches: unknown[]; cautions: string[] };')
 $content = $content.Replace('validateSectionDecisions(parsedSection.decisions, allowedClipIds, sectionStart, sectionEnd, videos)', 'validateSectionSwitches(parsedSection.switches, allowedClipIds, sectionStart, sectionEnd, videos)')
 $content = $content.Replace('Make the actual creative edit decisions for ONLY timeline ${sectionStart.toFixed(3)} to ${sectionEnd.toFixed(3)} seconds. Use absolute timeline seconds.', 'Create ONE chronological edit for ONLY timeline ${sectionStart.toFixed(3)} to ${sectionEnd.toFixed(3)} seconds using switchpoints. The first switch MUST be exactly ${sectionStart.toFixed(3)}. Each switch means keep that clip on screen until the next switch. Do not output overlapping candidate alternatives. Use absolute timeline seconds.')
