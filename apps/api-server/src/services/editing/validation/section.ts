@@ -8,7 +8,7 @@ export class SectionValidationError extends Error {
   constructor(public readonly category: string, message: string) { super(`${category}: ${message}`); }
 }
 
-function groundedRationale(raw: JsonObject, at: number, catalog: EvidenceRecord[], allowedClipIds: Set<string>, label: string, openingScope?: OpeningEvidenceScope, openingClipId?: string): string {
+function groundedRationale(raw: JsonObject, at: number, catalog: EvidenceRecord[], allowedClipIds: Set<string>, label: string, openingScope?: OpeningEvidenceScope, openingClipId?: string, targetClipId?: string, videos?: JsonObject[]): string {
   const allowed = new Set(["at", "clipId", "action", "confidence", "creativeIntent", "evidenceRefs"]);
   if (label === "Section opening") allowed.add("mode");
   const extra = Object.keys(raw).filter((key) => !allowed.has(key));
@@ -32,6 +32,17 @@ function groundedRationale(raw: JsonObject, at: number, catalog: EvidenceRecord[
   });
   if (new Set(raw.evidenceRefs).size !== refs.length) throw new SectionValidationError("invalid-evidence-reference", `${label} repeats an evidence reference.`);
   if (openingScope && !refs.some((record) => record.clipId === openingClipId)) throw new SectionValidationError("missing-evidence-reference", `${label} needs measured evidence for selected clip '${openingClipId}'.`);
+  if (targetClipId && videos) {
+    const available = videos.filter((video) => number(video.timelineAvailableStart, 0) <= at + 0.001 && number(video.timelineAvailableEnd, 0) > at + 0.001);
+    const target = refs.filter((record) => record.clipId === targetClipId);
+    // Availability alone explains a handoff only when there is exactly one legal source.
+    if (available.length > 1 && !target.some((record) => record.type !== "source-availability")) {
+      throw new SectionValidationError("target-grounding", `${label} selects '${targetClipId}' without local measured visual evidence for that clip.`);
+    }
+    if (available.length === 1 && available[0] && String(available[0].id) === targetClipId && !target.length) {
+      throw new SectionValidationError("target-grounding", `${label} needs availability evidence for uniquely available clip '${targetClipId}'.`);
+    }
+  }
   return renderEvidenceRationale(refs);
 }
 function findCandidateMomentNear(
@@ -431,7 +442,7 @@ export function validateSectionSwitches(
             }
           }
 
-          const rationale = groundedRationale(s, at, evidenceCatalog, allowedClipIds, `Section switch ${index}`);
+          const rationale = groundedRationale(s, at, evidenceCatalog, allowedClipIds, `Section switch ${index}`, undefined, undefined, clipId, videos);
 
           return {
             at,

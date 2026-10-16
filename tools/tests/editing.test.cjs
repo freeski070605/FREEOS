@@ -14,6 +14,9 @@ const { buildSectionEditMoments } = require('../../apps/api-server/dist/services
 const { buildSectionPacket, sectionModelBudget, estimatePromptTokens } = require('../../apps/api-server/dist/services/editing/planning/sectionPacket.js');
 const { compactVideo } = require('../../apps/api-server/dist/services/editing/evidence/videoEvidence.js');
 const { resolveOpeningEvidenceScope, openingEvidenceByClip } = require('../../apps/api-server/dist/services/editing/evidence/openingEvidence.js');
+const { runGlobalEditorialRepair } = require('../../apps/api-server/dist/services/editing/repair/globalEditorialRepair.js');
+const { factualEvidenceSummary } = require('../../apps/api-server/dist/services/editing/critique/factualSummary.js');
+const { selectEditingAcademyItems } = require('../../apps/api-server/dist/services/editingAcademy.service.js');
 
 test('repeated frame measurements aggregate before section planning', () => {
   const timeline = Array.from({ length: 120 }, (_, i) => ({ time: i / 2, motion: 0.1, sharpness: 0.8, brightness: 0.5, faceCount: 0 }));
@@ -90,7 +93,7 @@ const opening = (clipId, mode = 'initial-selection') => ({ mode, clipId, action:
 const shot = (at, clipId, evidenceRefs) => ({ at, clipId, action: 'cut', confidence: 0.9, creativeIntent: 'visual-contrast', ...(evidenceRefs ? { evidenceRefs } : {}) });
 const moment = (at, score = 6) => ({ at, score, reasons: ['measured motion shift'] });
 const validate = ({ videos = [video('a'), video('b')], start = 0, end = 20, first = 'a', switches = [], moments = [], previous = '', catalog } = {}) => {
-  const refs = catalog ?? [{ id: 'opening', type: 'source-availability', at: start, clipId: first }, ...switches.map((item, index) => ({ id: `switch-${index}`, type: 'source-availability', at: item.at, clipId: item.clipId }))];
+  const refs = catalog ?? [{ id: 'opening', type: 'source-availability', at: start, clipId: first }, ...switches.map((item, index) => ({ id: `switch-${index}`, type: 'face-presence', at: item.at, clipId: item.clipId, value: 0.5 }))];
   const completed = switches.map((item, index) => ({ evidenceRefs: [`switch-${index}`], ...item }));
   return validateSectionSwitches(previous ? undefined : opening(first), completed, new Set(videos.map((v) => v.id)), start, end, videos, moments, previous, refs);
 };
@@ -192,13 +195,13 @@ test('measured event at exact boundary can produce a grounded creative switch', 
   const videos = [video('a', 120), video('b', 120)];
   const events = buildSectionEditMoments({ transientMoments: [{ time: 60, strength: 1 }] }, videos, 60, 120);
   assert(events.some((event) => event.at === 60));
-  const refs = [{ id: 'event', type: 'audio-transient', at: 60 }];
+  const refs = [{ id: 'event', type: 'audio-transient', at: 60 }, { id: 'target', type: 'face-presence', at: 60, clipId: 'b', value: 0.5 }];
   const schema = buildSectionPlanSchema(60, 120, videos, [60], refs, 'a');
   assert(schema.properties.switches.items.oneOf.some((variant) => variant.properties.at.enum.includes(60)));
-  const result = validateSectionSwitches(undefined, [shot(60, 'b', ['event'])], new Set(['a', 'b']), 60, 120, videos, [moment(60)], 'a', refs);
+  const result = validateSectionSwitches(undefined, [shot(60, 'b', ['event', 'target'])], new Set(['a', 'b']), 60, 120, videos, [moment(60)], 'a', refs);
   assert.deepEqual(result.map((item) => item.clipId), ['b']);
   assert.equal(result[0].start, 60);
-  assert.deepEqual(result[0].evidenceRefs, ['event']);
+  assert.deepEqual(result[0].evidenceRefs, ['event', 'target']);
   assert.throws(() => validateSectionSwitches(undefined, [shot(60, 'b', ['late'])], new Set(['a', 'b']), 60, 120, videos, [moment(60)], 'a', [{ id: 'late', type: 'face-presence', at: 60.999, clipId: 'b' }]), /non-local-evidence/);
 });
 test('source ending exactly at boundary uses uniquely legal availability continuation', () => {
@@ -243,7 +246,7 @@ const evidenceCatalog = [
   { id: 'framing', type: 'framing', at: 7.123, clipId: 'b', label: 'wide' },
 ];
 const grounded = (refs, catalog = evidenceCatalog, switchExtra = {}) => validate({ switches: [{ ...shot(7.123, 'b', refs), ...switchExtra }], moments: [moment(7.123)], catalog });
-test('valid local transient reference renders public rationale', () => assert.match(grounded(['transient'])[1].rationale, /Audio transient at 7\.123s/));
+test('valid local transient and target references render public rationale', () => assert.match(grounded(['transient', 'motion'])[1].rationale, /Audio transient at 7\.123s/));
 test('invented evidence type cannot be referenced', () => assert.throws(() => grounded(['imaginary']), /invalid-evidence-reference/));
 test('evidence timestamp absent from supplied catalog fails', () => assert.throws(() => grounded(['transient'], evidenceCatalog.filter((item) => item.id !== 'transient')), /invalid-evidence-reference/));
 test('evidence timestamp outside switch locality fails', () => assert.throws(() => grounded(['old'], [...evidenceCatalog, { id: 'old', type: 'audio-transient', at: 5 }]), /non-local-evidence/));
@@ -305,7 +308,7 @@ test('assembly removes 60, 120, and 180 boundaries during a long hold with 1, 2,
 test('assembly keeps a real creative switch exactly at the section boundary', () => {
   const videos = [video('a', 120), video('b', 120)];
   const assembled = validate({ videos, start: 0, end: 60 });
-  const next = validateSectionSwitches(undefined, [shot(60, 'b', ['event'])], new Set(['a', 'b']), 60, 120, videos, [moment(60)], 'a', [{ id: 'event', type: 'audio-transient', at: 60 }]);
+  const next = validateSectionSwitches(undefined, [shot(60, 'b', ['event', 'target'])], new Set(['a', 'b']), 60, 120, videos, [moment(60)], 'a', [{ id: 'event', type: 'audio-transient', at: 60 }, { id: 'target', type: 'face-presence', at: 60, clipId: 'b', value: 0.5 }]);
   appendSectionDecisions(assembled, next);
   assert.deepEqual(assembled.map((item) => [item.start, item.clipId]), [[0, 'a'], [60, 'b']]);
 });
@@ -360,3 +363,77 @@ test('bounded repair passes precise prior failure into retry', async () => {
   assert.deepEqual(seen, [undefined, 'candidate at 7.2 is absent']);
 });
 
+test('destination grounding separates timing, target visual support, and comparison support', () => {
+  const cameras = [video('a'), video('b'), video('c')];
+  const records = [
+    { id: 'audio', type: 'audio-transient', at: 7 },
+    { id: 'other', type: 'face-presence', at: 7, clipId: 'a', value: 0.6 },
+    { id: 'target', type: 'framing', at: 7, clipId: 'b', label: 'wide' },
+  ];
+  const check = (refs) => validateSectionSwitches(undefined, [shot(7, 'b', refs)], new Set(['a', 'b', 'c']), 0, 20, cameras, [moment(7)], 'a', records);
+  assert.throws(() => check(['audio']), /target-grounding/);
+  assert.throws(() => check(['audio', 'other']), /target-grounding/);
+  assert.equal(check(['audio', 'target'])[1].clipId, 'b');
+  assert.equal(check(['audio', 'target', 'other'])[1].clipId, 'b');
+});
+
+test('single-source candidate handoff accepts local availability evidence', () => {
+  const cameras = [video('a', 6), video('b', 20, 6)];
+  const result = validateSectionSwitches(undefined, [shot(6, 'b', ['available'])], new Set(['a', 'b']), 0, 20, cameras, [moment(6)], 'a', [{ id: 'available', type: 'source-availability', at: 6, clipId: 'b' }]);
+  assert.equal(result[1].clipId, 'b');
+});
+
+test('intent-aware critic escalates supported long holds and leaves contemplative holds informational', () => {
+  const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
+  const opportunities = [10, 20, 30, 40, 60].map((at) => moment(at, 11));
+  const energetic = critiqueTimeline(draft, [video('a', 80), video('b', 80)], opportunities, [], { userIntent: 'substantially more cuts and visual energy', classification: 'performance' });
+  const quiet = critiqueTimeline(draft, [video('a', 80), video('b', 80)], opportunities, [], { userIntent: 'slow contemplative interview', classification: 'interview' });
+  assert(energetic.some((finding) => finding.code === 'long-stretch' && finding.severity === 'material'));
+  assert(quiet.every((finding) => finding.code !== 'long-stretch' || finding.severity === 'info'));
+  assert(energetic.every((finding) => !/replace|choose camera/i.test(finding.evidence)));
+  const alternating = [decision(0, 4, 'a'), decision(4, 8, 'b'), decision(8, 12, 'a'), decision(12, 16, 'b')];
+  assert(critiqueTimeline(alternating, [video('a'), video('b')]).some((finding) => finding.code === 'mechanical-alternation' && finding.severity === 'material'));
+});
+
+test('global editorial repair is triggered only by material findings, bounded, revalidated, and re-criticized', async () => {
+  const sources = [video('a', 80), video('b', 80)];
+  const candidates = [10, 20, 30, 40].map((at) => moment(at, 11));
+  const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
+  let calls = 0;
+  const options = { decisions: draft, videos: sources, candidates, boundaries: [], maxPasses: 1,
+    regenerate: async (region) => { calls++; return [decision(region.start, 20, 'a'), decision(20, 30, 'b'), decision(30, region.end, 'a')]; } };
+  const energetic = await runGlobalEditorialRepair({ ...options, context: { userIntent: 'substantially more cuts and visual energy' } });
+  assert.equal(calls, 1);
+  assert.equal(energetic.globalRepairPasses, 1);
+  assert(energetic.finalCriticFindings.length >= 0);
+  assert(energetic.decisions.length > draft.length);
+  calls = 0;
+  const quiet = await runGlobalEditorialRepair({ ...options, context: { userIntent: 'slow contemplative interview' } });
+  assert.equal(calls, 0);
+  assert.equal(quiet.globalRepairPasses, 0);
+  const invalid = await runGlobalEditorialRepair({ ...options, context: { userIntent: 'substantially more cuts and visual energy' }, regenerate: async () => [decision(0, 90, 'b')] });
+  assert.equal(invalid.globalRepairPasses, 1);
+  assert(invalid.unresolvedMaterialFindings.length > 0);
+  assert(invalid.errors.length > 0);
+});
+
+test('factual summary ignores creative prose and reflects validated scene changes', () => {
+  const shots = [decision(0, 5, 'a'), { ...decision(5, 10, 'b'), rationale: 'Clip b has a measured scene change at 5.000s.' }];
+  const summary = factualEvidenceSummary(shots);
+  assert.match(summary, /1 switches cite measured scene-change evidence/);
+  assert.doesNotMatch(summary, /chord|gesture|facial expression|no scene.change/i);
+});
+
+test('Academy selection favors performance editing and excludes unrelated engine structure', () => {
+  const unit = (id, key, title, relevance) => ({ id, competencyKey: key, competencyName: title, title, content: title, relevance });
+  const selected = selectEditingAcademyItems([
+    unit(1, 'unity-scenes-addressables', 'Unity scenes and addressables', 30),
+    unit(2, 'performance-multicam', 'Performance multicam editing', 12),
+    unit(3, 'rhythmic-editing', 'Rhythmic editing', 11),
+    unit(4, 'continuity-motivated-cuts', 'Continuity motivated cuts', 10),
+  ], 'performance editing more cuts visual energy', 4);
+  assert.deepEqual(selected.items.map((item) => item.id), [2, 3, 4]);
+  assert.equal(selected.reasons.length, 3);
+  const crossDomain = selectEditingAcademyItems([unit(1, 'unity-scenes-addressables', 'Unity scenes and addressables', 30)], 'edit a Unity scene project', 4);
+  assert.deepEqual(crossDomain.items.map((item) => item.id), [1]);
+});

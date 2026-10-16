@@ -1,5 +1,6 @@
 import { importTeachingPack, getSkillCatalog } from "./skillAcademy.service";
 import { buildSkillTeachingContext } from "./skillTeachingContext.service";
+import type { SkillTeachingContextItem } from "./skillTeachingContext.service";
 
 const EDITING_PACK_KEY = "photo-video.advanced-editing-v1";
 
@@ -214,7 +215,9 @@ export function bootstrapEditingAcademy() {
 export function assessEditingKnowledgeGap(query: string, limit = 20) {
   const normalized = query.trim();
   if (!normalized) throw new Error("query is required.");
-  const context = buildSkillTeachingContext({ query: normalized, limit });
+  const retrieved = buildSkillTeachingContext({ query: normalized, limit: Math.min(30, limit * 2) });
+  const selected = selectEditingAcademyItems(retrieved.items, normalized, limit);
+  const context = { items: selected.items, context: selected.items.length ? ["OWNER-APPROVED EDITING GUIDANCE", ...selected.items.map((item) => `- [competency=${item.competencyKey}; unit=${item.unitType}] ${item.title}: ${item.content}`)].join("\n") : "" };
   const catalog = getSkillCatalog("photo-video");
   const editingCompetencies = catalog.flatMap((domain) => domain.competencies).filter((item) =>
     ["editing", "premiere", "after-effects", "color", "performance", "multicam", "transition", "montage", "sound", "style", "mask", "vfx", "typography", "speed", "reframing"].some((token) =>
@@ -233,9 +236,27 @@ export function assessEditingKnowledgeGap(query: string, limit = 20) {
       : "The Editing Academy has enough relevant owner-approved material to begin planning. Low demonstrated mastery may still justify extra caution or practice, but it is not itself a knowledge gap.",
     relevantUnits: context.items.length,
     relevantCompetencies: relevantKeys,
+    selectionReasons: selected.reasons,
     lowMasteryCompetencies: lowMastery.map((item) => ({ key: item.competencyKey, masteryLevel: item.masteryLevel, masteryScore: item.masteryScore })),
     teachingContext: context.context,
   };
+}
+
+export function selectEditingAcademyItems(items: SkillTeachingContextItem[], query: string, limit: number) {
+  const q = query.toLowerCase();
+  const primary = /performance|multicam|concert|music video/.test(q) ? "performance" : /interview|documentary/.test(q) ? "interview" : "general";
+  const useful = /edit|cut|rhythm|pac|continuity|multicam|performance|montage|transition|refram|shot|camera|visual|audio|color|sound/;
+  const irrelevantStructure = /unreal|unity|addressable|game.engine|project.structure|scene.management|data.structure/;
+  const explicitEngine = /unreal|unity|game.engine|addressable/.test(q);
+  const scored = items.flatMap((item) => {
+    const key = `${item.competencyKey} ${item.competencyName} ${item.title}`.toLowerCase();
+    if (irrelevantStructure.test(key) && !explicitEngine) return [];
+    if (!useful.test(key) && !(explicitEngine && irrelevantStructure.test(key))) return [];
+    const direct = primary === "performance" && /performance|multicam|rhythm|continuity|camera|shot|pac/.test(key);
+    const score = item.relevance + (direct ? 20 : 0);
+    return [{ item, score, reason: direct ? "performance camera/rhythm/continuity relevance" : irrelevantStructure.test(key) ? "explicit engine/project request" : "editing task relevance" }];
+  }).sort((a, b) => b.score - a.score || a.item.id - b.item.id).slice(0, limit);
+  return { items: scored.map((entry) => entry.item), reasons: scored.map((entry) => ({ competencyKey: entry.item.competencyKey, unit: entry.item.title, reason: entry.reason, score: entry.score })) };
 }
 
 export function buildEditingKnowledgeContext(query: string, limit = 20) {

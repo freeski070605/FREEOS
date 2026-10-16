@@ -1,4 +1,5 @@
 import type { CreativeIntent } from "../evidence/evidenceRefs";
+import type { EditorialFinding } from "../critique/editorialCritic";
 export type JsonObject = Record<string, unknown>;
 
 export interface EditingPlannerClipInput {
@@ -48,8 +49,14 @@ export interface EditingPlan {
     assemblyBoundaryPrunes?: number;
     projectClassification?: { primary: string; secondary: string[] };
     selectedAcademyCompetencies?: string[];
+    academySelectionReasons?: { competencyKey: string; unit: string; reason: string; score: number }[];
+    initialCriticFindings?: EditorialFinding[];
+    globalRepairPasses?: number;
+    resolvedFindings?: EditorialFinding[];
+    remainingFindings?: EditorialFinding[];
+    finalCriticFindings?: EditorialFinding[];
     editorialFindings?: { code: string; severity: string; start: number; end: number; evidence: string }[];
-    telemetry?: { modelCalls: number; modelElapsedMs: number; mediaCacheHits: number; candidateMomentCount: number; sectionAttempts: number; evidenceRefCount: number; invalidEvidenceRefFailures: number; nonLocalEvidenceRefFailures: number; validationFailures: Record<string, number>; repairAttemptsByCategory: Record<string, number>; criticFindings: string[]; repairs: number; finalDecisionCount: number; totalPlanningMs: number; initialSelection?: { openingMode: "initial-selection"; timelineStart: number; openingEvidenceWindowStart: number; openingEvidenceWindowEnd: number; availableOpeningClips: string[]; openingEvidenceCountsByClip: Record<string, number>; selectedClipId: string; selectedEvidenceRefs: string[] } };
+    telemetry?: { modelCalls: number; modelElapsedMs: number; mediaCacheHits: number; candidateMomentCount: number; sectionAttempts: number; evidenceRefCount: number; invalidEvidenceRefFailures: number; nonLocalEvidenceRefFailures: number; targetGroundingFailures: number; globalEditorialRepairPasses: number; criticFindingsBeforeRepair: string[]; criticFindingsAfterRepair: string[]; resolvedCriticFindings: string[]; unresolvedMaterialFindings: string[]; academySelectionReasons: unknown[]; validationFailures: Record<string, number>; repairAttemptsByCategory: Record<string, number>; criticFindings: string[]; repairs: number; finalDecisionCount: number; totalPlanningMs: number; initialSelection?: { openingMode: "initial-selection"; timelineStart: number; openingEvidenceWindowStart: number; openingEvidenceWindowEnd: number; availableOpeningClips: string[]; openingEvidenceCountsByClip: Record<string, number>; selectedClipId: string; selectedEvidenceRefs: string[] } };
   };
 }
 

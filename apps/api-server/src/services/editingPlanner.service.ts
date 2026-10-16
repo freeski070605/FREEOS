@@ -17,15 +17,16 @@ import { generateJson } from "./editing/planning/model";
 import { analyzeMediaCached } from "./editing/evidence/mediaCache";
 import { classifyProject } from "./editing/classification/projectClassifier";
 import { resolveEditingIntent } from "./editing/classification/projectIntent";
-import { critiqueTimeline } from "./editing/critique/editorialCritic";
+import { factualEvidenceSummary } from "./editing/critique/factualSummary";
 import { recordEditingExperience } from "./editing/learning/editingExperience";
 import { runBoundedPlanRepair, PlanRepairError } from "./editing/repair/planRepair";
-import { buildSectionPacket } from "./editing/planning/sectionPacket";
+import { buildSectionPacket, estimatePromptTokens } from "./editing/planning/sectionPacket";
+import { runGlobalEditorialRepair } from "./editing/repair/globalEditorialRepair";
 import { deterministicOpening, availableOpeningClips } from "./editing/planning/openingState";
 
 export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promise<EditingPlan> {
   const startedAt = Date.now();
-  const telemetry = { modelCalls: 0, modelElapsedMs: 0, mediaCacheHits: 0, candidateMomentCount: 0, sectionAttempts: 0, evidenceRefCount: 0, invalidEvidenceRefFailures: 0, nonLocalEvidenceRefFailures: 0, validationFailures: {} as Record<string, number>, repairAttemptsByCategory: {} as Record<string, number>, criticFindings: [] as string[], initialSelection: undefined as undefined | { openingMode: "initial-selection"; timelineStart: number; openingEvidenceWindowStart: number; openingEvidenceWindowEnd: number; availableOpeningClips: string[]; openingEvidenceCountsByClip: Record<string, number>; selectedClipId: string; selectedEvidenceRefs: string[] } };
+  const telemetry = { modelCalls: 0, modelElapsedMs: 0, mediaCacheHits: 0, candidateMomentCount: 0, sectionAttempts: 0, evidenceRefCount: 0, invalidEvidenceRefFailures: 0, nonLocalEvidenceRefFailures: 0, targetGroundingFailures: 0, globalEditorialRepairPasses: 0, criticFindingsBeforeRepair: [] as string[], criticFindingsAfterRepair: [] as string[], resolvedCriticFindings: [] as string[], unresolvedMaterialFindings: [] as string[], academySelectionReasons: [] as unknown[], validationFailures: {} as Record<string, number>, repairAttemptsByCategory: {} as Record<string, number>, criticFindings: [] as string[], initialSelection: undefined as undefined | { openingMode: "initial-selection"; timelineStart: number; openingEvidenceWindowStart: number; openingEvidenceWindowEnd: number; availableOpeningClips: string[]; openingEvidenceCountsByClip: Record<string, number>; selectedClipId: string; selectedEvidenceRefs: string[] } };
   const callModel = async (request: Parameters<typeof generateJson>[0]) => {
     const start = Date.now();
     try { return await generateJson({ ...request, onCall: () => { telemetry.modelCalls++; } }); }
@@ -50,6 +51,7 @@ export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promi
   const profile = classifyProject(input, videos, audio);
   bootstrapEditingAcademy();
   const editingKnowledge = buildEditingKnowledgeContext(profile.academyQuery);
+  telemetry.academySelectionReasons = editingKnowledge.gap.selectionReasons;
   if (editingKnowledge.gap.needsMoreKnowledge) throw new Error(`Editing Academy knowledge gap: ${editingKnowledge.gap.reason} Query: ${editingKnowledge.gap.query}`);
   const sectionAcademy = buildEditingKnowledgeContext(`${profile.academyQuery} section camera continuity evidence pacing`, 4).context;
   const inferredDuration = number(audio.durationSeconds, 0);
@@ -247,6 +249,7 @@ SECTION CONTINUITY:
 LOCAL-EVIDENCE DISCIPLINE:
 - Every switch time must come from the enforced evidence-backed candidate schema.
 - Select evidenceRefs only from evidenceCatalog. Each switch reference must be within 0.8s of that switch. The initial selection uses only its separate opening evidence scope.
+- Every creative switch with multiple available sources needs at least one measured visual evidenceRef for the selected destination clip. Audio supports timing; other cameras support comparison; neither proves the destination. Availability alone supports a switch only when that clip is uniquely available.
 - Never justify a switch using an event several seconds earlier or later.
 - creativeIntent describes editorial purpose and never proves a factual claim.
 
@@ -420,6 +423,7 @@ Return only schema-valid JSON.`;
           telemetry.validationFailures[diagnostic.category] = (telemetry.validationFailures[diagnostic.category] ?? 0) + 1;
           if (diagnostic.category === "invalid-evidence-reference") telemetry.invalidEvidenceRefFailures++;
           if (diagnostic.category === "non-local-evidence") telemetry.nonLocalEvidenceRefFailures++;
+          if (diagnostic.category === "target-grounding") telemetry.targetGroundingFailures++;
           previousResponseExcerpt = sectionText.slice(0, 2400);
           console.error(`[FREEOS Editing Planner] section ${sectionStart}-${sectionEnd} attempt ${diagnostic.attempt}/${maxSectionAttempts} validation failure: ${diagnostic.message}`);
           sectionText = "";
@@ -570,16 +574,77 @@ Return only schema-valid JSON.`;
     }
   }
   const cautions = buildGroundedCautions(videos, duration, availableEnd).slice(0, 50);
-  const editorialFindings = critiqueTimeline(normalizedDecisions, videos, allCandidateEditMoments, internalBoundaries);
-  telemetry.criticFindings = editorialFindings.map((finding) => finding.code);
-  const planningTelemetry = { ...telemetry, repairs: Math.max(0, telemetry.sectionAttempts - Math.ceil(availableEnd / sectionSeconds)), finalDecisionCount: normalizedDecisions.length, totalPlanningMs: Date.now() - startedAt };
+  const criticContext = { userIntent: intent, classification: profile.primary, academyGuidance: sectionAcademy };
+  const globalReview = await runGlobalEditorialRepair({
+    decisions: normalizedDecisions, videos, candidates: allCandidateEditMoments, boundaries: internalBoundaries,
+    context: criticContext, maxPasses: 4,
+    regenerate: async (region, findings) => {
+      const localCandidates = allCandidateEditMoments.filter((item) => number(item.at, NaN) >= region.start && number(item.at, NaN) < region.end);
+      const localCatalog = buildEvidenceCatalog(audio, videos, region.start, region.end, localCandidates.map((item) => number(item.at, NaN)));
+      const previousClipId = region.current[0].clipId;
+      const system = `You are FREEOS's global editorial repair editor. Repair ONLY the supplied region. The deterministic critic identifies problems but never chooses cameras. You choose creative cameras from local measured evidence. Preserve the opening source and the final source at the region boundary. Candidate times are options, not a cadence. Every switch needs local measured evidence for its destination clip when multiple sources are available. Return schema-valid section JSON with switches only.`;
+      const packet = buildSectionPacket({ start: region.start, end: region.end, videos,
+        availability: videos.map((video) => ({ id: video.id, start: video.timelineAvailableStart, end: video.timelineAvailableEnd })),
+        candidates: localCandidates, catalog: localCatalog, intent, brief, profiles: cameraProfiles,
+        previousClipId, academy: sectionAcademy, system, numPredict: 2200 });
+      const repairContext = { currentTimeline: [...region.before, ...region.current, ...region.after].map((decision) => ({ start: decision.start, end: decision.end, clipId: decision.clipId })),
+        region: [region.start, region.end], currentRegion: region.current,
+        criticFindings: findings.filter((finding) => finding.start < region.end && finding.end > region.start),
+        requiredFinalClipId: region.current.at(-1)!.clipId, projectClassification: profile.primary };
+      if (packet.estimatedPromptTokens + estimatePromptTokens(repairContext) > packet.budget.finalInputBudget) throw new Error("context-budget: global repair packet exceeds model context.");
+      const repaired = await runBoundedPlanRepair({ maxAttempts: 2,
+        generate: async (_attempt, previous) => callModel({ system,
+          prompt: { ...packet.packet, editorialRepair: { ...repairContext, ...(previous ? { validationDiagnostic: previous.message.slice(0, 500) } : {}) } },
+          schema: packet.schema, timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 180_000), numPredict: 2200, temperature: 0.15 }),
+        validate: (response) => {
+          const parsed = parseSectionPlan(String(response));
+          const decisions = validateSectionSwitches(parsed.opening, parsed.switches, allowedClipIds,
+            region.start, region.end, videos, localCandidates, previousClipId, localCatalog);
+          if (region.after.length && decisions.at(-1)?.clipId !== region.current.at(-1)?.clipId) throw new SectionValidationError("continuity", "Global repair must preserve the final source at the region boundary.");
+          if (region.start === 0 && decisions[0]?.clipId === region.current[0].clipId) {
+            decisions[0].rationale = region.current[0].rationale;
+            decisions[0].evidenceRefs = region.current[0].evidenceRefs;
+            decisions[0].creativeIntent = region.current[0].creativeIntent;
+          }
+          return decisions;
+        },
+        classify: (error) => error instanceof SectionValidationError ? error.category : "structure",
+        onFailure: (diagnostic) => {
+          telemetry.validationFailures[diagnostic.category] = (telemetry.validationFailures[diagnostic.category] ?? 0) + 1;
+          if (diagnostic.category === "target-grounding") telemetry.targetGroundingFailures++;
+        },
+      });
+      return repaired.value;
+    },
+  });
+  telemetry.globalEditorialRepairPasses = globalReview.globalRepairPasses;
+  telemetry.criticFindingsBeforeRepair = globalReview.initialCriticFindings.map((finding) => finding.code);
+  telemetry.criticFindingsAfterRepair = globalReview.finalCriticFindings.map((finding) => finding.code);
+  telemetry.resolvedCriticFindings = globalReview.resolvedFindings.map((finding) => finding.code);
+  telemetry.unresolvedMaterialFindings = globalReview.unresolvedMaterialFindings.map((finding) => finding.code);
+  telemetry.criticFindings = telemetry.criticFindingsAfterRepair;
+  if (globalReview.unresolvedMaterialFindings.length) {
+    console.error("[FREEOS Editing Planner] unresolved editorial quality gate", JSON.stringify({
+      globalEditorialRepairPasses: telemetry.globalEditorialRepairPasses,
+      criticFindingsBeforeRepair: globalReview.initialCriticFindings,
+      criticFindingsAfterRepair: globalReview.finalCriticFindings,
+      resolvedCriticFindings: globalReview.resolvedFindings,
+      unresolvedMaterialFindings: globalReview.unresolvedMaterialFindings,
+      errors: globalReview.errors,
+    }));
+    throw new Error(`Unresolved material editorial findings after ${globalReview.globalRepairPasses} global repair passes: ${JSON.stringify(globalReview.unresolvedMaterialFindings)}; repairErrors=${JSON.stringify(globalReview.errors)}`);
+  }
+  const finalDecisions = globalReview.decisions;
+  const factualSummary = factualEvidenceSummary(finalDecisions);
+  const editorialFindings = globalReview.finalCriticFindings;
+  const planningTelemetry = { ...telemetry, repairs: Math.max(0, telemetry.sectionAttempts - Math.ceil(availableEnd / sectionSeconds)), finalDecisionCount: finalDecisions.length, totalPlanningMs: Date.now() - startedAt };
   console.log("[FREEOS Editing Planner] telemetry", JSON.stringify({ classification: profile.primary, academyCompetencies: editingKnowledge.gap.relevantCompetencies, ...planningTelemetry }));
 
   return {
     version: "freeos-creative-planner-v5.6-boundary-prune-review",
     durationSeconds: duration,
-    creativeSummary: brief.creativeSummary,
-    decisions: normalizedDecisions,
+    creativeSummary: factualSummary,
+    decisions: finalDecisions,
     cautions,
     evidence: {
       audioAnalysisVersion: typeof audio.analysisVersion === "string" ? audio.analysisVersion : undefined,
@@ -593,6 +658,12 @@ Return only schema-valid JSON.`;
       assemblyReviewFailure,
       projectClassification: { primary: profile.primary, secondary: profile.secondary },
       selectedAcademyCompetencies: editingKnowledge.gap.relevantCompetencies,
+      academySelectionReasons: editingKnowledge.gap.selectionReasons,
+      initialCriticFindings: globalReview.initialCriticFindings,
+      globalRepairPasses: globalReview.globalRepairPasses,
+      resolvedFindings: globalReview.resolvedFindings,
+      remainingFindings: globalReview.remainingFindings,
+      finalCriticFindings: globalReview.finalCriticFindings,
       editorialFindings,
       telemetry: planningTelemetry,
     },
