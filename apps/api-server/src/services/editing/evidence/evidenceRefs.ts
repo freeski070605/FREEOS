@@ -3,8 +3,8 @@ import { number } from "../shared";
 
 export const creativeIntents = ["continuity", "visual-contrast", "framing-change", "motion-change", "rhythmic-response", "spatial-reset", "detail-emphasis", "hold-strong-shot"] as const;
 export type CreativeIntent = typeof creativeIntents[number];
-export type EvidenceType = "audio-transient" | "audio-energy" | "silence-boundary" | "audio-section-boundary" | "scene-change" | "motion-shift" | "camera-motion" | "framing" | "face-presence" | "sharpness" | "exposure" | "semantic-confidence" | "source-availability";
-export interface EvidenceRecord { id: string; type: EvidenceType; at: number; clipId?: string; value?: number; label?: string; windowStart?: number; windowEnd?: number }
+export type EvidenceType = "audio-transient" | "audio-energy" | "silence-boundary" | "audio-section-boundary" | "scene-change" | "motion-shift" | "motion-state" | "camera-motion" | "framing" | "face-presence" | "sharpness" | "exposure" | "semantic-confidence" | "source-availability";
+export interface EvidenceRecord { id: string; type: EvidenceType; at: number; clipId?: string; value?: number; label?: string; windowStart?: number; windowEnd?: number; opening?: boolean }
 
 function boundaries(value: unknown): number[] {
   const values = Array.isArray(value) ? value : [value];
@@ -17,7 +17,7 @@ function boundaries(value: unknown): number[] {
   });
 }
 
-export function buildEvidenceCatalog(audio: JsonObject, videos: JsonObject[], sectionStart: number, sectionEnd: number, candidateTimes: number[]): EvidenceRecord[] {
+export function buildEvidenceCatalog(audio: JsonObject, videos: JsonObject[], sectionStart: number, sectionEnd: number, candidateTimes: number[], openingScope?: { start: number; end: number }): EvidenceRecord[] {
   const points = Array.from(new Set([sectionStart, ...candidateTimes])).filter((at) => at >= sectionStart && at < sectionEnd);
   const records: Omit<EvidenceRecord, "id">[] = [];
   const add = (record: Omit<EvidenceRecord, "id">) => {
@@ -36,6 +36,18 @@ export function buildEvidenceCatalog(audio: JsonObject, videos: JsonObject[], se
     const clipId = String(video.id);
     const availableStart = number(video.timelineAvailableStart, NaN);
     const availableEnd = number(video.timelineAvailableEnd, NaN);
+    if (openingScope && sectionStart === 0 && sectionStart >= availableStart - 0.001 && sectionStart < availableEnd - 0.001) {
+      const openingMeasurements = Array.isArray(video.openingMeasurements) ? video.openingMeasurements as JsonObject[] : [];
+      for (const item of openingMeasurements) {
+        const at = number(item.at, NaN);
+        const type = item.type as EvidenceType;
+        if (!Number.isFinite(at) || at < openingScope.start || at > openingScope.end || !["framing", "face-presence", "motion-state", "camera-motion", "sharpness", "exposure"].includes(type)) continue;
+        const value = number(item.value, NaN);
+        const label = typeof item.label === "string" ? item.label : undefined;
+        if (type === "framing" ? !label || !/^(?:wide|medium|close|tight|long|full|mid)(?:[ -](?:shot|up|view))?$/i.test(label) : !Number.isFinite(value)) continue;
+        records.push({ type, at, clipId, opening: true, ...(label ? { label } : {}), ...(Number.isFinite(value) ? { value } : {}) });
+      }
+    }
     const editMoments = Array.isArray(video.editMoments) ? video.editMoments as JsonObject[] : [];
     for (const item of editMoments) {
       if (item.type === "scene-change" || item.type === "motion-shift") add({ type: item.type, at: number(item.time, NaN), clipId, value: number(item.strength, NaN) });
@@ -76,6 +88,7 @@ export function renderEvidenceRationale(records: EvidenceRecord[]): string {
       case "audio-section-boundary": return `Measured audio section boundary at ${at}`;
       case "scene-change": return `${clip} has a measured scene change${value} at ${at}`;
       case "motion-shift": return `${clip} has a measured motion shift${value} at ${at}`;
+      case "motion-state": return `${clip} has measured motion${value} near ${at}`;
       case "camera-motion": return `${clip} has measured camera motion${value} near ${at}`;
       case "framing": return `${clip} has measured framing ${record.label} near ${at}`;
       case "face-presence": return `${clip} has measured face presence${value} near ${at}`;

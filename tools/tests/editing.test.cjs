@@ -13,6 +13,7 @@ const { deterministicOpening } = require('../../apps/api-server/dist/services/ed
 const { buildSectionEditMoments } = require('../../apps/api-server/dist/services/editing/evidence/candidateMoments.js');
 const { buildSectionPacket, sectionModelBudget, estimatePromptTokens } = require('../../apps/api-server/dist/services/editing/planning/sectionPacket.js');
 const { compactVideo } = require('../../apps/api-server/dist/services/editing/evidence/videoEvidence.js');
+const { resolveOpeningEvidenceScope, openingEvidenceByClip } = require('../../apps/api-server/dist/services/editing/evidence/openingEvidence.js');
 
 test('repeated frame measurements aggregate before section planning', () => {
   const timeline = Array.from({ length: 120 }, (_, i) => ({ time: i / 2, motion: 0.1, sharpness: 0.8, brightness: 0.5, faceCount: 0 }));
@@ -112,6 +113,80 @@ test('first section opening stays evidence grounded and explicitly initial', () 
   const schema = buildSectionPlanSchema(0, 60, [video('a', 60)], [], [{ id: 'e', type: 'source-availability', at: 0, clipId: 'a' }]);
   assert(schema.required.includes('opening'));
   assert.equal(schema.properties.opening.oneOf[0].properties.mode.const, 'initial-selection');
+});
+test('first valid framing, face, and motion samples ground initial selection beyond switch locality', () => {
+  const raw = { durationSeconds: 60, timeline: [
+    { time: 0.882, framingRole: 'wide', faceCount: 1, motion: 0.2, globalMotion: 0.1, sharpness: 0.8, brightness: 0.5 },
+    { time: 1.382, framingRole: 'wide', faceCount: 1, motion: 0.3 },
+  ] };
+  const cameras = ['a', 'b'].map((id) => compactVideo(raw, { id, path: `${id}.mp4` }));
+  const scope = resolveOpeningEvidenceScope(cameras);
+  assert.equal(scope.start, 0);
+  assert(scope.end >= 0.882 && scope.end <= 2);
+  const catalog = buildEvidenceCatalog({}, cameras, 0, 60, [], scope);
+  for (const id of ['a', 'b']) {
+    for (const type of ['framing', 'face-presence', 'motion-state']) {
+      const record = catalog.find((item) => item.opening && item.clipId === id && item.type === type);
+      assert(record, `${id} missing ${type}`);
+      const result = validateSectionSwitches({ ...opening(id), evidenceRefs: [record.id] }, [], new Set(['a', 'b']), 0, 60, cameras, [], '', catalog, scope);
+      assert.equal(result[0].clipId, id);
+      assert.deepEqual(result[0].evidenceRefs, [record.id]);
+    }
+  }
+  const packet = buildSectionPacket({ start: 0, end: 60, videos: cameras,
+    availability: cameras.map((item) => ({ id: item.id, start: 0, end: 60 })), candidates: [], catalog,
+    intent: {}, brief: {}, profiles: [], previousClipId: '', academy: '', system: 'Plan.', numPredict: 2200, openingScope: scope });
+  assert.equal(packet.packet.openingEvidence.clips.length, 2);
+  assert.deepEqual(packet.packet.openingEvidence.clips.map((item) => item.evidenceRefs.length), [7, 7]);
+  assert(packet.packet.openingEvidence.clips.every((item) => item.missing.length === 0));
+  assert.equal(packet.schema.properties.opening.oneOf.length, 2);
+});
+test('opening scope remains bounded and cannot justify later creative switches', () => {
+  const cameras = [video('a', 60, 0, { openingMeasurements: [{ type: 'face-presence', at: 0.882, value: 1 }], sampleCadence: 0.5 }), video('b', 60)];
+  const scope = resolveOpeningEvidenceScope(cameras);
+  const catalog = buildEvidenceCatalog({}, cameras, 0, 60, [0, 3], scope);
+  const face = catalog.find((item) => item.opening && item.type === 'face-presence');
+  assert(face);
+  assert.equal(validateSectionSwitches({ ...opening('a'), evidenceRefs: [face.id] }, [], new Set(['a', 'b']), 0, 60, cameras, [], '', catalog, scope)[0].start, 0);
+  assert.throws(() => validateSectionSwitches({ ...opening('a'), evidenceRefs: [face.id] }, [shot(0, 'b', [face.id])], new Set(['a', 'b']), 0, 60, cameras, [moment(0)], '', catalog, scope), /non-local-evidence/);
+  assert.throws(() => validateSectionSwitches({ ...opening('a'), evidenceRefs: [face.id] }, [shot(3, 'b', [face.id])], new Set(['a', 'b']), 0, 60, cameras, [moment(3)], '', catalog, scope), /non-local-evidence/);
+  const outside = { id: 'outside', type: 'face-presence', at: scope.end + 0.01, clipId: 'a', value: 1 };
+  assert.throws(() => validateSectionSwitches({ ...opening('a'), evidenceRefs: ['outside'] }, [], new Set(['a', 'b']), 0, 60, cameras, [], '', [...catalog, outside], scope), /non-local-evidence/);
+});
+test('first positive face presence remains visible when another metric is valid at zero', () => {
+  const camera = compactVideo({ durationSeconds: 60, timeline: [
+    { time: 0, sharpness: 0.8, faceCount: 0 },
+    { time: 0.882, faceCount: 1, motion: 0.2 },
+    { time: 1.764, faceCount: 1 },
+  ] }, { id: 'a', path: 'a.mp4' });
+  const scope = resolveOpeningEvidenceScope([camera]);
+  assert(scope.end >= 0.882);
+  const catalog = buildEvidenceCatalog({}, [camera], 0, 60, [], scope);
+  const positive = catalog.find((item) => item.opening && item.type === 'face-presence' && item.at === 0.882 && item.value === 1);
+  assert(positive);
+  assert.equal(validateSectionSwitches({ ...opening('a'), evidenceRefs: [positive.id] }, [], new Set(['a']), 0, 60, [camera], [], '', catalog, scope)[0].clipId, 'a');
+});
+test('unavailable or sparse opening clips are represented without invented measurements', () => {
+  const cameras = [video('sparse', 60), video('late', 60, 1)];
+  const scope = resolveOpeningEvidenceScope(cameras);
+  const catalog = buildEvidenceCatalog({}, cameras, 0, 60, [], scope);
+  const states = openingEvidenceByClip(cameras, catalog, scope);
+  assert.deepEqual(states.map((item) => item.clipId), ['sparse']);
+  assert.equal(states[0].firstMeasurementAt, null);
+  assert(states[0].missing.includes('face-presence'));
+  assert.throws(() => validateSectionSwitches(opening('late'), [], new Set(['sparse', 'late']), 0, 60, cameras, [], '', catalog, scope), /unavailable/);
+});
+test('valid opening evidence succeeds on the first bounded repair attempt', async () => {
+  const cameras = [video('a', 60, 0, { openingMeasurements: [{ type: 'face-presence', at: 0.882, value: 1 }], sampleCadence: 0.5 })];
+  const scope = resolveOpeningEvidenceScope(cameras);
+  const catalog = buildEvidenceCatalog({}, cameras, 0, 60, [], scope);
+  const face = catalog.find((item) => item.opening && item.type === 'face-presence');
+  let calls = 0;
+  const repaired = await runBoundedPlanRepair({ maxAttempts: 4,
+    generate: async () => { calls++; return { ...opening('a'), evidenceRefs: [face.id] }; },
+    validate: (value) => validateSectionSwitches(value, [], new Set(['a']), 0, 60, cameras, [], '', catalog, scope) });
+  assert.equal(calls, 1);
+  assert.equal(repaired.attempts, 1);
 });
 test('measured event at exact boundary can produce a grounded creative switch', () => {
   const videos = [video('a', 120), video('b', 120)];

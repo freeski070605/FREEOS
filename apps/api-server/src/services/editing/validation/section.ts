@@ -2,12 +2,13 @@ import type { EditingDecision, JsonObject } from "../planning/plannerTypes";
 import { asObject, number } from "../shared";
 import { creativeIntents, renderEvidenceRationale, type EvidenceRecord } from "../evidence/evidenceRefs";
 import { availableOpeningClips, deterministicOpening, type SectionOpeningState } from "../planning/openingState";
+import { resolveOpeningEvidenceScope, type OpeningEvidenceScope } from "../evidence/openingEvidence";
 
 export class SectionValidationError extends Error {
   constructor(public readonly category: string, message: string) { super(`${category}: ${message}`); }
 }
 
-function groundedRationale(raw: JsonObject, at: number, catalog: EvidenceRecord[], allowedClipIds: Set<string>, label: string): string {
+function groundedRationale(raw: JsonObject, at: number, catalog: EvidenceRecord[], allowedClipIds: Set<string>, label: string, openingScope?: OpeningEvidenceScope, openingClipId?: string): string {
   const allowed = new Set(["at", "clipId", "action", "confidence", "creativeIntent", "evidenceRefs"]);
   if (label === "Section opening") allowed.add("mode");
   const extra = Object.keys(raw).filter((key) => !allowed.has(key));
@@ -23,10 +24,14 @@ function groundedRationale(raw: JsonObject, at: number, catalog: EvidenceRecord[
     const record = catalog.find((item) => item.id === id);
     if (!record) throw new SectionValidationError("invalid-evidence-reference", `${label} references unknown evidence '${id}'.`);
     if (record.clipId && !allowedClipIds.has(record.clipId)) throw new SectionValidationError("invalid-evidence-reference", `${label} references evidence for unknown clip '${record.clipId}'.`);
-    if (Math.abs(record.at - at) > 0.8) throw new SectionValidationError("non-local-evidence", `${label} at ${at.toFixed(3)}s cites ${record.type} at ${record.at.toFixed(3)}s.`);
+    if (openingScope) {
+      if (record.at < openingScope.start - 0.001 || record.at > openingScope.end + 0.001) throw new SectionValidationError("non-local-evidence", `${label} at ${at.toFixed(3)}s cites ${record.type} at ${record.at.toFixed(3)}s outside opening evidence scope ${openingScope.start.toFixed(3)}-${openingScope.end.toFixed(3)}s.`);
+      if (record.clipId && record.clipId !== openingClipId) throw new SectionValidationError("invalid-evidence-reference", `${label} cites evidence for a different clip '${record.clipId}'.`);
+    } else if (Math.abs(record.at - at) > 0.8) throw new SectionValidationError("non-local-evidence", `${label} at ${at.toFixed(3)}s cites ${record.type} at ${record.at.toFixed(3)}s.`);
     return record;
   });
   if (new Set(raw.evidenceRefs).size !== refs.length) throw new SectionValidationError("invalid-evidence-reference", `${label} repeats an evidence reference.`);
+  if (openingScope && !refs.some((record) => record.clipId === openingClipId)) throw new SectionValidationError("missing-evidence-reference", `${label} needs measured evidence for selected clip '${openingClipId}'.`);
   return renderEvidenceRationale(refs);
 }
 function findCandidateMomentNear(
@@ -317,7 +322,8 @@ export function validateSectionSwitches(
   videos: JsonObject[],
   candidateEditMoments: JsonObject[] = [],
   previousClipId = "",
-  evidenceCatalog: EvidenceRecord[] = []
+  evidenceCatalog: EvidenceRecord[] = [],
+  initialOpeningScope?: OpeningEvidenceScope
 ): EditingDecision[] {
   const available = availableOpeningClips(videos, sectionStart);
   const fixedOpening = deterministicOpening(previousClipId, videos, sectionStart);
@@ -344,7 +350,8 @@ export function validateSectionSwitches(
     ? (fixedOpening.mode === "continuation"
       ? `Continues clip '${openingClipId}' from the preceding section.`
       : `Availability repair: uniquely available clip '${openingClipId}' begins at ${sectionStart.toFixed(3)}s.`)
-    : groundedRationale(opening, sectionStart, evidenceCatalog, allowedClipIds, "Section opening");
+    : groundedRationale(opening, sectionStart, evidenceCatalog, allowedClipIds, "Section opening",
+      openingState.mode === "initial-selection" ? initialOpeningScope ?? resolveOpeningEvidenceScope(videos, sectionStart) : undefined, openingClipId);
 
 
   const switches =

@@ -49,7 +49,7 @@ export interface EditingPlan {
     projectClassification?: { primary: string; secondary: string[] };
     selectedAcademyCompetencies?: string[];
     editorialFindings?: { code: string; severity: string; start: number; end: number; evidence: string }[];
-    telemetry?: { modelCalls: number; modelElapsedMs: number; mediaCacheHits: number; candidateMomentCount: number; sectionAttempts: number; evidenceRefCount: number; invalidEvidenceRefFailures: number; nonLocalEvidenceRefFailures: number; validationFailures: Record<string, number>; repairAttemptsByCategory: Record<string, number>; criticFindings: string[]; repairs: number; finalDecisionCount: number; totalPlanningMs: number };
+    telemetry?: { modelCalls: number; modelElapsedMs: number; mediaCacheHits: number; candidateMomentCount: number; sectionAttempts: number; evidenceRefCount: number; invalidEvidenceRefFailures: number; nonLocalEvidenceRefFailures: number; validationFailures: Record<string, number>; repairAttemptsByCategory: Record<string, number>; criticFindings: string[]; repairs: number; finalDecisionCount: number; totalPlanningMs: number; initialSelection?: { openingMode: "initial-selection"; timelineStart: number; openingEvidenceWindowStart: number; openingEvidenceWindowEnd: number; availableOpeningClips: string[]; openingEvidenceCountsByClip: Record<string, number>; selectedClipId: string; selectedEvidenceRefs: string[] } };
   };
 }
 

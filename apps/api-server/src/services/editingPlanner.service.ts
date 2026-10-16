@@ -8,6 +8,7 @@ import { compactVideo } from "./editing/evidence/videoEvidence";
 import { buildSectionEditMoments } from "./editing/evidence/candidateMoments";
 import { sectionEvidence } from "./editing/evidence/sectionEvidence";
 import { buildEvidenceCatalog } from "./editing/evidence/evidenceRefs";
+import { openingEvidenceByClip, resolveOpeningEvidenceScope } from "./editing/evidence/openingEvidence";
 import { creativeBriefSchema, buildCameraProfileSchema, buildSectionPlanSchema, buildBoundaryPruneSchema } from "./editing/planning/schemas";
 import { parseCreativeBrief, parseCameraProfiles, parseSectionPlan } from "./editing/planning/parsing";
 import { sanitizeGroundedEditorialText, sanitizeStructuredStrings, validateSectionSwitches, SectionValidationError } from "./editing/validation/section";
@@ -24,7 +25,7 @@ import { deterministicOpening, availableOpeningClips } from "./editing/planning/
 
 export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promise<EditingPlan> {
   const startedAt = Date.now();
-  const telemetry = { modelCalls: 0, modelElapsedMs: 0, mediaCacheHits: 0, candidateMomentCount: 0, sectionAttempts: 0, evidenceRefCount: 0, invalidEvidenceRefFailures: 0, nonLocalEvidenceRefFailures: 0, validationFailures: {} as Record<string, number>, repairAttemptsByCategory: {} as Record<string, number>, criticFindings: [] as string[] };
+  const telemetry = { modelCalls: 0, modelElapsedMs: 0, mediaCacheHits: 0, candidateMomentCount: 0, sectionAttempts: 0, evidenceRefCount: 0, invalidEvidenceRefFailures: 0, nonLocalEvidenceRefFailures: 0, validationFailures: {} as Record<string, number>, repairAttemptsByCategory: {} as Record<string, number>, criticFindings: [] as string[], initialSelection: undefined as undefined | { openingMode: "initial-selection"; timelineStart: number; openingEvidenceWindowStart: number; openingEvidenceWindowEnd: number; availableOpeningClips: string[]; openingEvidenceCountsByClip: Record<string, number>; selectedClipId: string; selectedEvidenceRefs: string[] } };
   const callModel = async (request: Parameters<typeof generateJson>[0]) => {
     const start = Date.now();
     try { return await generateJson({ ...request, onCall: () => { telemetry.modelCalls++; } }); }
@@ -223,7 +224,8 @@ ${editingKnowledge.context}`;
           (value) =>
             Number.isFinite(value)
         );
-    const evidenceCatalog = buildEvidenceCatalog(audio, videos, sectionStart, sectionEnd, candidateEditTimes);
+    const openingScope = sectionStart === 0 ? resolveOpeningEvidenceScope(videos, sectionStart) : undefined;
+    const evidenceCatalog = buildEvidenceCatalog(audio, videos, sectionStart, sectionEnd, candidateEditTimes, openingScope);
     const fixedOpening = deterministicOpening(previousClipId, videos, sectionStart);
     const openingMode = fixedOpening?.mode ?? (previousClipId ? "availability-transition" : "initial-selection");
     const openingSourceAvailable = fixedOpening ? availableOpeningClips(videos, sectionStart).includes(fixedOpening.clipId) : undefined;
@@ -237,13 +239,14 @@ SECTION CONTINUITY:
 - The start of this planning section is NOT automatically a creative cut.
 - previousClipId is the camera active immediately before this section.
 - Current opening state: ${fixedOpening ? `${fixedOpening.mode}, clip '${fixedOpening.clipId}'. This is fixed system state; return switches only and do not justify this opening.` : `Choose an evidence-grounded ${openingMode} opening and return it with mode '${openingMode}'.`}
+- For initial-selection only, compare every available clip's openingEvidence in the packet. Choose the first visual state creatively. Cite measured evidence for the selected clip inside openingEvidence.windowStart-windowEnd. Missing measurements are uncertainty, not evidence.
 - A genuine creative switch may happen exactly at sectionStart or later at an evidence-backed candidateEditMoment.
 - Never change cameras merely because a planning section began.
 - A section boundary alone is not evidence for a creative switch.
 
 LOCAL-EVIDENCE DISCIPLINE:
 - Every switch time must come from the enforced evidence-backed candidate schema.
-- Select evidenceRefs only from evidenceCatalog. Each referenced record must be within 0.8s of that switch.
+- Select evidenceRefs only from evidenceCatalog. Each switch reference must be within 0.8s of that switch. The initial selection uses only its separate opening evidence scope.
 - Never justify a switch using an event several seconds earlier or later.
 - creativeIntent describes editorial purpose and never proves a factual claim.
 
@@ -336,6 +339,7 @@ Return only schema-valid JSON.`;
       const packet = buildSectionPacket({
         start: sectionStart, end: sectionEnd, videos, availability,
         candidates: candidateEditMoments, catalog: evidenceCatalog,
+        openingScope,
         intent, brief, profiles: sectionProfiles, previousClipId,
         academy: sectionAcademy, system: attemptSystem, numPredict: 2200,
         ...(isRepair ? { repair: {
@@ -395,7 +399,7 @@ Return only schema-valid JSON.`;
           const candidateSection = parseSectionPlan(String(generated));
           const candidateDecisions = validateSectionSwitches(
             candidateSection.opening, candidateSection.switches, allowedClipIds,
-            sectionStart, sectionEnd, videos, candidateEditMoments, previousClipId, evidenceCatalog
+            sectionStart, sectionEnd, videos, candidateEditMoments, previousClipId, evidenceCatalog, openingScope
           );
           telemetry.evidenceRefCount += [candidateSection.opening, ...candidateSection.switches].reduce<number>((count, item) => count + (item && typeof item === "object" && Array.isArray((item as JsonObject).evidenceRefs) ? ((item as JsonObject).evidenceRefs as unknown[]).length : 0), 0);
           return { candidateSection, candidateDecisions };
@@ -424,6 +428,18 @@ Return only schema-valid JSON.`;
       parsedSection = repaired.value.candidateSection;
       sectionDecisions = repaired.value.candidateDecisions;
       const acceptedOpeningClipId = fixedOpening?.clipId ?? (parsedSection.opening && typeof parsedSection.opening === "object" ? String((parsedSection.opening as JsonObject).clipId ?? "") : "");
+      if (openingScope) {
+        const openingEvidence = openingEvidenceByClip(videos, evidenceCatalog, openingScope);
+        telemetry.initialSelection = {
+          openingMode: "initial-selection", timelineStart: sectionStart,
+          openingEvidenceWindowStart: openingScope.start, openingEvidenceWindowEnd: openingScope.end,
+          availableOpeningClips: openingScope.availableClipIds,
+          openingEvidenceCountsByClip: Object.fromEntries(openingEvidence.map((item) => [item.clipId, item.evidenceRefs.length])),
+          selectedClipId: acceptedOpeningClipId,
+          selectedEvidenceRefs: parsedSection.opening && typeof parsedSection.opening === "object" && Array.isArray((parsedSection.opening as JsonObject).evidenceRefs) ? (parsedSection.opening as JsonObject).evidenceRefs as string[] : [],
+        };
+        console.log("[FREEOS Editing Planner] initial selection", JSON.stringify(telemetry.initialSelection));
+      }
       console.log("[FREEOS Editing Planner] section boundary", JSON.stringify({
         sectionStart, openingMode, openingClipId: acceptedOpeningClipId,
         openingSourceAvailable: openingSourceAvailable ?? availableOpeningClips(videos, sectionStart).includes(acceptedOpeningClipId),

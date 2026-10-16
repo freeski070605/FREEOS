@@ -7,6 +7,30 @@ export function compactVideo(raw: unknown, input: EditingPlannerClipInput): Json
   const offset = input.timelineOffsetSeconds ?? 0;
   const windowSeconds = 4;
   const windows: JsonObject[] = [];
+  const frameTimes = timeline.map((frame) => number(frame.time, NaN)).filter(Number.isFinite).sort((a, b) => a - b);
+  const orderedFrames = [...timeline].sort((a, b) => number(a.time, Infinity) - number(b.time, Infinity));
+  const gaps = frameTimes.slice(1).map((time, index) => time - frameTimes[index]).filter((gap) => gap > 0);
+  const sampleCadence = gaps.length ? gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)] : NaN;
+  const openingMeasurements: JsonObject[] = [];
+  const firstMeasured = (type: string, key: string, label = false) => {
+    const frame = orderedFrames
+      .find((item) => Number.isFinite(number(item.time, NaN)) && (label ? typeof item[key] === "string" && /^(?:wide|medium|close|tight|long|full|mid)(?:[ -](?:shot|up|view))?$/i.test(String(item[key])) : Number.isFinite(number(item[key], NaN))));
+    if (!frame) return;
+    openingMeasurements.push({ type, at: number(frame.time, NaN) + offset,
+      ...(label ? { label: String(frame[key]).toLowerCase() } : { value: key === "faceCount" ? Number(number(frame[key], 0) > 0) : number(frame[key], NaN) }) });
+  };
+  firstMeasured("framing", "framingRole", true);
+  if (!openingMeasurements.some((item) => item.type === "framing")) firstMeasured("framing", "shotScale", true);
+  firstMeasured("face-presence", "faceCount");
+  const firstFace = openingMeasurements.find((item) => item.type === "face-presence");
+  if (firstFace?.value === 0) {
+    const firstPositive = orderedFrames.find((frame) => Number.isFinite(number(frame.time, NaN)) && number(frame.time, NaN) + offset <= offset + 2 && number(frame.faceCount, 0) > 0);
+    if (firstPositive) openingMeasurements.push({ type: "face-presence", at: number(firstPositive.time, NaN) + offset, value: 1 });
+  }
+  firstMeasured("motion-state", "motion");
+  firstMeasured("camera-motion", "globalMotion");
+  firstMeasured("sharpness", "sharpness");
+  firstMeasured("exposure", "brightness");
   for (let start = 0; start < duration; start += windowSeconds) {
     const end = Math.min(duration, start + windowSeconds);
     const frames = timeline.filter((f) => number(f.time, -1) >= start && number(f.time, -1) < end);
@@ -300,6 +324,8 @@ export function compactVideo(raw: unknown, input: EditingPlannerClipInput): Json
     qualityFlags: v.qualityFlags,
     analysisVersion: v.analysisVersion,
     windows,
+    sampleCadence,
+    openingMeasurements,
     editMoments: visualEditMoments,
   };
 }

@@ -2,6 +2,7 @@ import type { JsonObject } from "./plannerTypes";
 import { number } from "../shared";
 import { creativeIntents, type EvidenceRecord } from "../evidence/evidenceRefs";
 import { deterministicOpening } from "./openingState";
+import type { OpeningEvidenceScope } from "../evidence/openingEvidence";
 export const creativeBriefSchema: JsonObject = {
   type: "object",
   additionalProperties: false,
@@ -67,7 +68,8 @@ export function buildSectionPlanSchema(
   videos: JsonObject[],
   candidateTimes: number[],
   evidenceCatalog: EvidenceRecord[] = [],
-  previousClipId = ""
+  previousClipId = "",
+  openingScope?: OpeningEvidenceScope
 ): JsonObject {
   const fixedOpening = deterministicOpening(previousClipId, videos, sectionStart);
   const evidenceRefs = { type: "array", minItems: 1, maxItems: 8, uniqueItems: true, items: { type: "string", enum: evidenceCatalog.map((item) => item.id) } };
@@ -150,7 +152,7 @@ export function buildSectionPlanSchema(
           },
 
           creativeIntent,
-          evidenceRefs,
+          evidenceRefs: !previousClipId && openingScope ? { ...evidenceRefs, items: { type: "string", enum: evidenceCatalog.filter((item) => item.at >= openingScope.start && item.at <= openingScope.end && (!item.clipId || item.clipId === id)).map((item) => item.id) } } : evidenceRefs,
         },
       }];
     });

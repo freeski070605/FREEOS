@@ -1,6 +1,7 @@
 import { config } from "../../../config";
 import type { CameraProfile, JsonObject } from "./plannerTypes";
 import type { EvidenceRecord } from "../evidence/evidenceRefs";
+import { openingEvidenceByClip, type OpeningEvidenceScope } from "../evidence/openingEvidence";
 import { buildSectionPlanSchema } from "./schemas";
 import { number } from "../shared";
 
@@ -17,11 +18,13 @@ const priority: Record<string, number> = {
   "source-availability": 0, "audio-section-boundary": 8, "silence-boundary": 8,
   "scene-change": 7, "audio-transient": 7, "motion-shift": 6,
   "framing": 5, "face-presence": 4, "camera-motion": 3,
+  "motion-state": 3,
   "audio-energy": 2, "sharpness": 2, "exposure": 2, "semantic-confidence": 1,
 };
 
-function selectCatalog(catalog: EvidenceRecord[], candidates: JsonObject[], start: number, tier: number): EvidenceRecord[] {
+function selectCatalog(catalog: EvidenceRecord[], candidates: JsonObject[], start: number, tier: number, openingScope?: OpeningEvidenceScope): EvidenceRecord[] {
   const selected = new Set<string>();
+  if (openingScope) for (const item of catalog) if (item.opening && item.at >= openingScope.start && item.at <= openingScope.end) selected.add(item.id);
   for (const item of catalog) if (item.type === "source-availability" && Math.abs(item.at - start) <= 0.01) selected.add(item.id);
   const choose = (at: number, perClip: number, audioLimit: number) => {
     const local = catalog.filter((item) => Math.abs(item.at - at) <= 0.8)
@@ -45,6 +48,7 @@ export function buildSectionPacket(input: {
   candidates: JsonObject[]; catalog: EvidenceRecord[]; intent: unknown; brief: unknown;
   profiles: CameraProfile[]; previousClipId: string; academy: string;
   system: string; numPredict: number; repair?: { category: string; message: string; rejected: string };
+  openingScope?: OpeningEvidenceScope;
 }) {
   const budget = sectionModelBudget(input.numPredict);
   const candidateTimes = input.candidates.map((c) => number(c.at, NaN)).filter(Number.isFinite);
@@ -60,7 +64,7 @@ export function buildSectionPacket(input: {
     confidence: p.confidence,
   }));
   for (const tier of [3, 2, 1]) {
-    const exposedCatalog = selectCatalog(input.catalog, input.candidates, input.start, tier);
+    const exposedCatalog = selectCatalog(input.catalog, input.candidates, input.start, tier, input.openingScope);
     const packet = {
       section: [input.start, input.end], userIntent: input.intent, creativeBrief: input.brief,
       previousClipId: input.previousClipId || null,
@@ -70,10 +74,14 @@ export function buildSectionPacket(input: {
       evidenceCatalog: exposedCatalog.map((e) => ({ id: e.id, type: e.type, at: e.at,
         ...(e.clipId ? { clipId: e.clipId } : {}), ...(e.value !== undefined ? { value: e.value } : {}),
         ...(e.label ? { label: e.label } : {}) })),
+      ...(input.openingScope ? { openingEvidence: {
+        windowStart: input.openingScope.start, windowEnd: input.openingScope.end,
+        clips: openingEvidenceByClip(input.videos, exposedCatalog, input.openingScope),
+      } } : {}),
       cameraProfiles: profiles, academyGuidance: academy,
       ...(input.repair ? { repair: input.repair } : {}),
     };
-    const schema = buildSectionPlanSchema(input.start, input.end, input.videos, candidateTimes, exposedCatalog, input.previousClipId);
+    const schema = buildSectionPlanSchema(input.start, input.end, input.videos, candidateTimes, exposedCatalog, input.previousClipId, input.openingScope);
     const estimatedPromptTokens = estimatePromptTokens(input.system) + estimatePromptTokens(packet) + estimatePromptTokens(schema) + 256;
     if (estimatedPromptTokens <= budget.finalInputBudget) return {
       packet, schema, exposedCatalog, budget, estimatedPromptTokens,
