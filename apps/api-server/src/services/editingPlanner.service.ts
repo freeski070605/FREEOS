@@ -7,9 +7,10 @@ import { compactAudio } from "./editing/evidence/audioEvidence";
 import { compactVideo } from "./editing/evidence/videoEvidence";
 import { buildSectionEditMoments } from "./editing/evidence/candidateMoments";
 import { sectionEvidence } from "./editing/evidence/sectionEvidence";
+import { buildEvidenceCatalog } from "./editing/evidence/evidenceRefs";
 import { creativeBriefSchema, buildCameraProfileSchema, buildSectionPlanSchema, buildBoundaryPruneSchema } from "./editing/planning/schemas";
 import { parseCreativeBrief, parseCameraProfiles, parseSectionPlan } from "./editing/planning/parsing";
-import { sanitizeGroundedEditorialText, sanitizeStructuredStrings, validateSectionSwitches } from "./editing/validation/section";
+import { sanitizeGroundedEditorialText, sanitizeStructuredStrings, validateSectionSwitches, SectionValidationError } from "./editing/validation/section";
 import { assertNonDegenerateAssembly, buildGroundedCautions, mergeAdjacentDecisions } from "./editing/critique/assembly";
 import { generateJson } from "./editing/planning/model";
 import { analyzeMediaCached } from "./editing/evidence/mediaCache";
@@ -18,10 +19,11 @@ import { resolveEditingIntent } from "./editing/classification/projectIntent";
 import { critiqueTimeline } from "./editing/critique/editorialCritic";
 import { recordEditingExperience } from "./editing/learning/editingExperience";
 import { runBoundedPlanRepair, PlanRepairError } from "./editing/repair/planRepair";
+import { buildSectionPacket } from "./editing/planning/sectionPacket";
 
 export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promise<EditingPlan> {
   const startedAt = Date.now();
-  const telemetry = { modelCalls: 0, modelElapsedMs: 0, mediaCacheHits: 0, candidateMomentCount: 0, sectionAttempts: 0, validationFailures: {} as Record<string, number>, criticFindings: [] as string[] };
+  const telemetry = { modelCalls: 0, modelElapsedMs: 0, mediaCacheHits: 0, candidateMomentCount: 0, sectionAttempts: 0, evidenceRefCount: 0, invalidEvidenceRefFailures: 0, nonLocalEvidenceRefFailures: 0, validationFailures: {} as Record<string, number>, repairAttemptsByCategory: {} as Record<string, number>, criticFindings: [] as string[] };
   const callModel = async (request: Parameters<typeof generateJson>[0]) => {
     const start = Date.now();
     try { return await generateJson({ ...request, onCall: () => { telemetry.modelCalls++; } }); }
@@ -47,6 +49,7 @@ export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promi
   bootstrapEditingAcademy();
   const editingKnowledge = buildEditingKnowledgeContext(profile.academyQuery);
   if (editingKnowledge.gap.needsMoreKnowledge) throw new Error(`Editing Academy knowledge gap: ${editingKnowledge.gap.reason} Query: ${editingKnowledge.gap.query}`);
+  const sectionAcademy = buildEditingKnowledgeContext(`${profile.academyQuery} section camera continuity evidence pacing`, 4).context;
   const inferredDuration = number(audio.durationSeconds, 0);
   const duration = input.durationSeconds && input.durationSeconds > 0 ? input.durationSeconds : inferredDuration;
   if (!duration) throw new Error("Could not determine edit duration.");
@@ -184,13 +187,13 @@ ${editingKnowledge.context}`;
 
   const sectionSeconds = 60;
   const decisions: EditingDecision[] = [];
-  const sectionCautions: string[] = [];
   const allCandidateEditMoments: JsonObject[] = [];
   let previousClipId = "";
   for (let sectionStart = 0; sectionStart < availableEnd; sectionStart += sectionSeconds) {
     const sectionEnd = Math.min(availableEnd, sectionStart + sectionSeconds);
-    const evidence = sectionEvidence(audio, videos, sectionStart, sectionEnd);
-    const availability = evidence.availability;
+    const availability = videos.map((video) => ({
+      id: video.id, start: video.timelineAvailableStart, end: video.timelineAvailableEnd,
+    })).filter((video) => number(video.end, 0) > sectionStart && number(video.start, 0) < sectionEnd);
 
     /*
      * Real evidence-backed editing opportunities.
@@ -219,17 +222,9 @@ ${editingKnowledge.context}`;
           (value) =>
             Number.isFinite(value)
         );
+    const evidenceCatalog = buildEvidenceCatalog(audio, videos, sectionStart, sectionEnd, candidateEditTimes);
 
 
-    const sectionEndCapableClipIds = availability
-      .filter((item) => number(item.end, 0) >= sectionEnd - 0.001)
-      .map((item) => String(item.id));
-
-    const availabilityContract = availability.map((item) => ({
-      clipId: String(item.id),
-      availableStart: number(item.start, 0),
-      availableEnd: number(item.end, 0),
-    }));
     const sectionSystem = `You are FREEOS's section editor.
 
 Create ONE chronological edit for ONLY timeline ${sectionStart.toFixed(3)} to ${sectionEnd.toFixed(3)}.
@@ -240,13 +235,13 @@ SECTION CONTINUITY:
 - If previousClipId remains available at sectionStart, use previousClipId as this section's opening clip.
 - A genuine creative switch may happen moments later at an evidence-backed candidateEditMoment.
 - Never change cameras merely because a planning section began.
-- "section start" is never a creative rationale.
+- A section boundary alone is not evidence for a creative switch.
 
 LOCAL-EVIDENCE DISCIPLINE:
 - Every switch time must come from the enforced evidence-backed candidate schema.
-- Each switch rationale may use ONLY evidence belonging to that exact candidateEditMoment.
+- Select evidenceRefs only from evidenceCatalog. Each referenced record must be within 0.8s of that switch.
 - Never justify a switch using an event several seconds earlier or later.
-- Candidate reasons are local evidence, not general evidence for the entire section.
+- creativeIntent describes editorial purpose and never proves a factual claim.
 
 CAMERA CONTINUITY:
 - Do not create A-B-A or A-B-A-B patterns merely for visual variety.
@@ -278,7 +273,8 @@ GROUNDING RULES:
 - Never invent singers, backing singers, performers, audience, instruments, rooms, objects, actions, story events, or emotional expressions.
 - Multiple detected faces do NOT prove an ensemble or backing singers.
 - Face presence does NOT identify a vocalist or performer.
-- Rationales may cite only supplied measurements: framing, motion, visibility, quality, semantic confidence, scene changes, audio energy, transients, detected boundaries, silence, source availability, and creative strategy.
+- Do not write factual rationale prose. Choose measured evidenceRefs; FREEOS renders rationale locally after validation.
+- Do not add extra free-text fields to opening or switches.
 - Never claim a vocal flourish, lyrical emphasis, instrumental entrance, harmony, solo, chord, or melody event unless supplied evidence explicitly contains that fact.
 - If semantic evidence is uncertain, say so.
 
@@ -290,17 +286,7 @@ CREATIVE RULES:
 - Switch only when evidence and creative strategy justify changing what the viewer receives.
 
 Return only schema-valid JSON.`;
-    const sectionPrompt = {
-      userIntent: intent,
-      creativeBrief: brief,
-      previousClipId: previousClipId || null,
-      availability,
-      candidateEditMoments,
-      availabilityContract,
-      sectionEndCapableClipIds,
-      cameraProfiles: cameraProfiles.filter((profile) => availability.some((item) => String(item.id) === profile.clipId)),
-      evidence,
-    };
+    const sectionProfiles = cameraProfiles.filter((profile) => availability.some((item) => String(item.id) === profile.clipId));
 
     let sectionText = "";
 
@@ -326,6 +312,7 @@ Return only schema-valid JSON.`;
     const maxSectionAttempts = 4;
 
     let previousFailure = "";
+    let previousCategory = "";
     let previousResponseExcerpt = "";
 
     try {
@@ -334,103 +321,40 @@ Return only schema-valid JSON.`;
         generate: async (attempt, previous) => {
           telemetry.sectionAttempts++;
           previousFailure = previous?.message ?? "";
+          previousCategory = previous?.category ?? "";
+          if (previousCategory) telemetry.repairAttemptsByCategory[previousCategory] = (telemetry.repairAttemptsByCategory[previousCategory] ?? 0) + 1;
       const isRepair =
         attempt > 1;
 
-      const attemptSystem =
-        !isRepair
-          ? sectionSystem
-          : `REPAIR THIS SECTION FROM SCRATCH for ${sectionStart.toFixed(3)}-${sectionEnd.toFixed(3)} seconds.
-
-This is repair attempt ${attempt} of ${maxSectionAttempts}.
-
-The previous result FAILED deterministic FREEOS validation.
-
-PREVIOUS FAILURE:
-${previousFailure}
-
-Fix the exact validator failure above by producing a genuinely improved creative section from the supplied evidence.
-
-SECTION CONTINUITY:
-- A planning boundary is not itself a creative cut.
-- previousClipId is the camera active before this section.
-- If previousClipId remains available at sectionStart, the opening clip must remain previousClipId.
-- Never switch merely because a planning section began.
-- "section start" is not a creative rationale.
-
-LOCAL EVIDENCE:
-- Every creative switch must use a supplied candidateEditMoment.
-- Every rationale must use evidence local to that exact candidate time.
-- Never borrow an event from several seconds earlier or later.
-- Candidate reasons apply to their own candidate time only.
-
-CAMERA STRUCTURE:
-- Do not mechanically alternate cameras.
-- Do not create A-B-A or A-B-A-B merely for visual variety.
-- Rapid returns require strong local measured evidence.
-- Avoid ultra-short inserts unless unusually strong evidence supports them.
-- Prefer continuity when competing camera choices are otherwise similar.
-
-GROUNDING:
-- Use neutral measured terminology.
-- Never invent performers, singers, audiences, instruments, lyrics, rooms, objects, actions, emotions, relationships, or story events.
-- Detected faces are only detected faces.
-- Multiple faces do not prove a group, ensemble, backing singers, crowd, or audience.
-- Face presence does not prove a performer.
-- Never invent verse, chorus, bridge, hook, solo, vocals, melody, harmony, or other musical labels.
-- Rationales may cite measured framing, visibility, motion, scene change, quality, semantic confidence, audio energy, transients, detected boundaries, silence, source availability, and supplied creative strategy.
-
-TIMELINE:
-- Opening begins exactly at ${sectionStart.toFixed(3)}.
-- Every clip must remain inside its supplied availability.
-- Switch away no later than availableEnd.
-- The final active clip must come from sectionEndCapableClipIds.
-- Every creative switch must use the enforced candidate-time schema.
-- candidateEditMoments are options, not mandatory cuts.
-- Do not manufacture fixed or near-fixed 4, 8, 16, or other repeating intervals.
-- Long holds are valid.
-- Faster cutting is valid only where actual evidence supports it.
-
-Return only complete schema-valid JSON.`;
-
-      const attemptPrompt =
-        !isRepair
-          ? sectionPrompt
-          : {
-              previousClipId:
-                previousClipId || null,
-
-              creativeBrief:
-                brief,
-
-              availability,
-
-              candidateEditMoments,
-
-              availabilityContract,
-
-              sectionEndCapableClipIds,
-
-              cameraProfiles:
-                cameraProfiles.filter(
-                  (profile) =>
-                    availability.some(
-                      (item) =>
-                        String(item.id) ===
-                        profile.clipId
-                    )
-                ),
-
-              evidence,
-
-              previousFailure,
-
-              previousRejectedResponse:
-                previousResponseExcerpt,
-
-              repairInstruction:
-                "Rebuild the section from the evidence and correct the exact deterministic validator failure.",
-            };
+      const attemptSystem = sectionSystem + (isRepair
+        ? "\nRepair the previous decision against the validator diagnostic. Return one complete section JSON."
+        : "");
+      const packet = buildSectionPacket({
+        start: sectionStart, end: sectionEnd, videos, availability,
+        candidates: candidateEditMoments, catalog: evidenceCatalog,
+        intent, brief, profiles: sectionProfiles, previousClipId,
+        academy: sectionAcademy, system: attemptSystem, numPredict: 2200,
+        ...(isRepair ? { repair: {
+          category: previousCategory, message: previousFailure.slice(0, 800),
+          rejected: previousResponseExcerpt.slice(0, 1200),
+        } } : {}),
+      });
+      console.log("[FREEOS Editing Planner] section packet", JSON.stringify({
+        section: `${sectionStart}-${sectionEnd}`,
+        rawEvidenceCount: (Array.isArray(audio.windows) ? audio.windows.length : 0) +
+          (Array.isArray(audio.transientMoments) ? audio.transientMoments.length : 0) +
+          videos.reduce((sum, v) => sum + (Array.isArray(v.windows) ? v.windows.length : 0) +
+            (Array.isArray(v.editMoments) ? v.editMoments.length : 0), 0),
+        sectionEvidenceCount: evidenceCatalog.length, candidateCount: candidateEditMoments.length,
+        catalogEntries: packet.exposedCatalog.length,
+        estimatedInputTokens: packet.estimatedPromptTokens, inputBudget: packet.budget.finalInputBudget,
+        contextSize: packet.budget.contextSize, outputTokenReserve: packet.budget.outputTokenReserve,
+        safetyMargin: packet.budget.safetyMargin, finalInputBudget: packet.budget.finalInputBudget,
+        estimatedPromptTokens: packet.estimatedPromptTokens, academyTokens: packet.academyTokens,
+        intentTokens: packet.intentTokens, evidenceCatalogTokens: packet.evidenceCatalogTokens,
+        candidateTokens: packet.candidateTokens, schemaTokens: packet.schemaTokens,
+        compactionApplied: packet.compactionApplied, repairAttempt: attempt,
+      }));
 
           console.log(`[FREEOS Editing Planner] section ${sectionStart}-${sectionEnd} attempt ${attempt}/${maxSectionAttempts}${isRepair ? " repair" : ""}`);
         sectionText =
@@ -439,15 +363,10 @@ Return only complete schema-valid JSON.`;
               attemptSystem,
 
             prompt:
-              attemptPrompt,
+              packet.packet,
 
             schema:
-              buildSectionPlanSchema(
-                sectionStart,
-                sectionEnd,
-                videos,
-                candidateEditTimes
-              ),
+              packet.schema,
 
             timeoutMs:
               Math.max(
@@ -472,20 +391,26 @@ Return only complete schema-valid JSON.`;
           const candidateSection = parseSectionPlan(String(generated));
           const candidateDecisions = validateSectionSwitches(
             candidateSection.opening, candidateSection.switches, allowedClipIds,
-            sectionStart, sectionEnd, videos, candidateEditMoments, previousClipId
+            sectionStart, sectionEnd, videos, candidateEditMoments, previousClipId, evidenceCatalog
           );
+          telemetry.evidenceRefCount += [candidateSection.opening, ...candidateSection.switches].reduce<number>((count, item) => count + (item && typeof item === "object" && Array.isArray((item as JsonObject).evidenceRefs) ? ((item as JsonObject).evidenceRefs as unknown[]).length : 0), 0);
           return { candidateSection, candidateDecisions };
         },
         classify: (error) => {
+          if (error instanceof SectionValidationError) return error.category;
           const failure = error instanceof Error ? error.message : String(error);
-          return /availab|source|continuation/i.test(failure) ? "availability"
+          return /context-budget|exceed_context_size_error|exceeds available context size/i.test(failure) ? "context-budget"
+            : /availab|source|continuation/i.test(failure) ? "source-unavailable"
+            : /mechanical|alternat|ping.pong|Short A-B-A/i.test(failure) ? "mechanical-camera-pattern"
             : /ground|semantic|rationale|evidence/i.test(failure) ? "grounding"
             : /boundary|continuity/i.test(failure) ? "continuity"
             : /timing|candidate|time/i.test(failure) ? "timing"
-            : /mechanical|alternat|ping.pong/i.test(failure) ? "camera-pattern" : "structure";
+            : "structure";
         },
         onFailure: (diagnostic) => {
           telemetry.validationFailures[diagnostic.category] = (telemetry.validationFailures[diagnostic.category] ?? 0) + 1;
+          if (diagnostic.category === "invalid-evidence-reference") telemetry.invalidEvidenceRefFailures++;
+          if (diagnostic.category === "non-local-evidence") telemetry.nonLocalEvidenceRefFailures++;
           previousResponseExcerpt = sectionText.slice(0, 2400);
           console.error(`[FREEOS Editing Planner] section ${sectionStart}-${sectionEnd} attempt ${diagnostic.attempt}/${maxSectionAttempts} validation failure: ${diagnostic.message}`);
           sectionText = "";
@@ -521,11 +446,6 @@ Return only complete schema-valid JSON.`;
       );
     }
 
-sectionCautions.push(
-      ...parsedSection.cautions.filter((caution) =>
-        /\b(source|availability|quality|semantic|uncertain|confidence|sharpness|brightness|motion|framing|visibility)\b/i.test(caution)
-      )
-    );
     const previousDecision =
       decisions.at(-1);
 
@@ -651,7 +571,7 @@ sectionCautions.push(
       throw new Error(`Combined planner decisions overlap near ${normalizedDecisions[i].start}.`);
     }
   }
-  const cautions = Array.from(new Set([...buildGroundedCautions(videos, duration, availableEnd), ...sectionCautions])).slice(0, 50);
+  const cautions = buildGroundedCautions(videos, duration, availableEnd).slice(0, 50);
   const editorialFindings = critiqueTimeline(normalizedDecisions, videos, allCandidateEditMoments, internalBoundaries);
   telemetry.criticFindings = editorialFindings.map((finding) => finding.code);
   const planningTelemetry = { ...telemetry, repairs: Math.max(0, telemetry.sectionAttempts - Math.ceil(availableEnd / sectionSeconds)), finalDecisionCount: normalizedDecisions.length, totalPlanningMs: Date.now() - startedAt };

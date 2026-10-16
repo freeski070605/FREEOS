@@ -1,5 +1,32 @@
 import type { EditingDecision, JsonObject } from "../planning/plannerTypes";
 import { asObject, number } from "../shared";
+import { creativeIntents, renderEvidenceRationale, type EvidenceRecord } from "../evidence/evidenceRefs";
+
+export class SectionValidationError extends Error {
+  constructor(public readonly category: string, message: string) { super(`${category}: ${message}`); }
+}
+
+function groundedRationale(raw: JsonObject, at: number, catalog: EvidenceRecord[], allowedClipIds: Set<string>, label: string): string {
+  const allowed = new Set(["at", "clipId", "action", "confidence", "creativeIntent", "evidenceRefs"]);
+  const extra = Object.keys(raw).filter((key) => !allowed.has(key));
+  if (extra.length) throw new SectionValidationError("invalid-evidence-reference", `${label} contains unsupported fields: ${extra.join(", ")}.`);
+  if (!creativeIntents.includes(raw.creativeIntent as typeof creativeIntents[number])) {
+    throw new SectionValidationError("unsupported-creative-intent", `${label} has unsupported creativeIntent.`);
+  }
+  if (!Array.isArray(raw.evidenceRefs) || !raw.evidenceRefs.length || raw.evidenceRefs.length > 8) {
+    throw new SectionValidationError("missing-evidence-reference", `${label} needs 1-8 evidenceRefs.`);
+  }
+  const refs = raw.evidenceRefs.map((id) => {
+    if (typeof id !== "string") throw new SectionValidationError("invalid-evidence-reference", `${label} has a non-string evidence reference.`);
+    const record = catalog.find((item) => item.id === id);
+    if (!record) throw new SectionValidationError("invalid-evidence-reference", `${label} references unknown evidence '${id}'.`);
+    if (record.clipId && !allowedClipIds.has(record.clipId)) throw new SectionValidationError("invalid-evidence-reference", `${label} references evidence for unknown clip '${record.clipId}'.`);
+    if (Math.abs(record.at - at) > 0.8) throw new SectionValidationError("non-local-evidence", `${label} at ${at.toFixed(3)}s cites ${record.type} at ${record.at.toFixed(3)}s.`);
+    return record;
+  });
+  if (new Set(raw.evidenceRefs).size !== refs.length) throw new SectionValidationError("invalid-evidence-reference", `${label} repeats an evidence reference.`);
+  return renderEvidenceRationale(refs);
+}
 function findCandidateMomentNear(
   candidateEditMoments: JsonObject[],
   at: number,
@@ -112,55 +139,6 @@ export function sanitizeGroundedEditorialText(
       " "
     )
     .trim();
-}
-
-
-function assertGroundedLocalRationale(
-  rationale: string,
-  at: number,
-  sectionStart: number,
-  sectionEnd: number,
-  label: string
-): void {
-  const unsupported =
-    /\b(?:performer|performers|performance|singer|singers|audience|crowd|ensemble|group|vocal|vocals|lyric|lyrics|chorus|verse|bridge|hook|harmony|solo|instrument|instruments|instrumental|melody|melodic)\b/i;
-
-  if (
-    rationale &&
-    unsupported.test(rationale)
-  ) {
-    throw new Error(
-      `${label} contains unsupported semantic language: '${rationale}'. Use neutral measured evidence only.`
-    );
-  }
-
-  const timestampPattern =
-    /(\d+(?:\.\d+)?)\s*(?:s|sec|secs|second|seconds)\b/gi;
-
-  let match: RegExpExecArray | null;
-
-  while (
-    (match = timestampPattern.exec(rationale)) !== null
-  ) {
-    const referencedTime =
-      Number(match[1]);
-
-    if (
-      !Number.isFinite(referencedTime)
-    ) {
-      continue;
-    }
-
-    if (
-      referencedTime >= sectionStart - 0.1 &&
-      referencedTime <= sectionEnd + 0.1 &&
-      Math.abs(referencedTime - at) > 0.80
-    ) {
-      throw new Error(
-        `${label} at ${at.toFixed(3)}s cites non-local timeline evidence at ${referencedTime.toFixed(3)}s.`
-      );
-    }
-  }
 }
 
 
@@ -336,7 +314,8 @@ export function validateSectionSwitches(
   sectionEnd: number,
   videos: JsonObject[],
   candidateEditMoments: JsonObject[] = [],
-  previousClipId = ""
+  previousClipId = "",
+  evidenceCatalog: EvidenceRecord[] = []
 ): EditingDecision[] {
   const opening =
     asObject(
@@ -397,18 +376,7 @@ export function validateSectionSwitches(
     );
   }
 
-  const openingRationale =
-    typeof opening.rationale === "string"
-      ? opening.rationale.slice(0, 500)
-      : "";
-
-  assertGroundedLocalRationale(
-    openingRationale,
-    sectionStart,
-    sectionStart,
-    sectionEnd,
-    "Section opening"
-  );
+  const openingRationale = groundedRationale(opening, sectionStart, evidenceCatalog, allowedClipIds, "Section opening");
 
 
   /*
@@ -526,22 +494,13 @@ export function validateSectionSwitches(
             }
           }
 
-          const rationale =
-            typeof s.rationale === "string"
-              ? s.rationale.slice(0, 500)
-              : "";
-
-          assertGroundedLocalRationale(
-            rationale,
-            at,
-            sectionStart,
-            sectionEnd,
-            `Section switch ${index}`
-          );
+          const rationale = groundedRationale(s, at, evidenceCatalog, allowedClipIds, `Section switch ${index}`);
 
           return {
             at,
             clipId,
+            creativeIntent: s.creativeIntent as EditingDecision["creativeIntent"],
+            evidenceRefs: s.evidenceRefs as string[],
 
             action:
               action as EditingDecision["action"],
@@ -602,6 +561,8 @@ export function validateSectionSwitches(
 
       rationale:
         openingRationale,
+      creativeIntent: opening.creativeIntent as EditingDecision["creativeIntent"],
+      evidenceRefs: opening.evidenceRefs as string[],
     },
 
     ...unique,
@@ -612,7 +573,7 @@ export function validateSectionSwitches(
    * Preserve FREEOS creative choices while deterministically
    * repairing only unambiguous source overruns.
    */
-  const repairedPoints =
+  const repairedPoints: Array<{ at: number; clipId: string; action: EditingDecision["action"]; confidence: number; rationale: string; creativeIntent?: EditingDecision["creativeIntent"]; evidenceRefs?: string[] }> =
     points.map(
       (point) => ({
         ...point,
@@ -796,6 +757,8 @@ export function validateSectionSwitches(
 
         rationale:
           `Availability repair: '${item.clipId}' ends at ${availableEnd.toFixed(3)}s, so FREEOS hands off at ${repairAt.toFixed(3)}s to '${continuationId}', the uniquely legal continuation through ${plannedEnd.toFixed(3)}s.`,
+        creativeIntent: undefined,
+        evidenceRefs: undefined,
       }
     );
 
@@ -890,6 +853,8 @@ export function validateSectionSwitches(
 
         rationale:
           item.rationale,
+        ...(item.creativeIntent ? { creativeIntent: item.creativeIntent } : {}),
+        ...(item.evidenceRefs ? { evidenceRefs: item.evidenceRefs } : {}),
       };
     }
   );

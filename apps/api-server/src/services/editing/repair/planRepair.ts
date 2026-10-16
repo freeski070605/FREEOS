@@ -20,6 +20,7 @@ export async function runBoundedPlanRepair<T>(options: {
       const diagnostic = { attempt, category: options.classify?.(error) ?? "validation", message: error instanceof Error ? error.message : String(error) };
       diagnostics.push(diagnostic);
       options.onFailure?.(diagnostic);
+      if (diagnostic.category === "context-budget") throw error;
     }
   }
   throw new PlanRepairError(diagnostics);

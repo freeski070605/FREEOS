@@ -1,3 +1,4 @@
+import type { CreativeIntent } from "../evidence/evidenceRefs";
 export type JsonObject = Record<string, unknown>;
 
 export interface EditingPlannerClipInput {
@@ -25,6 +26,8 @@ export interface EditingDecision {
   action: "cut" | "hold" | "punch-in";
   confidence: number;
   rationale: string;
+  creativeIntent?: CreativeIntent;
+  evidenceRefs?: string[];
 }
 
 export interface EditingPlan {
@@ -46,7 +49,7 @@ export interface EditingPlan {
     projectClassification?: { primary: string; secondary: string[] };
     selectedAcademyCompetencies?: string[];
     editorialFindings?: { code: string; severity: string; start: number; end: number; evidence: string }[];
-    telemetry?: { modelCalls: number; modelElapsedMs: number; mediaCacheHits: number; candidateMomentCount: number; sectionAttempts: number; validationFailures: Record<string, number>; criticFindings: string[]; repairs: number; finalDecisionCount: number; totalPlanningMs: number };
+    telemetry?: { modelCalls: number; modelElapsedMs: number; mediaCacheHits: number; candidateMomentCount: number; sectionAttempts: number; evidenceRefCount: number; invalidEvidenceRefFailures: number; nonLocalEvidenceRefFailures: number; validationFailures: Record<string, number>; repairAttemptsByCategory: Record<string, number>; criticFindings: string[]; repairs: number; finalDecisionCount: number; totalPlanningMs: number };
   };
 }
 

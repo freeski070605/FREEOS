@@ -42,10 +42,13 @@ export function parseCameraProfiles(text: string, clipIds: string[]): CameraProf
 }
 export function parseSectionPlan(text: string): { opening: unknown; switches: unknown[]; cautions: string[] } {
   const parsed = asObject(JSON.parse(text), "section plan");
+  const extra = Object.keys(parsed).filter((key) => key !== "opening" && key !== "switches");
+  if (extra.length) throw new Error(`Section plan contains unsupported free-text fields: ${extra.join(", ")}.`);
+  if (!Array.isArray(parsed.switches)) throw new Error("Section plan switches must be an array.");
   return {
     opening: parsed.opening,
-    switches: Array.isArray(parsed.switches) ? parsed.switches : [],
-    cautions: Array.isArray(parsed.cautions) ? parsed.cautions.filter((v): v is string => typeof v === "string") : [],
+    switches: parsed.switches,
+    cautions: [],
   };
 }
 

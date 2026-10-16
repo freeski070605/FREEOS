@@ -96,7 +96,7 @@ export async function generateWithOllama(input: {
        * schema-valid JSON output, so the heavy model gets a dedicated
        * 32K context.
        */
-      const heavyContextSize = 32_768;
+      const heavyContextSize = config.heavyContextSize;
 
       const isStructured = Boolean(format);
 
@@ -114,7 +114,7 @@ export async function generateWithOllama(input: {
           : 500;
 
       const effectiveNumPredict = isStructured
-        ? Math.max(requestedNumPredict, 8_000)
+        ? Math.max(requestedNumPredict, config.heavyStructuredNumPredict)
         : requestedNumPredict;
 
       /*

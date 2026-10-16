@@ -211,10 +211,10 @@ export function bootstrapEditingAcademy() {
   });
 }
 
-export function assessEditingKnowledgeGap(query: string) {
+export function assessEditingKnowledgeGap(query: string, limit = 20) {
   const normalized = query.trim();
   if (!normalized) throw new Error("query is required.");
-  const context = buildSkillTeachingContext({ query: normalized, limit: 20 });
+  const context = buildSkillTeachingContext({ query: normalized, limit });
   const catalog = getSkillCatalog("photo-video");
   const editingCompetencies = catalog.flatMap((domain) => domain.competencies).filter((item) =>
     ["editing", "premiere", "after-effects", "color", "performance", "multicam", "transition", "montage", "sound", "style", "mask", "vfx", "typography", "speed", "reframing"].some((token) =>
@@ -238,8 +238,8 @@ export function assessEditingKnowledgeGap(query: string) {
   };
 }
 
-export function buildEditingKnowledgeContext(query: string) {
-  const gap = assessEditingKnowledgeGap(query);
+export function buildEditingKnowledgeContext(query: string, limit = 20) {
+  const gap = assessEditingKnowledgeGap(query, limit);
   return {
     gap,
     context: gap.teachingContext,

@@ -25,6 +25,8 @@ export const config = Object.freeze({
   defaultModel: process.env.FREEOS_DEFAULT_MODEL?.trim() || "qwen3:8b",
   fastModel: process.env.FREEOS_FAST_MODEL?.trim() || "qwen3:4b",
   heavyModel: process.env.FREEOS_HEAVY_MODEL?.trim() || "gpt-oss-direct",
+  heavyContextSize: parsePositiveInteger(process.env.OLLAMA_HEAVY_CONTEXT_SIZE, 32_768),
+  heavyStructuredNumPredict: parsePositiveInteger(process.env.OLLAMA_HEAVY_STRUCTURED_NUM_PREDICT, 8_000),
   commandChatTimeoutMs: parsePositiveInteger(process.env.COMMAND_CHAT_TIMEOUT_MS, 300_000),
   ollamaGenerateTimeoutMs: parsePositiveInteger(process.env.OLLAMA_GENERATE_TIMEOUT_MS, 300_000),
   heavyTimeoutMs: parsePositiveInteger(process.env.OLLAMA_HEAVY_TIMEOUT_MS, 900_000),

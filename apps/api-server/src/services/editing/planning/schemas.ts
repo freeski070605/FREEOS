@@ -1,5 +1,6 @@
 import type { JsonObject } from "./plannerTypes";
 import { number } from "../shared";
+import { creativeIntents, type EvidenceRecord } from "../evidence/evidenceRefs";
 export const creativeBriefSchema: JsonObject = {
   type: "object",
   additionalProperties: false,
@@ -63,8 +64,11 @@ export function buildSectionPlanSchema(
   sectionStart: number,
   sectionEnd: number,
   videos: JsonObject[],
-  candidateTimes: number[]
+  candidateTimes: number[],
+  evidenceCatalog: EvidenceRecord[] = []
 ): JsonObject {
+  const evidenceRefs = { type: "array", minItems: 1, maxItems: 8, uniqueItems: true, items: { type: "string", enum: evidenceCatalog.map((item) => item.id) } };
+  const creativeIntent = { type: "string", enum: [...creativeIntents] };
   const uniqueCandidateTimes =
     Array.from(
       new Set(
@@ -116,7 +120,8 @@ export function buildSectionPlanSchema(
           "clipId",
           "action",
           "confidence",
-          "rationale",
+          "creativeIntent",
+          "evidenceRefs",
         ],
 
         properties: {
@@ -139,10 +144,8 @@ export function buildSectionPlanSchema(
             maximum: 1,
           },
 
-          rationale: {
-            type: "string",
-            maxLength: 180,
-          },
+          creativeIntent,
+          evidenceRefs,
         },
       }];
     });
@@ -219,7 +222,8 @@ export function buildSectionPlanSchema(
           "clipId",
           "action",
           "confidence",
-          "rationale",
+          "creativeIntent",
+          "evidenceRefs",
         ],
 
         properties: {
@@ -247,10 +251,8 @@ export function buildSectionPlanSchema(
             maximum: 1,
           },
 
-          rationale: {
-            type: "string",
-            maxLength: 180,
-          },
+          creativeIntent,
+          evidenceRefs,
         },
       }];
     });
@@ -269,7 +271,6 @@ export function buildSectionPlanSchema(
     required: [
       "opening",
       "switches",
-      "cautions",
     ],
 
     properties: {
@@ -294,15 +295,6 @@ export function buildSectionPlanSchema(
               maxItems: 0,
             },
 
-      cautions: {
-        type: "array",
-        maxItems: 10,
-
-        items: {
-          type: "string",
-          maxLength: 220,
-        },
-      },
     },
   };
 }
