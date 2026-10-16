@@ -292,7 +292,7 @@ export class RemoteOpsService {
     let plan: Record<string, any>;
     try {
       const prompt = `${task.objective}\n\nQUALITY-SEEKING PREFLIGHT:\n${JSON.stringify(preflight.plan, null, 2)}`;
-      const raw = await generateWithOllama({ model: config.defaultModel, system, prompt, timeoutMs: config.ollamaGenerateTimeoutMs, options: { temperature: 0.45, top_p: 0.86, repeat_penalty: 1.08, num_predict: 2800 } });
+      const raw = await generateWithOllama({ model: config.heavyModel, think: true, system, prompt, timeoutMs: config.ollamaGenerateTimeoutMs, options: { temperature: 0.45, top_p: 0.86, repeat_penalty: 1.08, num_predict: 2800 } });
       plan = jsonObject(raw);
       if (!Array.isArray(plan.objects) || plan.objects.length < 1 || !Array.isArray(plan.materials)) throw new Error("Generated plan is incomplete.");
     } catch {

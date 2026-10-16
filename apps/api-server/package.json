@@ -9,11 +9,11 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@freeos/adobe-protocol": "*",
     "@freeos/agent-core": "*",
     "@freeos/coding-core": "*",
     "@freeos/computer-core": "*",
     "@freeos/memory-core": "*",
-    "@freeos/adobe-protocol": "*",
     "@freeos/operator-core": "*",
     "@freeos/rag-core": "*",
     "@freeos/research-core": "*",
@@ -24,6 +24,7 @@
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "multer": "^2.0.2",
+    "undici": "^7.28.0",
     "ws": "^8.22.0"
   },
   "devDependencies": {

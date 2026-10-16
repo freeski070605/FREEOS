@@ -125,13 +125,26 @@ function copiesReferenceLine(output: string, referenceMaterial: string[]): boole
 commandRouter.post("/chat", async (request, response, next) => {
   const body = record(request.body); const message = String(body.message ?? "").trim();
   if (!message) { response.status(400).json({ error: "message is required." }); return; }
-  const routeTimeoutMs = Math.max(config.commandChatTimeoutMs, config.ollamaGenerateTimeoutMs) + 10_000;
+  const routeTimeoutMs = Math.max(config.commandChatTimeoutMs, config.ollamaGenerateTimeoutMs, config.heavyTimeoutMs) + 10_000;
   request.setTimeout(routeTimeoutMs);
   response.setTimeout(routeTimeoutMs);
   try {
     const projectKey = typeof body.projectKey === "string" && body.projectKey.trim() ? body.projectKey.trim() : undefined;
-    const modelMode = body.modelMode === "fast" ? "fast" : "standard";
-    const model = modelMode === "fast" ? config.fastModel : typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.defaultModel;
+    const modelMode =
+      body.modelMode === "fast"
+        ? "fast"
+        : body.modelMode === "heavy"
+          ? "heavy"
+          : "standard";
+
+    const model =
+      modelMode === "fast"
+        ? config.fastModel
+        : modelMode === "heavy"
+          ? config.heavyModel
+          : typeof body.model === "string" && body.model.trim()
+            ? body.model.trim()
+            : config.defaultModel;
     const useMemory = bool(body.useMemory, true); const useProjectNotes = bool(body.useProjectNotes, true); const useResearchContext = bool(body.useResearchContext, false);
     const currentInformationSensitive = currentFactRequest.test(message);
     const useCurrentIntelligence = bool(body.useCurrentIntelligence, currentInformationSensitive || useResearchContext);
