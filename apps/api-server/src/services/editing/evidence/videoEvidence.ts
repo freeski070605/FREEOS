@@ -11,6 +11,39 @@ export function compactVideo(raw: unknown, input: EditingPlannerClipInput): Json
   const orderedFrames = [...timeline].sort((a, b) => number(a.time, Infinity) - number(b.time, Infinity));
   const gaps = frameTimes.slice(1).map((time, index) => time - frameTimes[index]).filter((gap) => gap > 0);
   const sampleCadence = gaps.length ? gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)] : NaN;
+  const stateIntervals: JsonObject[] = [];
+  const stateSpecs = [
+    { type: "face-presence", key: "faceCount", binary: true },
+    { type: "camera-motion", key: "globalMotion" },
+    { type: "motion-state", key: "motion" },
+    { type: "sharpness", key: "sharpness" },
+    { type: "exposure", key: "brightness" },
+    { type: "framing", key: "framingRole", label: true },
+  ];
+  for (const spec of stateSpecs) {
+    const samples = orderedFrames.flatMap((frame) => {
+      const at = number(frame.time, NaN) + offset;
+      const rawValue = spec.label ? frame[spec.key] ?? frame.shotScale : frame[spec.key];
+      const value = spec.binary ? Number(number(rawValue, NaN) > 0) : number(rawValue, NaN);
+      const label = typeof rawValue === "string" ? rawValue.toLowerCase() : "";
+      return Number.isFinite(at) && (spec.label ? /^(?:wide|medium|close|tight|long|full|mid)(?:[ -](?:shot|up|view))?$/i.test(label) : Number.isFinite(number(rawValue, NaN)))
+        ? [{ at, value, label }] : [];
+    });
+    let runStart = 0;
+    for (let i = 1; i <= samples.length; i++) {
+      const previous = samples[i - 1], next = samples[i];
+      const same = next && (spec.label ? next.label === previous.label : Math.abs(next.value - previous.value) <= (spec.binary ? 0 : 0.025)) &&
+        next.at - previous.at <= Math.min(1.5, Number.isFinite(sampleCadence) ? sampleCadence * 1.5 : 1.5);
+      if (same) continue;
+      const halfCadence = Math.min(0.4, Number.isFinite(sampleCadence) ? sampleCadence / 2 : 0);
+      if (i - runStart >= 1 && halfCadence > 0) {
+        const first = samples[runStart], last = samples[i - 1];
+        stateIntervals.push({ type: spec.type, timelineStart: Math.max(offset, first.at - halfCadence), timelineEnd: Math.min(offset + duration, last.at + halfCadence),
+          ...(spec.label ? { label: first.label } : { value: mean(samples.slice(runStart, i).map((sample) => sample.value)) }) });
+      }
+      runStart = i;
+    }
+  }
   const openingMeasurements: JsonObject[] = [];
   const firstMeasured = (type: string, key: string, label = false) => {
     const frame = orderedFrames
@@ -324,6 +357,7 @@ export function compactVideo(raw: unknown, input: EditingPlannerClipInput): Json
     qualityFlags: v.qualityFlags,
     analysisVersion: v.analysisVersion,
     windows,
+    stateIntervals,
     sampleCadence,
     openingMeasurements,
     editMoments: visualEditMoments,

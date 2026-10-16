@@ -3,6 +3,7 @@ import { asObject, number } from "../shared";
 import { creativeIntents, renderEvidenceRationale, type EvidenceRecord } from "../evidence/evidenceRefs";
 import { availableOpeningClips, deterministicOpening, type SectionOpeningState } from "../planning/openingState";
 import { resolveOpeningEvidenceScope, type OpeningEvidenceScope } from "../evidence/openingEvidence";
+import { availableClipIdsAt, isLocalSwitchEvidence, targetSupportRefs } from "../evidence/targetSupport";
 
 export class SectionValidationError extends Error {
   constructor(public readonly category: string, message: string) { super(`${category}: ${message}`); }
@@ -27,19 +28,20 @@ function groundedRationale(raw: JsonObject, at: number, catalog: EvidenceRecord[
     if (openingScope) {
       if (record.at < openingScope.start - 0.001 || record.at > openingScope.end + 0.001) throw new SectionValidationError("non-local-evidence", `${label} at ${at.toFixed(3)}s cites ${record.type} at ${record.at.toFixed(3)}s outside opening evidence scope ${openingScope.start.toFixed(3)}-${openingScope.end.toFixed(3)}s.`);
       if (record.clipId && record.clipId !== openingClipId) throw new SectionValidationError("invalid-evidence-reference", `${label} cites evidence for a different clip '${record.clipId}'.`);
-    } else if (Math.abs(record.at - at) > 0.8) throw new SectionValidationError("non-local-evidence", `${label} at ${at.toFixed(3)}s cites ${record.type} at ${record.at.toFixed(3)}s.`);
+    } else if (!isLocalSwitchEvidence(record, at)) throw new SectionValidationError("non-local-evidence", `${label} at ${at.toFixed(3)}s cites ${record.type} at ${record.at.toFixed(3)}s.`);
     return record;
   });
   if (new Set(raw.evidenceRefs).size !== refs.length) throw new SectionValidationError("invalid-evidence-reference", `${label} repeats an evidence reference.`);
   if (openingScope && !refs.some((record) => record.clipId === openingClipId)) throw new SectionValidationError("missing-evidence-reference", `${label} needs measured evidence for selected clip '${openingClipId}'.`);
   if (targetClipId && videos) {
-    const available = videos.filter((video) => number(video.timelineAvailableStart, 0) <= at + 0.001 && number(video.timelineAvailableEnd, 0) > at + 0.001);
-    const target = refs.filter((record) => record.clipId === targetClipId);
+    const available = availableClipIdsAt(videos, at);
+    const support = new Set(targetSupportRefs(catalog, videos, at, targetClipId));
+    const target = refs.filter((record) => support.has(record.id));
     // Availability alone explains a handoff only when there is exactly one legal source.
-    if (available.length > 1 && !target.some((record) => record.type !== "source-availability")) {
+    if (available.length > 1 && !target.length) {
       throw new SectionValidationError("target-grounding", `${label} selects '${targetClipId}' without local measured visual evidence for that clip.`);
     }
-    if (available.length === 1 && available[0] && String(available[0].id) === targetClipId && !target.length) {
+    if (available.length === 1 && available[0] === targetClipId && !target.length) {
       throw new SectionValidationError("target-grounding", `${label} needs availability evidence for uniquely available clip '${targetClipId}'.`);
     }
   }

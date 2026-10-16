@@ -69,7 +69,8 @@ export function buildSectionPlanSchema(
   candidateTimes: number[],
   evidenceCatalog: EvidenceRecord[] = [],
   previousClipId = "",
-  openingScope?: OpeningEvidenceScope
+  openingScope?: OpeningEvidenceScope,
+  supportByTime?: Map<number, Record<string, string[]>>
 ): JsonObject {
   const fixedOpening = deterministicOpening(previousClipId, videos, sectionStart);
   const evidenceRefs = { type: "array", minItems: 1, maxItems: 8, uniqueItems: true, items: { type: "string", enum: evidenceCatalog.map((item) => item.id) } };
@@ -192,7 +193,7 @@ export function buildSectionPlanSchema(
         uniqueCandidateTimes.filter(
           (at) =>
             at + 0.001 >= availableStart &&
-            at < availableEnd - 0.001
+            at < availableEnd - 0.001 && (!supportByTime || (supportByTime.get(at)?.[id]?.length ?? 0) > 0)
         );
 
 
@@ -206,7 +207,9 @@ export function buildSectionPlanSchema(
       if (
         exactStart > sectionStart + 0.001 &&
         exactStart < availableEnd &&
-        !legalTimes.includes(exactStart)
+        !legalTimes.includes(exactStart) &&
+        (!supportByTime || (supportByTime.get(exactStart)?.[id]?.length ?? 0) > 0 ||
+          videos.filter((item) => number(item.timelineAvailableStart, 0) <= exactStart + 0.001 && number(item.timelineAvailableEnd, 0) > exactStart + 0.001).length === 1)
       ) {
         legalTimes.push(exactStart);
       }

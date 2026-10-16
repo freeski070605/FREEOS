@@ -52,10 +52,23 @@ export function buildEvidenceCatalog(audio: JsonObject, videos: JsonObject[], se
     for (const item of editMoments) {
       if (item.type === "scene-change" || item.type === "motion-shift") add({ type: item.type, at: number(item.time, NaN), clipId, value: number(item.strength, NaN) });
     }
-    const windows = Array.isArray(video.windows) ? video.windows as JsonObject[] : [];
+    // New analyzer output has sample-bounded intervals. Legacy window-only
+    // summaries remain readable, but their broad buckets must not override
+    // the tighter measured coverage of current analyses.
+    const windows = Array.isArray(video.stateIntervals) ? [] : Array.isArray(video.windows) ? video.windows as JsonObject[] : [];
+    const stateIntervals = Array.isArray(video.stateIntervals) ? video.stateIntervals as JsonObject[] : [];
     for (const at of points) {
       if (at < availableStart - 0.01 || at >= availableEnd - 0.01) continue;
       add({ type: "source-availability", at, clipId });
+      for (const state of stateIntervals) {
+        const windowStart = number(state.timelineStart, NaN), windowEnd = number(state.timelineEnd, NaN);
+        const type = state.type as EvidenceType;
+        if (!(windowStart <= at && at < windowEnd) || !["framing", "face-presence", "motion-state", "camera-motion", "sharpness", "exposure"].includes(type)) continue;
+        const value = number(state.value, NaN);
+        const label = typeof state.label === "string" ? state.label : undefined;
+        if (type === "framing" ? !label : !Number.isFinite(value)) continue;
+        add({ type, at, clipId, windowStart, windowEnd, ...(label ? { label } : {}), ...(Number.isFinite(value) ? { value } : {}) });
+      }
       const window = windows.find((w) => number(w.timelineStart, NaN) <= at && number(w.timelineEnd, NaN) > at);
       if (!window) continue;
       const windowStart = number(window.timelineStart, NaN), windowEnd = number(window.timelineEnd, NaN);
@@ -64,6 +77,7 @@ export function buildEvidenceCatalog(audio: JsonObject, videos: JsonObject[], se
         if (Number.isFinite(measured)) add({ type, at, clipId, value: measured, windowStart, windowEnd });
       };
       metric("face-presence", window.facePresence);
+      metric("motion-state", window.motion);
       metric("camera-motion", window.globalMotion);
       metric("sharpness", window.sharpness);
       metric("exposure", window.brightness);

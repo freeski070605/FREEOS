@@ -21,12 +21,13 @@ import { factualEvidenceSummary } from "./editing/critique/factualSummary";
 import { recordEditingExperience } from "./editing/learning/editingExperience";
 import { runBoundedPlanRepair, PlanRepairError } from "./editing/repair/planRepair";
 import { buildSectionPacket, estimatePromptTokens } from "./editing/planning/sectionPacket";
+import { buildCandidateSupportIndex } from "./editing/evidence/targetSupport";
 import { runGlobalEditorialRepair } from "./editing/repair/globalEditorialRepair";
 import { deterministicOpening, availableOpeningClips } from "./editing/planning/openingState";
 
 export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promise<EditingPlan> {
   const startedAt = Date.now();
-  const telemetry = { modelCalls: 0, modelElapsedMs: 0, mediaCacheHits: 0, candidateMomentCount: 0, sectionAttempts: 0, evidenceRefCount: 0, invalidEvidenceRefFailures: 0, nonLocalEvidenceRefFailures: 0, targetGroundingFailures: 0, globalEditorialRepairPasses: 0, criticFindingsBeforeRepair: [] as string[], criticFindingsAfterRepair: [] as string[], resolvedCriticFindings: [] as string[], unresolvedMaterialFindings: [] as string[], academySelectionReasons: [] as unknown[], validationFailures: {} as Record<string, number>, repairAttemptsByCategory: {} as Record<string, number>, criticFindings: [] as string[], initialSelection: undefined as undefined | { openingMode: "initial-selection"; timelineStart: number; openingEvidenceWindowStart: number; openingEvidenceWindowEnd: number; availableOpeningClips: string[]; openingEvidenceCountsByClip: Record<string, number>; selectedClipId: string; selectedEvidenceRefs: string[] } };
+  const telemetry = { modelCalls: 0, modelElapsedMs: 0, mediaCacheHits: 0, candidateMomentCount: 0, candidateSupportCount: 0, candidateNoAlternativeSupportCount: 0, averageSupportedDestinations: 0, minimumSupportedDestinations: 0, maximumSupportedDestinations: 0, targetGroundingRepairAlternatives: 0, nonLocalRepairFailures: 0, supportIndexCompactionCount: 0, sectionAttempts: 0, evidenceRefCount: 0, invalidEvidenceRefFailures: 0, nonLocalEvidenceRefFailures: 0, targetGroundingFailures: 0, globalEditorialRepairPasses: 0, criticFindingsBeforeRepair: [] as string[], criticFindingsAfterRepair: [] as string[], resolvedCriticFindings: [] as string[], unresolvedMaterialFindings: [] as string[], academySelectionReasons: [] as unknown[], validationFailures: {} as Record<string, number>, repairAttemptsByCategory: {} as Record<string, number>, criticFindings: [] as string[], initialSelection: undefined as undefined | { openingMode: "initial-selection"; timelineStart: number; openingEvidenceWindowStart: number; openingEvidenceWindowEnd: number; availableOpeningClips: string[]; openingEvidenceCountsByClip: Record<string, number>; selectedClipId: string; selectedEvidenceRefs: string[] } };
   const callModel = async (request: Parameters<typeof generateJson>[0]) => {
     const start = Date.now();
     try { return await generateJson({ ...request, onCall: () => { telemetry.modelCalls++; } }); }
@@ -250,6 +251,8 @@ LOCAL-EVIDENCE DISCIPLINE:
 - Every switch time must come from the enforced evidence-backed candidate schema.
 - Select evidenceRefs only from evidenceCatalog. Each switch reference must be within 0.8s of that switch. The initial selection uses only its separate opening evidence scope.
 - Every creative switch with multiple available sources needs at least one measured visual evidenceRef for the selected destination clip. Audio supports timing; other cameras support comparison; neither proves the destination. Availability alone supports a switch only when that clip is uniquely available.
+- At each candidate, choose a destination only from clips with nonempty targetSupport refs. Cite its supplied local refs. If the active clip remains available, holding it and omitting the candidate is legal.
+- On repair, use repair.failedSwitch.supportedDestinations for local alternatives. Never substitute distant refs for the rejected destination.
 - Never justify a switch using an event several seconds earlier or later.
 - creativeIntent describes editorial purpose and never proves a factual claim.
 
@@ -324,6 +327,20 @@ Return only schema-valid JSON.`;
     let previousFailure = "";
     let previousCategory = "";
     let previousResponseExcerpt = "";
+    let failedSwitch: { at: number; clipId: string; candidateId: string | null; currentClipId: string; supportedDestinations: Record<string, string[]>; holdAllowed: boolean } | undefined;
+    let failedCombination = "";
+    const fullSupport = buildCandidateSupportIndex(candidateEditMoments, evidenceCatalog, videos);
+    const counts = fullSupport.map((item) => Object.values(item.targetSupport).filter((refs) => refs.length).length);
+    const baselineClipId = fixedOpening?.clipId ?? previousClipId;
+    const alternativeCounts = fullSupport.map((item) => Object.entries(item.targetSupport).filter(([id, refs]) => id !== baselineClipId && refs.length).length);
+    telemetry.candidateSupportCount += counts.filter((count) => count > 0).length;
+    telemetry.candidateNoAlternativeSupportCount += alternativeCounts.filter((count) => count === 0).length;
+    telemetry.averageSupportedDestinations = (telemetry.averageSupportedDestinations * (telemetry.candidateMomentCount - counts.length) + counts.reduce((sum, count) => sum + count, 0)) / Math.max(1, telemetry.candidateMomentCount);
+    if (counts.length) {
+      telemetry.minimumSupportedDestinations = Math.min(telemetry.candidateMomentCount > counts.length ? telemetry.minimumSupportedDestinations : Infinity, ...counts);
+      telemetry.maximumSupportedDestinations = Math.max(telemetry.maximumSupportedDestinations, ...counts);
+    }
+    console.log("[FREEOS Editing Planner] candidate support", JSON.stringify({ candidateCount: counts.length, baselineClipId: baselineClipId || null, candidateWithAlternativeSupportCount: alternativeCounts.filter((count) => count > 0).length, candidateWithNoAlternativeSupportCount: alternativeCounts.filter((count) => count === 0).length, averageSupportedDestinations: counts.reduce((sum, count) => sum + count, 0) / Math.max(1, counts.length), minimumSupportedDestinations: counts.length ? Math.min(...counts) : 0, maximumSupportedDestinations: Math.max(0, ...counts) }));
 
     try {
       const repaired = await runBoundedPlanRepair({
@@ -347,9 +364,11 @@ Return only schema-valid JSON.`;
         academy: sectionAcademy, system: attemptSystem, numPredict: 2200,
         ...(isRepair ? { repair: {
           category: previousCategory, message: previousFailure.slice(0, 800),
-          rejected: previousResponseExcerpt.slice(0, 1200),
+          rejected: previousResponseExcerpt.slice(0, 1200), ...(failedSwitch ? { failedSwitch } : {}),
         } } : {}),
       });
+      if (packet.compactionApplied) telemetry.supportIndexCompactionCount++;
+      telemetry.supportIndexCompactionCount += packet.supportIndexCompactionCount;
       console.log("[FREEOS Editing Planner] section packet", JSON.stringify({
         section: `${sectionStart}-${sectionEnd}`,
         rawEvidenceCount: (Array.isArray(audio.windows) ? audio.windows.length : 0) +
@@ -422,15 +441,44 @@ Return only schema-valid JSON.`;
         onFailure: (diagnostic) => {
           telemetry.validationFailures[diagnostic.category] = (telemetry.validationFailures[diagnostic.category] ?? 0) + 1;
           if (diagnostic.category === "invalid-evidence-reference") telemetry.invalidEvidenceRefFailures++;
-          if (diagnostic.category === "non-local-evidence") telemetry.nonLocalEvidenceRefFailures++;
+          if (diagnostic.category === "non-local-evidence") { telemetry.nonLocalEvidenceRefFailures++; telemetry.nonLocalRepairFailures++; }
           if (diagnostic.category === "target-grounding") telemetry.targetGroundingFailures++;
+          failedSwitch = undefined;
+          failedCombination = "";
+          if (diagnostic.category === "target-grounding" || diagnostic.category === "non-local-evidence") {
+            try {
+              const rejected = parseSectionPlan(sectionText);
+              const match = /Section switch (\d+)/.exec(diagnostic.message);
+              const index = match ? Number(match[1]) : -1;
+              const selected = rejected.switches[index] as JsonObject | undefined;
+              const at = number(selected?.at, NaN);
+              const support = fullSupport.find((item) => Math.abs(item.at - at) <= 0.01);
+              if (selected && support) {
+                const clipId = String(selected.clipId ?? "");
+                const earlier = rejected.switches.slice(0, index).filter((item) => number((item as JsonObject).at, NaN) < at).at(-1) as JsonObject | undefined;
+                const currentClipId = String(earlier?.clipId ?? (rejected.opening as JsonObject | undefined)?.clipId ?? fixedOpening?.clipId ?? previousClipId);
+                failedSwitch = { at, clipId, candidateId: support.candidateId, currentClipId, supportedDestinations: Object.fromEntries(Object.entries(support.targetSupport).filter(([, refs]) => refs.length)), holdAllowed: support.availableClips.includes(currentClipId) };
+                failedCombination = `${at}:${clipId}:${JSON.stringify((selected.evidenceRefs as unknown[] | undefined) ?? [])}`;
+                telemetry.targetGroundingRepairAlternatives += Object.keys(failedSwitch.supportedDestinations).filter((id) => id !== currentClipId).length;
+                console.warn("[FREEOS Editing Planner] switch repair options", JSON.stringify({ category: diagnostic.category, candidateId: support.candidateId, failedDestination: clipId, supportedDestinationsAtCandidate: Object.keys(failedSwitch.supportedDestinations), holdAllowed: failedSwitch.holdAllowed }));
+              }
+            } catch { /* A malformed response retains the validator diagnostic. */ }
+          }
           previousResponseExcerpt = sectionText.slice(0, 2400);
           console.error(`[FREEOS Editing Planner] section ${sectionStart}-${sectionEnd} attempt ${diagnostic.attempt}/${maxSectionAttempts} validation failure: ${diagnostic.message}`);
           sectionText = "";
         },
+        failureKey: (diagnostic) => failedCombination && (diagnostic.category === "target-grounding" || diagnostic.category === "non-local-evidence")
+          ? failedCombination : undefined,
       });
       parsedSection = repaired.value.candidateSection;
       sectionDecisions = repaired.value.candidateDecisions;
+      if (failedSwitch) {
+        const repairedFailure = failedSwitch;
+        const replacement = parsedSection.switches.find((item) => Math.abs(number((item as JsonObject).at, NaN) - repairedFailure.at) <= 0.01) as JsonObject | undefined;
+        const repairAction = replacement ? String(replacement.clipId) === repairedFailure.clipId ? "revised-evidence" : "alternate-destination" : "remove-or-move-switch";
+        console.log("[FREEOS Editing Planner] target grounding repair", JSON.stringify({ candidateId: repairedFailure.candidateId, failedDestination: repairedFailure.clipId, repairAction }));
+      }
       const acceptedOpeningClipId = fixedOpening?.clipId ?? (parsedSection.opening && typeof parsedSection.opening === "object" ? String((parsedSection.opening as JsonObject).clipId ?? "") : "");
       if (openingScope) {
         const openingEvidence = openingEvidenceByClip(videos, evidenceCatalog, openingScope);
