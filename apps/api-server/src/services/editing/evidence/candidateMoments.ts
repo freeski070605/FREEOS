@@ -87,7 +87,7 @@ export function buildSectionEditMoments(
     );
 
     if (
-      at <= sectionStart + 0.15 ||
+      at < sectionStart - 0.001 ||
       at >= sectionEnd - 0.15
     ) {
       return;
@@ -115,7 +115,7 @@ export function buildSectionEditMoments(
 
       return (
         Number.isFinite(at) &&
-        at > sectionStart + 0.15 &&
+        at >= sectionStart - 0.001 &&
         at < sectionEnd - 0.15
       );
     });

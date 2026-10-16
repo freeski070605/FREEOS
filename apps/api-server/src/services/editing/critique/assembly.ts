@@ -1,5 +1,13 @@
 import type { EditingDecision, JsonObject } from "../planning/plannerTypes";
 import { number } from "../shared";
+export function appendSectionDecisions(decisions: EditingDecision[], section: EditingDecision[]): void {
+  const previous = decisions.at(-1);
+  const first = section[0];
+  if (previous && first && previous.clipId === first.clipId && Math.abs(previous.end - first.start) <= 0.001) {
+    previous.end = first.end;
+    decisions.push(...section.slice(1));
+  } else decisions.push(...section);
+}
 export function mergeAdjacentDecisions(decisions: EditingDecision[], tolerance = 0.02): EditingDecision[] {
   const merged: EditingDecision[] = [];
   for (const decision of decisions) {

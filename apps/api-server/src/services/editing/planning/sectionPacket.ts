@@ -73,7 +73,7 @@ export function buildSectionPacket(input: {
       cameraProfiles: profiles, academyGuidance: academy,
       ...(input.repair ? { repair: input.repair } : {}),
     };
-    const schema = buildSectionPlanSchema(input.start, input.end, input.videos, candidateTimes, exposedCatalog);
+    const schema = buildSectionPlanSchema(input.start, input.end, input.videos, candidateTimes, exposedCatalog, input.previousClipId);
     const estimatedPromptTokens = estimatePromptTokens(input.system) + estimatePromptTokens(packet) + estimatePromptTokens(schema) + 256;
     if (estimatedPromptTokens <= budget.finalInputBudget) return {
       packet, schema, exposedCatalog, budget, estimatedPromptTokens,

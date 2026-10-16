@@ -11,7 +11,7 @@ import { buildEvidenceCatalog } from "./editing/evidence/evidenceRefs";
 import { creativeBriefSchema, buildCameraProfileSchema, buildSectionPlanSchema, buildBoundaryPruneSchema } from "./editing/planning/schemas";
 import { parseCreativeBrief, parseCameraProfiles, parseSectionPlan } from "./editing/planning/parsing";
 import { sanitizeGroundedEditorialText, sanitizeStructuredStrings, validateSectionSwitches, SectionValidationError } from "./editing/validation/section";
-import { assertNonDegenerateAssembly, buildGroundedCautions, mergeAdjacentDecisions } from "./editing/critique/assembly";
+import { appendSectionDecisions, assertNonDegenerateAssembly, buildGroundedCautions, mergeAdjacentDecisions } from "./editing/critique/assembly";
 import { generateJson } from "./editing/planning/model";
 import { analyzeMediaCached } from "./editing/evidence/mediaCache";
 import { classifyProject } from "./editing/classification/projectClassifier";
@@ -20,6 +20,7 @@ import { critiqueTimeline } from "./editing/critique/editorialCritic";
 import { recordEditingExperience } from "./editing/learning/editingExperience";
 import { runBoundedPlanRepair, PlanRepairError } from "./editing/repair/planRepair";
 import { buildSectionPacket } from "./editing/planning/sectionPacket";
+import { deterministicOpening, availableOpeningClips } from "./editing/planning/openingState";
 
 export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promise<EditingPlan> {
   const startedAt = Date.now();
@@ -223,6 +224,9 @@ ${editingKnowledge.context}`;
             Number.isFinite(value)
         );
     const evidenceCatalog = buildEvidenceCatalog(audio, videos, sectionStart, sectionEnd, candidateEditTimes);
+    const fixedOpening = deterministicOpening(previousClipId, videos, sectionStart);
+    const openingMode = fixedOpening?.mode ?? (previousClipId ? "availability-transition" : "initial-selection");
+    const openingSourceAvailable = fixedOpening ? availableOpeningClips(videos, sectionStart).includes(fixedOpening.clipId) : undefined;
 
 
     const sectionSystem = `You are FREEOS's section editor.
@@ -232,8 +236,8 @@ Create ONE chronological edit for ONLY timeline ${sectionStart.toFixed(3)} to ${
 SECTION CONTINUITY:
 - The start of this planning section is NOT automatically a creative cut.
 - previousClipId is the camera active immediately before this section.
-- If previousClipId remains available at sectionStart, use previousClipId as this section's opening clip.
-- A genuine creative switch may happen moments later at an evidence-backed candidateEditMoment.
+- Current opening state: ${fixedOpening ? `${fixedOpening.mode}, clip '${fixedOpening.clipId}'. This is fixed system state; return switches only and do not justify this opening.` : `Choose an evidence-grounded ${openingMode} opening and return it with mode '${openingMode}'.`}
+- A genuine creative switch may happen exactly at sectionStart or later at an evidence-backed candidateEditMoment.
 - Never change cameras merely because a planning section began.
 - A section boundary alone is not evidence for a creative switch.
 
@@ -260,7 +264,7 @@ CUT-TIME POLICY:
 - Several strong measured events close together may justify faster cutting.
 
 HARD TIMELINE RULES:
-- Choose an opening clip exactly at ${sectionStart.toFixed(3)}.
+- The opening state applies at ${sectionStart.toFixed(3)}; return an opening field only when the schema requests it.
 - A selected clip may remain active ONLY inside supplied source availability.
 - Switch away no later than a source's availableEnd.
 - The final active clip MUST be one of sectionEndCapableClipIds.
@@ -400,6 +404,7 @@ Return only schema-valid JSON.`;
           if (error instanceof SectionValidationError) return error.category;
           const failure = error instanceof Error ? error.message : String(error);
           return /context-budget|exceed_context_size_error|exceeds available context size/i.test(failure) ? "context-budget"
+            : /timeout|ECONN|fetch failed|socket|network|Ollama.*failed/i.test(failure) ? "runtime"
             : /availab|source|continuation/i.test(failure) ? "source-unavailable"
             : /mechanical|alternat|ping.pong|Short A-B-A/i.test(failure) ? "mechanical-camera-pattern"
             : /ground|semantic|rationale|evidence/i.test(failure) ? "grounding"
@@ -418,6 +423,13 @@ Return only schema-valid JSON.`;
       });
       parsedSection = repaired.value.candidateSection;
       sectionDecisions = repaired.value.candidateDecisions;
+      const acceptedOpeningClipId = fixedOpening?.clipId ?? (parsedSection.opening && typeof parsedSection.opening === "object" ? String((parsedSection.opening as JsonObject).clipId ?? "") : "");
+      console.log("[FREEOS Editing Planner] section boundary", JSON.stringify({
+        sectionStart, openingMode, openingClipId: acceptedOpeningClipId,
+        openingSourceAvailable: openingSourceAvailable ?? availableOpeningClips(videos, sectionStart).includes(acceptedOpeningClipId),
+        creativeSwitchesReturned: parsedSection?.switches.length ?? 0,
+        boundarySwitch: parsedSection?.switches.some((item) => item && typeof item === "object" && Math.abs(number((item as JsonObject).at, NaN) - sectionStart) <= 0.001) ?? false,
+      }));
       console.log(`[FREEOS Editing Planner] section ${sectionStart}-${sectionEnd} accepted on attempt ${repaired.attempts}/${maxSectionAttempts} with ${sectionDecisions.length} decisions`);
     } catch (error) {
       if (error instanceof PlanRepairError) {
@@ -446,37 +458,7 @@ Return only schema-valid JSON.`;
       );
     }
 
-    const previousDecision =
-      decisions.at(-1);
-
-    const sectionOpening =
-      sectionDecisions[0];
-
-    if (
-      previousDecision &&
-      sectionOpening &&
-      previousDecision.clipId === sectionOpening.clipId &&
-      Math.abs(
-        previousDecision.end -
-        sectionOpening.start
-      ) <= 0.001
-    ) {
-      /*
-       * Same camera across an internal planning boundary:
-       * keep internal planning boundaries invisible.
-       */
-      previousDecision.end =
-        sectionOpening.end;
-
-      decisions.push(
-        ...sectionDecisions.slice(1)
-      );
-    }
-    else {
-      decisions.push(
-        ...sectionDecisions
-      );
-    }
+    appendSectionDecisions(decisions, sectionDecisions);
 
     previousClipId =
       decisions.at(-1)?.clipId ??

@@ -8,7 +8,9 @@ const { critiqueTimeline } = require('../../apps/api-server/dist/services/editin
 const { classifyProject } = require('../../apps/api-server/dist/services/editing/classification/projectClassifier.js');
 const { resolveEditingIntent } = require('../../apps/api-server/dist/services/editing/classification/projectIntent.js');
 const { runBoundedPlanRepair, PlanRepairError } = require('../../apps/api-server/dist/services/editing/repair/planRepair.js');
-const { mergeAdjacentDecisions } = require('../../apps/api-server/dist/services/editing/critique/assembly.js');
+const { appendSectionDecisions, mergeAdjacentDecisions } = require('../../apps/api-server/dist/services/editing/critique/assembly.js');
+const { deterministicOpening } = require('../../apps/api-server/dist/services/editing/planning/openingState.js');
+const { buildSectionEditMoments } = require('../../apps/api-server/dist/services/editing/evidence/candidateMoments.js');
 const { buildSectionPacket, sectionModelBudget, estimatePromptTokens } = require('../../apps/api-server/dist/services/editing/planning/sectionPacket.js');
 const { compactVideo } = require('../../apps/api-server/dist/services/editing/evidence/videoEvidence.js');
 
@@ -83,20 +85,65 @@ test('one and two camera packets retain intent, availability, and bounded repair
 });
 
 const video = (id, end = 40, start = 0, extra = {}) => ({ id, timelineAvailableStart: start, timelineAvailableEnd: end, ...extra });
-const opening = (clipId) => ({ clipId, action: 'hold', confidence: 0.9, creativeIntent: 'continuity', evidenceRefs: ['opening'] });
+const opening = (clipId, mode = 'initial-selection') => ({ mode, clipId, action: 'hold', confidence: 0.9, creativeIntent: 'continuity', evidenceRefs: ['opening'] });
 const shot = (at, clipId, evidenceRefs) => ({ at, clipId, action: 'cut', confidence: 0.9, creativeIntent: 'visual-contrast', ...(evidenceRefs ? { evidenceRefs } : {}) });
 const moment = (at, score = 6) => ({ at, score, reasons: ['measured motion shift'] });
 const validate = ({ videos = [video('a'), video('b')], start = 0, end = 20, first = 'a', switches = [], moments = [], previous = '', catalog } = {}) => {
   const refs = catalog ?? [{ id: 'opening', type: 'source-availability', at: start, clipId: first }, ...switches.map((item, index) => ({ id: `switch-${index}`, type: 'source-availability', at: item.at, clipId: item.clipId }))];
   const completed = switches.map((item, index) => ({ evidenceRefs: [`switch-${index}`], ...item }));
-  return validateSectionSwitches(opening(first), completed, new Set(videos.map((v) => v.id)), start, end, videos, moments, previous, refs);
+  return validateSectionSwitches(previous ? undefined : opening(first), completed, new Set(videos.map((v) => v.id)), start, end, videos, moments, previous, refs);
 };
 
 test('continuous camera across an internal boundary', () => {
   const result = validate({ start: 10, end: 20, previous: 'a' });
   assert.deepEqual(result.map((item) => item.clipId), ['a']);
 });
-test('boundary cannot itself change an available camera', () => assert.throws(() => validate({ start: 10, previous: 'a', first: 'b' }), /boundary/));
+test('generic 60.999 evidence cannot invalidate a continuation at 60', () => {
+  const videos = [video('a', 120), video('b', 120)];
+  const refs = [{ id: 'face', type: 'face-presence', at: 60.999, clipId: 'a' }];
+  const result = validateSectionSwitches(undefined, [], new Set(['a', 'b']), 60, 120, videos, [], 'a', refs);
+  assert.equal(result[0].clipId, 'a');
+  assert.equal(result[0].evidenceRefs, undefined);
+  assert.match(result[0].rationale, /Continues clip/);
+  assert.deepEqual(Object.keys(buildSectionPlanSchema(60, 120, videos, [], refs, 'a').properties), ['switches']);
+});
+test('first section opening stays evidence grounded and explicitly initial', () => {
+  assert.throws(() => validateSectionSwitches({ ...opening('a'), evidenceRefs: [] }, [], new Set(['a']), 0, 60, [video('a', 60)], [], '', []), /missing-evidence-reference/);
+  const schema = buildSectionPlanSchema(0, 60, [video('a', 60)], [], [{ id: 'e', type: 'source-availability', at: 0, clipId: 'a' }]);
+  assert(schema.required.includes('opening'));
+  assert.equal(schema.properties.opening.oneOf[0].properties.mode.const, 'initial-selection');
+});
+test('measured event at exact boundary can produce a grounded creative switch', () => {
+  const videos = [video('a', 120), video('b', 120)];
+  const events = buildSectionEditMoments({ transientMoments: [{ time: 60, strength: 1 }] }, videos, 60, 120);
+  assert(events.some((event) => event.at === 60));
+  const refs = [{ id: 'event', type: 'audio-transient', at: 60 }];
+  const schema = buildSectionPlanSchema(60, 120, videos, [60], refs, 'a');
+  assert(schema.properties.switches.items.oneOf.some((variant) => variant.properties.at.enum.includes(60)));
+  const result = validateSectionSwitches(undefined, [shot(60, 'b', ['event'])], new Set(['a', 'b']), 60, 120, videos, [moment(60)], 'a', refs);
+  assert.deepEqual(result.map((item) => item.clipId), ['b']);
+  assert.equal(result[0].start, 60);
+  assert.deepEqual(result[0].evidenceRefs, ['event']);
+  assert.throws(() => validateSectionSwitches(undefined, [shot(60, 'b', ['late'])], new Set(['a', 'b']), 60, 120, videos, [moment(60)], 'a', [{ id: 'late', type: 'face-presence', at: 60.999, clipId: 'b' }]), /non-local-evidence/);
+});
+test('source ending exactly at boundary uses uniquely legal availability continuation', () => {
+  const videos = [video('a', 60), video('b', 120)];
+  assert.deepEqual(deterministicOpening('a', videos, 60), { mode: 'availability-transition', clipId: 'b' });
+  const result = validateSectionSwitches(undefined, [], new Set(['a', 'b']), 60, 120, videos, [], 'a', []);
+  assert.equal(result[0].clipId, 'b');
+  assert.match(result[0].rationale, /^Availability repair:/);
+  assert.equal(result[0].evidenceRefs, undefined);
+});
+test('multiple boundary availability alternatives require grounded creative choice', () => {
+  const videos = [video('a', 60), video('b', 120), video('c', 120)];
+  assert.equal(deterministicOpening('a', videos, 60), undefined);
+  const schema = buildSectionPlanSchema(60, 120, videos, [], [], 'a');
+  assert(schema.required.includes('opening'));
+  assert.throws(() => validateSectionSwitches(undefined, [], new Set(['a', 'b', 'c']), 60, 120, videos, [], 'a', []), /section opening/i);
+  const result = validateSectionSwitches({ ...opening('c', 'availability-transition'), evidenceRefs: ['c-available'] }, [], new Set(['a', 'b', 'c']), 60, 120, videos, [], 'a', [{ id: 'c-available', type: 'source-availability', at: 60, clipId: 'c' }]);
+  assert.equal(result[0].clipId, 'c');
+});
+test('boundary cannot itself change an available camera', () => assert.deepEqual(validate({ start: 10, previous: 'a', first: 'b' }).map((item) => item.clipId), ['a']));
 test('legal camera change after boundary at a candidate', () => assert.equal(validate({ start: 10, previous: 'a', switches: [shot(12.37, 'b')], moments: [moment(12.37)] })[1].start, 12.37));
 test('source ending early gets one legal continuation', () => {
   const result = validate({ videos: [video('a', 6.25), video('b')], end: 12 });
@@ -166,6 +213,44 @@ test('section merge removes artificial boundary', () => {
   const pieces = [decision(0, 10, 'a'), decision(10, 20, 'a')];
   const merged = mergeAdjacentDecisions(pieces);
   assert.deepEqual(merged, [decision(0, 20, 'a')]);
+});
+test('assembly removes 60, 120, and 180 boundaries during a long hold with 1, 2, and 5 cameras', () => {
+  for (const count of [1, 2, 5]) {
+    const videos = Array.from({ length: count }, (_, index) => video(index === 0 ? 'a' : `extra-${index}`, 240));
+    const assembled = [];
+    for (const start of [0, 60, 120, 180]) {
+      const section = start === 0
+        ? validate({ videos, start, end: start + 60 })
+        : validate({ videos, start, end: start + 60, previous: 'a' });
+      appendSectionDecisions(assembled, section);
+    }
+    assert.deepEqual(assembled.map((item) => [item.start, item.end, item.clipId]), [[0, 240, 'a']]);
+  }
+});
+test('assembly keeps a real creative switch exactly at the section boundary', () => {
+  const videos = [video('a', 120), video('b', 120)];
+  const assembled = validate({ videos, start: 0, end: 60 });
+  const next = validateSectionSwitches(undefined, [shot(60, 'b', ['event'])], new Set(['a', 'b']), 60, 120, videos, [moment(60)], 'a', [{ id: 'event', type: 'audio-transient', at: 60 }]);
+  appendSectionDecisions(assembled, next);
+  assert.deepEqual(assembled.map((item) => [item.start, item.clipId]), [[0, 'a'], [60, 'b']]);
+});
+test('assembly preserves creative switches while removing computational boundaries', () => {
+  const videos = [video('a', 180), video('b', 180), video('c', 180)];
+  const assembled = [];
+  appendSectionDecisions(assembled, validate({ videos, start: 0, end: 60, switches: [shot(35, 'b')], moments: [moment(35)] }));
+  appendSectionDecisions(assembled, validate({ videos, start: 60, end: 120, previous: 'b', switches: [shot(74, 'c')], moments: [moment(74)] }));
+  appendSectionDecisions(assembled, validate({ videos, start: 120, end: 180, previous: 'c' }));
+  assert.deepEqual(assembled.map((item) => [item.start, item.clipId]), [[0, 'a'], [35, 'b'], [74, 'c']]);
+  assert.equal(assembled.at(-1).end, 180);
+});
+test('deterministic opening failure does not consume creative repair attempts', async () => {
+  let calls = 0;
+  await assert.rejects(runBoundedPlanRepair({ maxAttempts: 4,
+    generate: async () => { calls++; return {}; },
+    validate: () => { throw new SectionValidationError('opening-state', 'invalid system state'); },
+    classify: (error) => error.category,
+  }), /invalid system state/);
+  assert.equal(calls, 1);
 });
 test('critic finds fixed cadence without dictating a replacement', () => {
   const items = Array.from({ length: 6 }, (_, i) => decision(i * 4, (i + 1) * 4, i % 2 ? 'b' : 'a'));

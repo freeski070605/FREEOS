@@ -1,6 +1,7 @@
 import type { EditingDecision, JsonObject } from "../planning/plannerTypes";
 import { asObject, number } from "../shared";
 import { creativeIntents, renderEvidenceRationale, type EvidenceRecord } from "../evidence/evidenceRefs";
+import { availableOpeningClips, deterministicOpening, type SectionOpeningState } from "../planning/openingState";
 
 export class SectionValidationError extends Error {
   constructor(public readonly category: string, message: string) { super(`${category}: ${message}`); }
@@ -8,6 +9,7 @@ export class SectionValidationError extends Error {
 
 function groundedRationale(raw: JsonObject, at: number, catalog: EvidenceRecord[], allowedClipIds: Set<string>, label: string): string {
   const allowed = new Set(["at", "clipId", "action", "confidence", "creativeIntent", "evidenceRefs"]);
+  if (label === "Section opening") allowed.add("mode");
   const extra = Object.keys(raw).filter((key) => !allowed.has(key));
   if (extra.length) throw new SectionValidationError("invalid-evidence-reference", `${label} contains unsupported fields: ${extra.join(", ")}.`);
   if (!creativeIntents.includes(raw.creativeIntent as typeof creativeIntents[number])) {
@@ -317,104 +319,32 @@ export function validateSectionSwitches(
   previousClipId = "",
   evidenceCatalog: EvidenceRecord[] = []
 ): EditingDecision[] {
-  const opening =
-    asObject(
-      openingRaw,
-      "section opening"
-    );
-
-  const openingClipId =
-    typeof opening.clipId === "string"
-      ? opening.clipId
-      : "";
-
-  const openingAction =
-    opening.action;
-
-  if (
-    !allowedClipIds.has(
-      openingClipId
-    )
-  ) {
-    throw new Error(
-      `Section opening references unknown clip '${openingClipId}'.`
-    );
+  const available = availableOpeningClips(videos, sectionStart);
+  const fixedOpening = deterministicOpening(previousClipId, videos, sectionStart);
+  let opening: JsonObject;
+  let openingState: SectionOpeningState;
+  if (fixedOpening) {
+    // Normal continuity and a uniquely legal availability handoff are system state.
+    // Old model output may still contain an opening; normalize it without using its evidence.
+    opening = {};
+    openingState = fixedOpening;
+  } else {
+    opening = asObject(openingRaw, "section opening");
+    const clipId = typeof opening.clipId === "string" ? opening.clipId : "";
+    const mode = previousClipId ? "availability-transition" : "initial-selection";
+    if (opening.mode !== mode) throw new SectionValidationError("structure", `Section opening requires mode '${mode}'.`);
+    openingState = { mode, clipId };
   }
-
-  if (
-    openingAction !== "cut" &&
-    openingAction !== "hold" &&
-    openingAction !== "punch-in"
-  ) {
-    throw new Error(
-      "Section opening has invalid action."
-    );
-  }
-
-  const openingVideo =
-    videos.find(
-      (video) =>
-        String(video.id) ===
-        openingClipId
-    );
-
-  if (
-    !openingVideo ||
-    sectionStart <
-      number(
-        openingVideo.timelineAvailableStart,
-        0
-      ) - 0.01 ||
-    sectionStart >=
-      number(
-        openingVideo.timelineAvailableEnd,
-        0
-      ) - 0.01
-  ) {
-    throw new Error(
-      `Section opening clip '${openingClipId}' is unavailable at ${sectionStart}.`
-    );
-  }
-
-  const openingRationale = groundedRationale(opening, sectionStart, evidenceCatalog, allowedClipIds, "Section opening");
-
-
-  /*
-   * Internal planning boundaries cannot create camera changes.
-   */
-  if (
-    sectionStart > 0.001 &&
-    previousClipId
-  ) {
-    const previousVideo =
-      videos.find(
-        (video) =>
-          String(video.id) ===
-          previousClipId
-      );
-
-    const previousStillAvailable =
-      Boolean(previousVideo) &&
-      sectionStart >=
-        number(
-          previousVideo?.timelineAvailableStart,
-          0
-        ) - 0.01 &&
-      sectionStart <
-        number(
-          previousVideo?.timelineAvailableEnd,
-          0
-        ) - 0.01;
-
-    if (
-      previousStillAvailable &&
-      openingClipId !== previousClipId
-    ) {
-      throw new Error(
-        `Internal section boundary ${sectionStart.toFixed(3)}s cannot create a new camera choice. Previous clip '${previousClipId}' remains available, so this section must open on '${previousClipId}'.`
-      );
-    }
-  }
+  const openingClipId = openingState.clipId;
+  if (!allowedClipIds.has(openingClipId)) throw new Error(`Section opening references unknown clip '${openingClipId}'.`);
+  if (!available.includes(openingClipId)) throw new Error(`Section opening clip '${openingClipId}' is unavailable at ${sectionStart}.`);
+  const openingAction = fixedOpening ? (fixedOpening.mode === "continuation" ? "hold" : "cut") : opening.action;
+  if (openingAction !== "cut" && openingAction !== "hold" && openingAction !== "punch-in") throw new Error("Section opening has invalid action.");
+  const openingRationale = fixedOpening
+    ? (fixedOpening.mode === "continuation"
+      ? `Continues clip '${openingClipId}' from the preceding section.`
+      : `Availability repair: uniquely available clip '${openingClipId}' begins at ${sectionStart.toFixed(3)}s.`)
+    : groundedRationale(opening, sectionStart, evidenceCatalog, allowedClipIds, "Section opening");
 
 
   const switches =
@@ -443,7 +373,7 @@ export function validateSectionSwitches(
 
           if (
             !Number.isFinite(at) ||
-            at <= sectionStart + 0.001 ||
+            at < sectionStart - 0.001 ||
             at >= sectionEnd
           ) {
             throw new Error(
@@ -567,6 +497,14 @@ export function validateSectionSwitches(
 
     ...unique,
   ];
+
+  // A real switch at the exact boundary replaces the zero-duration opening
+  // segment, while the opening state remains available for continuity checks.
+  const boundaryCreativeSwitch = unique.length > 0 && Math.abs(unique[0].at - sectionStart) <= 0.001;
+  if (boundaryCreativeSwitch) {
+    if (unique[0].clipId === openingClipId) throw new Error("Boundary creative switch must change the active clip.");
+    points.shift();
+  }
 
 
   /*
@@ -778,7 +716,9 @@ export function validateSectionSwitches(
     candidateEditMoments.length > 0
   ) {
     assertNoMechanicalCameraPingPong(
-      repairedPoints,
+      boundaryCreativeSwitch
+        ? [{ at: sectionStart, clipId: openingClipId, rationale: openingRationale }, ...repairedPoints]
+        : repairedPoints,
       candidateEditMoments
     );
   }

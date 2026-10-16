@@ -1,6 +1,7 @@
 import type { JsonObject } from "./plannerTypes";
 import { number } from "../shared";
 import { creativeIntents, type EvidenceRecord } from "../evidence/evidenceRefs";
+import { deterministicOpening } from "./openingState";
 export const creativeBriefSchema: JsonObject = {
   type: "object",
   additionalProperties: false,
@@ -65,8 +66,10 @@ export function buildSectionPlanSchema(
   sectionEnd: number,
   videos: JsonObject[],
   candidateTimes: number[],
-  evidenceCatalog: EvidenceRecord[] = []
+  evidenceCatalog: EvidenceRecord[] = [],
+  previousClipId = ""
 ): JsonObject {
+  const fixedOpening = deterministicOpening(previousClipId, videos, sectionStart);
   const evidenceRefs = { type: "array", minItems: 1, maxItems: 8, uniqueItems: true, items: { type: "string", enum: evidenceCatalog.map((item) => item.id) } };
   const creativeIntent = { type: "string", enum: [...creativeIntents] };
   const uniqueCandidateTimes =
@@ -76,7 +79,7 @@ export function buildSectionPlanSchema(
           .filter(
             (value) =>
               Number.isFinite(value) &&
-              value > sectionStart + 0.001 &&
+              value >= sectionStart - 0.001 &&
               value < sectionEnd - 0.001
           )
           .map(
@@ -117,6 +120,7 @@ export function buildSectionPlanSchema(
         additionalProperties: false,
 
         required: [
+          "mode",
           "clipId",
           "action",
           "confidence",
@@ -125,6 +129,7 @@ export function buildSectionPlanSchema(
         ],
 
         properties: {
+          mode: { const: previousClipId ? "availability-transition" : "initial-selection" },
           clipId: {
             const: id,
           },
@@ -268,15 +273,10 @@ export function buildSectionPlanSchema(
     type: "object",
     additionalProperties: false,
 
-    required: [
-      "opening",
-      "switches",
-    ],
+    required: fixedOpening ? ["switches"] : ["opening", "switches"],
 
     properties: {
-      opening: {
-        oneOf: openingVariants,
-      },
+      ...(!fixedOpening ? { opening: { oneOf: openingVariants } } : {}),
 
       switches:
         switchVariants.length
