@@ -20,7 +20,7 @@ import { resolveEditingIntent } from "./editing/classification/projectIntent";
 import { factualEvidenceSummary } from "./editing/critique/factualSummary";
 import { recordEditingExperience } from "./editing/learning/editingExperience";
 import { runBoundedPlanRepair, PlanRepairError } from "./editing/repair/planRepair";
-import { buildSectionPacket, estimatePromptTokens } from "./editing/planning/sectionPacket";
+import { buildSectionPacket, estimatePromptTokens, resolveSectionChoices } from "./editing/planning/sectionPacket";
 import { buildCandidateSupportIndex } from "./editing/evidence/targetSupport";
 import { runGlobalEditorialRepair, normalizeRegionalSwitches } from "./editing/repair/globalEditorialRepair";
 import { buildRegionalRepairPacket, resolveRegionalOperations } from "./editing/repair/regionalPacket";
@@ -68,6 +68,18 @@ export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promi
   if (!duration) throw new Error("Could not determine edit duration.");
 
   const availableEnd = Math.min(duration, Math.max(...videos.map((video) => number(video.timelineAvailableEnd, 0))));
+  if (availableEnd > 0) {
+    const preliminaryEnd = Math.min(availableEnd, 60);
+    const preliminaryCandidates = buildSectionEditMoments(audio, videos, 0, preliminaryEnd);
+    const preliminaryOpening = resolveOpeningEvidenceScope(videos, 0);
+    const preliminaryCatalog = buildEvidenceCatalog(audio, videos, 0, preliminaryEnd, preliminaryCandidates.map((item) => number(item.at, NaN)).filter(Number.isFinite), preliminaryOpening);
+    buildSectionPacket({ start: 0, end: preliminaryEnd, videos,
+      availability: videos.map((video) => ({ id: video.id, start: video.timelineAvailableStart, end: video.timelineAvailableEnd })),
+      candidates: preliminaryCandidates, catalog: preliminaryCatalog, openingScope: preliminaryOpening,
+      intent, brief: {}, profiles: [], previousClipId: "", academy: sectionAcademy,
+      system: "", numPredict: 2200 });
+    console.log("[FREEOS Editing Planner] pre-section packet feasibility", JSON.stringify({ candidateCount: preliminaryCandidates.length, evidenceCount: preliminaryCatalog.length, purpose: "detect deterministic packet overflow before model calls" }));
+  }
   const allowedClipIds = new Set(included.map((clip) => clip.id));
   const clipIds = included.map((clip) => clip.id);
   const cameraEvidence = videos.map((video) => ({
@@ -102,6 +114,7 @@ STRICT EVIDENCE RULES:
 - Describe editorial utility only when directly supported by measured visual behavior.
 
 Return only schema-valid JSON.`;
+  console.log("[FREEOS Editing Planner] pre-section model call", JSON.stringify({ purpose: "camera-profiles", clipCount: clipIds.length }));
   const cameraProfileText = await callModel({
     system: cameraProfileSystem,
     prompt: {
@@ -153,6 +166,7 @@ EDITORIAL JUDGMENT:
 - Faster cutting must arise from evidence density, not elapsed time.
 
 ${editingKnowledge.context}`;
+  console.log("[FREEOS Editing Planner] pre-section model call", JSON.stringify({ purpose: "editorial-brief", clipCount: clipIds.length }));
   const briefText = await callModel({
     system: briefSystem,
     prompt: {
@@ -258,16 +272,15 @@ SECTION CONTINUITY:
 - The start of this planning section is NOT automatically a creative cut.
 - previousClipId is the camera active immediately before this section.
 - Current opening state: ${fixedOpening ? `${fixedOpening.mode}, clip '${fixedOpening.clipId}'. This is fixed system state; return switches only and do not justify this opening.` : `Choose an evidence-grounded ${openingMode} opening and return it with mode '${openingMode}'.`}
-- For initial-selection only, compare every available clip's openingEvidence in the packet. Choose the first visual state creatively. Cite measured evidence for the selected clip inside openingEvidence.windowStart-windowEnd. Missing measurements are uncertainty, not evidence.
+- For initial-selection only, compare every available clip's openingEvidence in the packet. Choose the first visual state creatively. FREEOS attaches measured evidence for the selected clip. Missing measurements are uncertainty, not evidence.
 - A genuine creative switch may happen exactly at sectionStart or later at an evidence-backed candidateEditMoment.
 - Never change cameras merely because a planning section began.
 - A section boundary alone is not evidence for a creative switch.
 
 LOCAL-EVIDENCE DISCIPLINE:
-- Every switch time must come from the enforced evidence-backed candidate schema.
-- Select evidenceRefs only from evidenceCatalog. Each switch reference must be within 0.8s of that switch. The initial selection uses only its separate opening evidence scope.
-- Every creative switch with multiple available sources needs at least one measured visual evidenceRef for the selected destination clip. Audio supports timing; other cameras support comparison; neither proves the destination. Availability alone supports a switch only when that clip is uniquely available.
-- At each candidate, choose a destination only from clips with nonempty targetSupport refs. Cite its supplied local refs. If the active clip remains available, holding it and omitting the candidate is legal.
+- Every switch must select a supplied candidateId and one of its targetSupport destinations. FREEOS resolves the exact time and canonical evidence.
+- Every creative switch with multiple available sources needs measured visual evidence for the selected destination clip. Audio supports timing; other cameras support comparison; neither proves the destination. Availability alone supports a switch only when that clip is uniquely available.
+- If the active clip remains available, holding it and omitting the candidate is legal.
 - On repair, use repair.failedSwitch.supportedDestinations for local alternatives. Never substitute distant refs for the rejected destination.
 - Never justify a switch using an event several seconds earlier or later.
 - creativeIntent describes editorial purpose and never proves a factual claim.
@@ -302,7 +315,7 @@ GROUNDING RULES:
 - Never invent singers, backing singers, performers, audience, instruments, rooms, objects, actions, story events, or emotional expressions.
 - Multiple detected faces do NOT prove an ensemble or backing singers.
 - Face presence does NOT identify a vocalist or performer.
-- Do not write factual rationale prose. Choose measured evidenceRefs; FREEOS renders rationale locally after validation.
+- Do not write factual rationale prose or evidenceRefs; FREEOS attaches measured evidence and renders rationale locally after validation.
 - Do not add extra free-text fields to opening or switches.
 - Never claim a vocal flourish, lyrical emphasis, instrumental entrance, harmony, solo, chord, or melody event unless supplied evidence explicitly contains that fact.
 - If semantic evidence is uncertain, say so.
@@ -358,11 +371,17 @@ Return only schema-valid JSON.`;
     }
     console.log("[FREEOS Editing Planner] candidate support", JSON.stringify({ candidateCount: counts.length, baselineClipId: baselineClipId || null, candidateWithAlternativeSupportCount: alternativeCounts.filter((count) => count > 0).length, candidateWithNoAlternativeSupportCount: alternativeCounts.filter((count) => count === 0).length, averageSupportedDestinations: counts.reduce((sum, count) => sum + count, 0) / Math.max(1, counts.length), minimumSupportedDestinations: counts.length ? Math.min(...counts) : 0, maximumSupportedDestinations: Math.max(0, ...counts) }));
 
+    let currentPacket = buildSectionPacket({
+      start: sectionStart, end: sectionEnd, videos, availability,
+      candidates: candidateEditMoments, catalog: evidenceCatalog, openingScope,
+      intent, brief, profiles: sectionProfiles, previousClipId,
+      academy: sectionAcademy, system: sectionSystem, numPredict: 2200,
+    });
+    console.log("[FREEOS Editing Planner] section packet preflight", JSON.stringify({ section: `${sectionStart}-${sectionEnd}`, estimatedInputTokens: currentPacket.estimatedPromptTokens, inputBudget: currentPacket.budget.finalInputBudget, components: currentPacket.componentEstimates, phases: currentPacket.phases }));
     try {
       const repaired = await runBoundedPlanRepair({
         maxAttempts: maxSectionAttempts,
         generate: async (attempt, previous) => {
-          telemetry.sectionAttempts++;
           previousFailure = previous?.message ?? "";
           previousCategory = previous?.category ?? "";
           if (previousCategory) telemetry.repairAttemptsByCategory[previousCategory] = (telemetry.repairAttemptsByCategory[previousCategory] ?? 0) + 1;
@@ -372,7 +391,7 @@ Return only schema-valid JSON.`;
       const attemptSystem = sectionSystem + (isRepair
         ? "\nRepair the previous decision against the validator diagnostic. Return one complete section JSON."
         : "");
-      const packet = buildSectionPacket({
+      const packet = isRepair ? buildSectionPacket({
         start: sectionStart, end: sectionEnd, videos, availability,
         candidates: candidateEditMoments, catalog: evidenceCatalog,
         openingScope,
@@ -382,7 +401,9 @@ Return only schema-valid JSON.`;
           category: previousCategory, message: previousFailure.slice(0, 800),
           rejected: previousResponseExcerpt.slice(0, 1200), ...(failedSwitch ? { failedSwitch } : {}),
         } } : {}),
-      });
+      }) : currentPacket;
+      currentPacket = packet;
+      telemetry.sectionAttempts++;
       if (packet.compactionApplied) telemetry.supportIndexCompactionCount++;
       telemetry.supportIndexCompactionCount += packet.supportIndexCompactionCount;
       console.log("[FREEOS Editing Planner] section packet", JSON.stringify({
@@ -434,7 +455,9 @@ Return only schema-valid JSON.`;
           return sectionText;
         },
         validate: (generated) => {
-          const candidateSection = parseSectionPlan(String(generated));
+          const parsedChoices = parseSectionPlan(String(generated));
+          const resolved = resolveSectionChoices(parsedChoices, currentPacket, videos, openingScope);
+          const candidateSection = { ...parsedChoices, ...resolved };
           const candidateDecisions = validateSectionSwitches(
             candidateSection.opening, candidateSection.switches, allowedClipIds,
             sectionStart, sectionEnd, videos, candidateEditMoments, previousClipId, evidenceCatalog, openingScope
@@ -467,14 +490,15 @@ Return only schema-valid JSON.`;
               const match = /Section switch (\d+)/.exec(diagnostic.message);
               const index = match ? Number(match[1]) : -1;
               const selected = rejected.switches[index] as JsonObject | undefined;
-              const at = number(selected?.at, NaN);
+              const selectedCandidate = currentPacket.supportIndex.find((item) => item.candidateId === selected?.candidateId);
+              const at = selectedCandidate?.at ?? NaN;
               const support = fullSupport.find((item) => Math.abs(item.at - at) <= 0.01);
               if (selected && support) {
-                const clipId = String(selected.clipId ?? "");
-                const earlier = rejected.switches.slice(0, index).filter((item) => number((item as JsonObject).at, NaN) < at).at(-1) as JsonObject | undefined;
-                const currentClipId = String(earlier?.clipId ?? (rejected.opening as JsonObject | undefined)?.clipId ?? fixedOpening?.clipId ?? previousClipId);
+                const clipId = String(selected.destinationClipId ?? "");
+                const earlier = rejected.switches.slice(0, index).filter((item) => (currentPacket.supportIndex.find((candidate) => candidate.candidateId === (item as JsonObject).candidateId)?.at ?? Infinity) < at).at(-1) as JsonObject | undefined;
+                const currentClipId = String(earlier?.destinationClipId ?? (rejected.opening as JsonObject | undefined)?.clipId ?? fixedOpening?.clipId ?? previousClipId);
                 failedSwitch = { at, clipId, candidateId: support.candidateId, currentClipId, supportedDestinations: Object.fromEntries(Object.entries(support.targetSupport).filter(([, refs]) => refs.length)), holdAllowed: support.availableClips.includes(currentClipId) };
-                failedCombination = `${at}:${clipId}:${JSON.stringify((selected.evidenceRefs as unknown[] | undefined) ?? [])}`;
+                failedCombination = `${at}:${clipId}`;
                 telemetry.targetGroundingRepairAlternatives += Object.keys(failedSwitch.supportedDestinations).filter((id) => id !== currentClipId).length;
                 console.warn("[FREEOS Editing Planner] switch repair options", JSON.stringify({ category: diagnostic.category, candidateId: support.candidateId, failedDestination: clipId, supportedDestinationsAtCandidate: Object.keys(failedSwitch.supportedDestinations), holdAllowed: failedSwitch.holdAllowed }));
               }

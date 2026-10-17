@@ -5,7 +5,23 @@ import { createHash } from "node:crypto";
 export const creativeIntents = ["continuity", "visual-contrast", "framing-change", "motion-change", "rhythmic-response", "spatial-reset", "detail-emphasis", "hold-strong-shot"] as const;
 export type CreativeIntent = typeof creativeIntents[number];
 export type EvidenceType = "audio-transient" | "audio-energy" | "silence-boundary" | "audio-section-boundary" | "scene-change" | "motion-shift" | "motion-state" | "camera-motion" | "framing" | "face-presence" | "sharpness" | "exposure" | "semantic-confidence" | "source-availability";
-export interface EvidenceRecord { id: string; type: EvidenceType; at: number; clipId?: string; value?: number; label?: string; windowStart?: number; windowEnd?: number; opening?: boolean }
+export interface EvidenceRecord { id: string; canonicalKey?: string; type: EvidenceType; at: number; clipId?: string; value?: number; label?: string; windowStart?: number; windowEnd?: number; opening?: boolean }
+
+export function identifyEvidenceRecord(record: Omit<EvidenceRecord, "id" | "canonicalKey">): EvidenceRecord {
+  const normalized = { type: record.type, at: record.at, clipId: record.clipId, value: record.value, label: record.label, windowStart: record.windowStart, windowEnd: record.windowEnd, opening: record.opening };
+  const digest = createHash("sha256").update(JSON.stringify(normalized)).digest();
+  return { id: `e_${digest.toString("base64url").slice(0, 10)}`, canonicalKey: digest.toString("hex"), ...record };
+}
+
+export function assertUniqueEvidenceIds(records: EvidenceRecord[]): void {
+  const seen = new Map<string, string>();
+  for (const record of records) {
+    const identity = JSON.stringify({ canonicalKey: record.canonicalKey, type: record.type, at: record.at, clipId: record.clipId, value: record.value, label: record.label, windowStart: record.windowStart, windowEnd: record.windowEnd, opening: record.opening });
+    const previous = seen.get(record.id);
+    if (previous && previous !== identity) throw new Error(`Canonical evidence identity collision: ${record.id}`);
+    seen.set(record.id, identity);
+  }
+}
 
 function boundaries(value: unknown): number[] {
   const values = Array.isArray(value) ? value : [value];
@@ -88,7 +104,8 @@ export function buildEvidenceCatalog(audio: JsonObject, videos: JsonObject[], se
     }
   }
   const identified = records.filter((record) => record.type === "source-availability" || record.type === "audio-energy" || record.type === "framing" || record.value === undefined || Number.isFinite(record.value))
-    .map((record) => ({ id: `e${createHash("sha256").update(JSON.stringify(record)).digest("hex").slice(0, 20)}`, ...record }));
+    .map(identifyEvidenceRecord);
+  assertUniqueEvidenceIds(identified);
   return [...new Map(identified.map((record) => [record.id, record])).values()];
 }
 

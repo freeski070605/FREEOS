@@ -1,7 +1,7 @@
 import type { JsonObject } from "./plannerTypes";
 import { number } from "../shared";
 import { creativeIntents, type EvidenceRecord } from "../evidence/evidenceRefs";
-import { deterministicOpening } from "./openingState";
+import { availableOpeningClips, deterministicOpening, NoLegalSourceContinuationError } from "./openingState";
 import type { OpeningEvidenceScope } from "../evidence/openingEvidence";
 export const creativeBriefSchema: JsonObject = {
   type: "object",
@@ -301,5 +301,23 @@ export function buildSectionPlanSchema(
             },
 
     },
+  };
+}
+
+export function buildSectionChoiceSchema(videos: JsonObject[], previousClipId: string, sectionStart: number, candidateIds: string[]): JsonObject {
+  const openingClips = availableOpeningClips(videos, sectionStart);
+  if (!openingClips.length) throw new NoLegalSourceContinuationError(sectionStart);
+  const clips = videos.map((video) => String(video.id));
+  const creativeIntent = { type: "string", enum: [...creativeIntents] };
+  const common = { action: { type: "string", enum: ["cut", "hold", "punch-in"] }, confidence: { type: "number", minimum: 0, maximum: 1 }, creativeIntent };
+  const opening = { type: "object", additionalProperties: false, required: ["mode", "clipId", "action", "confidence", "creativeIntent"], properties: {
+    mode: { const: previousClipId ? "availability-transition" : "initial-selection" }, clipId: { type: "string", enum: openingClips }, ...common,
+  } };
+  const item = { type: "object", additionalProperties: false, required: ["candidateId", "destinationClipId", "action", "confidence", "creativeIntent"], properties: {
+    candidateId: { type: "string", enum: candidateIds }, destinationClipId: { type: "string", enum: clips }, ...common,
+  } };
+  return { type: "object", additionalProperties: false,
+    required: deterministicOpening(previousClipId, videos, sectionStart) ? ["switches"] : ["opening", "switches"],
+    properties: { ...(!deterministicOpening(previousClipId, videos, sectionStart) ? { opening } : {}), switches: { type: "array", maxItems: Math.min(19, candidateIds.length), items: item } },
   };
 }

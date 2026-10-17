@@ -20,6 +20,7 @@ export async function runBoundedPlanRepair<T>(options: {
       return { value: options.validate(generated), attempts: attempt, diagnostics };
     } catch (error) {
       const diagnostic = { attempt, category: options.classify?.(error) ?? "validation", message: error instanceof Error ? error.message : String(error) };
+      if (["context-budget", "runtime", "opening-state"].includes(diagnostic.category)) throw error;
       diagnostics.push(diagnostic);
       options.onFailure?.(diagnostic);
       const key = options.failureKey?.(diagnostic);
@@ -27,7 +28,6 @@ export async function runBoundedPlanRepair<T>(options: {
         if (seenFailures.has(key)) throw new PlanRepairError(diagnostics);
         seenFailures.add(key);
       }
-      if (["context-budget", "runtime", "opening-state"].includes(diagnostic.category)) throw error;
     }
   }
   throw new PlanRepairError(diagnostics);

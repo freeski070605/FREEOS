@@ -4,6 +4,13 @@ import { number } from "../shared";
 export type SectionOpeningMode = "initial-selection" | "continuation" | "availability-transition";
 export interface SectionOpeningState { mode: SectionOpeningMode; clipId: string }
 
+export class NoLegalSourceContinuationError extends Error {
+  readonly code = "no-legal-source-continuation";
+  constructor(public readonly sectionStart: number) {
+    super(`No video source is available at section start ${sectionStart}.`);
+  }
+}
+
 export function availableOpeningClips(videos: JsonObject[], at: number): string[] {
   return videos.filter((video) =>
     at >= number(video.timelineAvailableStart, 0) - 0.001 &&

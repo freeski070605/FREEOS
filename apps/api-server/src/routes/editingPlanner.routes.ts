@@ -3,6 +3,8 @@ import { buildCreativeEditPlan, EditorialQualityGateError, type EditingPlannerRe
 import { buildEditingDryRun, type EditingDryRunRequest } from "../services/editingExecution.service";
 import { recordEditingExperience } from "../services/editing/learning/editingExperience";
 import { PlanRepairError } from "../services/editing/repair/planRepair";
+import { ContextBudgetPlanningError } from "../services/editing/planning/sectionPacket";
+import { NoLegalSourceContinuationError } from "../services/editing/planning/openingState";
 
 export const editingPlannerRouter = Router();
 
@@ -22,6 +24,8 @@ editingPlannerRouter.post("/plan", async (request, response, next) => {
     const plan = await buildCreativeEditPlan(body as EditingPlannerRequest);
     response.json({ plan });
   } catch (error) {
+    if (error instanceof ContextBudgetPlanningError) return response.status(422).json({ error: error.code, ...error.details });
+    if (error instanceof NoLegalSourceContinuationError) return response.status(422).json({ error: error.code, sectionStart: error.sectionStart, message: error.message });
     if (error instanceof EditorialQualityGateError) return response.status(422).json({ error: error.code, message: error.message, ...error.details });
     if (error instanceof PlanRepairError) return response.status(422).json({ error: error.message, diagnostics: error.diagnostics });
     next(error);

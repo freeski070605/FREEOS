@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { validateSectionSwitches, SectionValidationError } = require('../../apps/api-server/dist/services/editing/validation/section.js');
-const { buildEvidenceCatalog, renderEvidenceRationale } = require('../../apps/api-server/dist/services/editing/evidence/evidenceRefs.js');
+const { buildEvidenceCatalog, renderEvidenceRationale, identifyEvidenceRecord, assertUniqueEvidenceIds } = require('../../apps/api-server/dist/services/editing/evidence/evidenceRefs.js');
 const { buildCandidateSupportIndex } = require('../../apps/api-server/dist/services/editing/evidence/targetSupport.js');
 const { buildSectionPlanSchema } = require('../../apps/api-server/dist/services/editing/planning/schemas.js');
 const { parseSectionPlan } = require('../../apps/api-server/dist/services/editing/planning/parsing.js');
@@ -11,8 +11,9 @@ const { resolveEditingIntent } = require('../../apps/api-server/dist/services/ed
 const { runBoundedPlanRepair, PlanRepairError } = require('../../apps/api-server/dist/services/editing/repair/planRepair.js');
 const { appendSectionDecisions, mergeAdjacentDecisions } = require('../../apps/api-server/dist/services/editing/critique/assembly.js');
 const { deterministicOpening } = require('../../apps/api-server/dist/services/editing/planning/openingState.js');
+const { NoLegalSourceContinuationError } = require('../../apps/api-server/dist/services/editing/planning/openingState.js');
 const { buildSectionEditMoments } = require('../../apps/api-server/dist/services/editing/evidence/candidateMoments.js');
-const { buildSectionPacket, sectionModelBudget, estimatePromptTokens } = require('../../apps/api-server/dist/services/editing/planning/sectionPacket.js');
+const { buildSectionPacket, resolveSectionChoices, ContextBudgetPlanningError, sectionModelBudget, estimatePromptTokens } = require('../../apps/api-server/dist/services/editing/planning/sectionPacket.js');
 const { compactVideo } = require('../../apps/api-server/dist/services/editing/evidence/videoEvidence.js');
 const { resolveOpeningEvidenceScope, openingEvidenceByClip } = require('../../apps/api-server/dist/services/editing/evidence/openingEvidence.js');
 const { runGlobalEditorialRepair, findRepairRegion, normalizeRegionalSwitches, buildMaterialRepairRegions } = require('../../apps/api-server/dist/services/editing/repair/globalEditorialRepair.js');
@@ -51,7 +52,8 @@ test('dense five-camera section stays bounded and keeps canonical candidate refs
   assert.ok(!packet.exposedCatalog.some((e) => e.id.startsWith('d')));
   assert.equal(make(catalog.filter((e) => !e.id.startsWith('d'))).estimatedPromptTokens, packet.estimatedPromptTokens);
   assert.ok(estimatePromptTokens(catalog) > packet.estimatedPromptTokens);
-  assert(packet.packet.candidateEditMoments.every((item) => Object.values(item.targetSupport).every((refs) => refs.every((ref) => packet.exposedCatalog.some((record) => record.id === ref)))));
+  assert(packet.packet.candidateEditMoments.every((item) => Object.values(item.targetSupport).every((summaries) => summaries.every((summary) => typeof summary.type === 'string'))));
+  assert(packet.supportIndex.every((item) => Object.values(item.targetSupport).every((refs) => refs.every((ref) => packet.exposedCatalog.some((record) => record.id === ref)))));
 });
 
 test('five-camera destination index exposes three unranked local alternatives and validator accepts packet refs', () => {
@@ -69,15 +71,13 @@ test('five-camera destination index exposes three unranked local alternatives an
     candidates: [moment(at)], catalog, intent: {}, brief: {}, profiles: [], previousClipId: 'a', academy: '', system: 'Plan.', numPredict: 2200 };
   const packet = buildSectionPacket(input);
   const candidate = packet.packet.candidateEditMoments[0];
-  assert.deepEqual(candidate.availableClips, ['a', 'b', 'c', 'd', 'e']);
-  assert.deepEqual(Object.entries(candidate.targetSupport).filter(([, refs]) => refs.length).map(([id]) => id), ['a', 'b', 'c']);
-  assert.deepEqual(candidate.timingEvidence, ['beat']);
-  assert.equal(candidate.targetSupport.d.length, 0);
-  assert.equal(candidate.targetSupport.e.length, 0);
-  const variants = packet.schema.properties.switches.items.oneOf;
-  assert.deepEqual(variants.map((variant) => variant.properties.clipId.const), ['a', 'b', 'c']);
+  assert.deepEqual(Object.keys(candidate.targetSupport), ['a', 'b', 'c']);
+  assert.deepEqual(candidate.timingEvidence.map((item) => item.type), ['audio-transient']);
+  assert(!candidate.targetSupport.d);
+  assert(!candidate.targetSupport.e);
+  assert.equal(packet.schema.properties.switches.items.properties.candidateId.enum.length, 1);
   for (const id of ['b', 'c']) {
-    const refs = ['beat', candidate.targetSupport[id][0]];
+    const refs = ['beat', packet.supportIndex[0].targetSupport[id][0]];
     const result = validateSectionSwitches(undefined, [shot(at, id, refs)], new Set(videos.map((v) => v.id)), 60, 120, videos, [moment(at)], 'a', catalog);
     assert.equal(result.at(-1).clipId, id);
   }
@@ -110,7 +110,7 @@ test('evidence compaction keeps target refs for every retained candidate', () =>
     ...videos.flatMap((v) => [0, 1, 2].map((n) => ({ id: `face-${at}-${v.id}-${n}`, type: 'face-presence', at, clipId: v.id, value: n / 3 }))),
   ]);
   let compact;
-  for (const size of [0, 3000, 6000, 9000, 12000]) {
+  for (const size of [40000, 45000, 50000, 55000, 60000]) {
     const packet = buildSectionPacket({ start: 0, end: 60, videos, availability: videos.map((v) => ({ id: v.id, start: 0, end: 120 })),
       candidates, catalog, intent: {}, brief: {}, profiles: [], previousClipId: 'a', academy: '', system: 'x'.repeat(size), numPredict: 2200 });
     if (packet.compactionApplied) { compact = packet; break; }
@@ -119,7 +119,8 @@ test('evidence compaction keeps target refs for every retained candidate', () =>
   assert(compact.packet.candidateEditMoments.length > 0);
   for (const candidate of compact.packet.candidateEditMoments) {
     assert(candidate.timingEvidence.length > 0);
-    for (const refs of Object.values(candidate.targetSupport)) assert(refs.some((ref) => compact.exposedCatalog.some((item) => item.id === ref)));
+    const support = compact.supportIndex.find((item) => item.candidateId === candidate.candidateId);
+    for (const refs of Object.values(support.targetSupport)) assert(refs.some((ref) => compact.exposedCatalog.some((item) => item.id === ref)));
   }
 });
 
@@ -248,9 +249,9 @@ test('first valid framing, face, and motion samples ground initial selection bey
     availability: cameras.map((item) => ({ id: item.id, start: 0, end: 60 })), candidates: [], catalog,
     intent: {}, brief: {}, profiles: [], previousClipId: '', academy: '', system: 'Plan.', numPredict: 2200, openingScope: scope });
   assert.equal(packet.packet.openingEvidence.clips.length, 2);
-  assert.deepEqual(packet.packet.openingEvidence.clips.map((item) => item.evidenceRefs.length), [7, 7]);
+  assert.deepEqual(packet.packet.openingEvidence.clips.map((item) => item.evidence.length), [7, 7]);
   assert(packet.packet.openingEvidence.clips.every((item) => item.missing.length === 0));
-  assert.equal(packet.schema.properties.opening.oneOf.length, 2);
+  assert.equal(packet.schema.properties.opening.properties.clipId.enum.length, 2);
 });
 test('opening scope remains bounded and cannot justify later creative switches', () => {
   const cameras = [video('a', 60, 0, { openingMeasurements: [{ type: 'face-presence', at: 0.882, value: 1 }], sampleCadence: 0.5 }), video('b', 60)];
@@ -550,9 +551,8 @@ test('regional packet offers only canonical supported targets and its refs valid
   const support = packet.supportIndex[0].targetSupport;
   assert.deepEqual(support.c, ['supported']);
   assert.deepEqual(support.b, []);
-  const variants = packet.schema.properties.switches.items.oneOf;
-  assert(variants.some((item) => item.properties.clipId.const === 'c'));
-  assert(!variants.some((item) => item.properties.clipId.const === 'b'));
+  assert.deepEqual(packet.schema.properties.switches.items.properties.candidateId.enum, [packet.supportIndex[0].candidateId]);
+  assert.deepEqual(Object.keys(packet.packet.candidateEditMoments[0].targetSupport), ['c']);
   const repaired = validateSectionSwitches(undefined, [shot(20, 'c', ['timing', ...support.c])],
     new Set(['a', 'b', 'c']), 10, 40, videos, [moment(20)], 'a', packet.exposedCatalog);
   assert.equal(repaired[1].clipId, 'c');
@@ -734,6 +734,71 @@ test('canonical evidence IDs survive regional reconstruction and subset compacti
   assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: packet.candidates[0].candidateId, destinationClipId: 'b', creativeIntent: 'visual-contrast', at: 20 }] }, packet, region), /unsupported fields/);
 });
 
+test('record-derived canonical keys and compact wire IDs are stable and collision checked', () => {
+  const a = identifyEvidenceRecord({ type: 'framing', at: 12.5, clipId: 'b', label: 'wide' });
+  const b = identifyEvidenceRecord({ clipId: 'b', label: 'wide', at: 12.5, type: 'framing' });
+  assert.equal(a.id, b.id);
+  assert.equal(a.canonicalKey, b.canonicalKey);
+  assert.match(a.id, /^e_[A-Za-z0-9_-]{10}$/);
+  assert.equal(a.canonicalKey.length, 64);
+  assert.doesNotThrow(() => assertUniqueEvidenceIds([a, b]));
+  assert.throws(() => assertUniqueEvidenceIds([a, { ...a, canonicalKey: 'different' }]), /collision/);
+});
+
+test('record-derived identity keeps a 32-candidate five-camera packet below 22474', () => {
+  const videos = Array.from({ length: 5 }, (_, i) => video(`cam${i}`, 60));
+  const candidates = Array.from({ length: 32 }, (_, i) => moment(1 + i * 1.7, 8));
+  const catalog = candidates.flatMap((candidate) => [identifyEvidenceRecord({ type: 'audio-transient', at: candidate.at, value: .7 }),
+    ...videos.flatMap((source) => ['framing', 'face-presence', 'motion-state', 'camera-motion', 'sharpness'].map((type) => identifyEvidenceRecord({ type, at: candidate.at, clipId: source.id, ...(type === 'framing' ? { label: 'medium' } : { value: .5 }) })))]);
+  const packet = buildSectionPacket({ start: 0, end: 60, videos, availability: videos.map((source) => ({ id: source.id, start: 0, end: 60 })),
+    candidates, catalog, intent: { instruction: 'preserve measured pacing' }, brief: {}, profiles: [], previousClipId: 'cam0', academy: '', system: 'Plan one grounded section.', numPredict: 2200 });
+  assert.equal(packet.supportIndex.length, 32);
+  assert(packet.estimatedPromptTokens < 22474);
+  assert.equal(packet.componentEstimates.evidenceIdTokenCost, 0);
+  assert(packet.componentEstimates.schemaTokens < 1000);
+  assert.equal(packet.supportIndex[0].targetSupport.cam1[0], catalog.find((item) => item.clipId === 'cam1' && item.at === candidates[0].at).id);
+});
+
+test('section choices attach canonical local timing and destination evidence', () => {
+  const videos = [video('a', 60), video('b', 60)];
+  const at = 12.375;
+  const catalog = [{ id: 'timing', type: 'audio-transient', at, value: .7 }, { id: 'target', type: 'framing', at, clipId: 'b', label: 'wide' }];
+  const candidate = moment(at);
+  const packet = buildSectionPacket({ start: 0, end: 60, videos, availability: videos.map((v) => ({ id: v.id, start: 0, end: 60 })),
+    candidates: [candidate], catalog, intent: {}, brief: {}, profiles: [], previousClipId: 'a', academy: '', system: 'Plan.', numPredict: 2200 });
+  const choice = { candidateId: packet.supportIndex[0].candidateId, destinationClipId: 'b', action: 'cut', confidence: .8, creativeIntent: 'visual-contrast' };
+  const resolved = resolveSectionChoices({ opening: undefined, switches: [choice] }, packet, videos);
+  assert.equal(resolved.switches[0].at, at);
+  assert.deepEqual(new Set(resolved.switches[0].evidenceRefs), new Set(['target', 'timing']));
+  assert.equal(validateSectionSwitches(undefined, resolved.switches, new Set(['a', 'b']), 0, 60, videos, [candidate], 'a', catalog)[1].clipId, 'b');
+  assert.throws(() => resolveSectionChoices({ opening: undefined, switches: [{ ...choice, destinationClipId: 'a' }] }, packet, videos), /unsupported candidate\/destination/);
+  assert(!JSON.stringify(packet.schema).includes('target'));
+  assert(!JSON.stringify(packet.packet).includes('"target"'));
+});
+
+test('candidate thinning retains measured temporal coverage without creating intervals', () => {
+  const videos = [video('a', 60)];
+  const candidates = Array.from({ length: 40 }, (_, i) => moment(.5 + i * 1.41, i % 7));
+  const catalog = candidates.map((item, i) => ({ id: `v${i}`, type: 'motion-shift', at: item.at, clipId: 'a', value: .5 }));
+  const packet = buildSectionPacket({ start: 0, end: 60, videos, availability: [{ id: 'a', start: 0, end: 60 }],
+    candidates, catalog, intent: {}, brief: {}, profiles: [], previousClipId: 'a', academy: '', system: 'x'.repeat(63000), numPredict: 2200 });
+  const retained = packet.packet.candidateEditMoments.map((item) => item.at);
+  assert(retained.length < candidates.length);
+  assert(retained.some((at) => at < 10) && retained.some((at) => at > 45));
+  assert(retained.every((at) => candidates.some((item) => item.at === at)));
+  assert(packet.packet.candidateEditMoments.every((item) => item.candidateId === `c${candidates.findIndex((candidate) => candidate.at === item.at) + 1}`));
+  assert(new Set(retained.slice(1).map((at, i) => Number((at - retained[i]).toFixed(2)))).size > 1);
+});
+
+test('failed packet includes all compaction estimates and bypasses model attempts', async () => {
+  let calls = 0;
+  const input = { start: 0, end: 60, videos: [video('a', 60)], availability: [{ id: 'a', start: 0, end: 60 }],
+    candidates: [moment(10)], catalog: [{ id: 'visual', type: 'framing', at: 10, clipId: 'a', label: 'wide' }],
+    intent: {}, brief: {}, profiles: [], previousClipId: 'a', academy: '', system: 'x'.repeat(90000), numPredict: 2200 };
+  await assert.rejects(async () => { const packet = buildSectionPacket(input); calls++; return packet; }, (error) => error instanceof ContextBudgetPlanningError && error.details.phases.length >= 3 && error.details.componentEstimates.schemaTokens > 0 && error.details.estimatedInputTokens > error.details.inputBudget);
+  assert.equal(calls, 0);
+});
+
 test('global repair no-op does not consume applied pass or re-critique', async () => {
   const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
   const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 80), video('b', 80)], candidates: [10, 20, 30, 40].map((at) => moment(at, 11)), boundaries: [], context: { userIntent: 'substantially more cuts and visual energy' }, maxPasses: 1, regenerate: async (region) => region.current.map((item) => ({ ...item, rationale: 'metadata only' })) });
@@ -785,6 +850,16 @@ test('editing plan route returns structured quality gate 422 and unexpected 500'
     const domain = await post();
     assert.equal(domain.status, 422);
     assert.equal((await domain.json()).error, 'editorial-quality-gate');
+    service.buildCreativeEditPlan = async () => { throw new ContextBudgetPlanningError({ section: '0-60', estimatedInputTokens: 23000, inputBudget: 22474, compactionApplied: true, componentEstimates: { schemaTokens: 300 }, phases: [{ phase: 'compact', estimatedInputTokens: 23000 }] }); };
+    const budget = await post();
+    assert.equal(budget.status, 422);
+    const budgetBody = await budget.json();
+    assert.equal(budgetBody.error, 'context-budget');
+    assert.equal(budgetBody.inputBudget, 22474);
+    service.buildCreativeEditPlan = async () => { throw new NoLegalSourceContinuationError(60); };
+    const source = await post();
+    assert.equal(source.status, 422);
+    assert.equal((await source.json()).error, 'no-legal-source-continuation');
     service.buildCreativeEditPlan = async () => { throw new Error('unexpected'); };
     const internal = await post();
     assert.equal(internal.status, 500);
