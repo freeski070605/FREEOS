@@ -68,15 +68,14 @@ export function buildRegionalRepairPacket(input: {
     return Object.entries(item.targetSupport).some(([clip, refs]) => clip !== active && refs.length);
   });
   const switches = region.current.slice(1).map((decision, index) => ({ id: `s${index}`, at: decision.start, clipId: decision.clipId }));
-  const operationSchema: JsonObject = { type: "object", additionalProperties: false, required: ["operations"], properties: { operations: { type: "array", maxItems: 32, items: { oneOf: [
+  const operationSchema: JsonObject = { type: "object", additionalProperties: false, required: ["outcome", "operations"], properties: { outcome: { const: "repair" }, operations: { type: "array", minItems: 1, maxItems: 32, items: { oneOf: [
     { type: "object", additionalProperties: false, required: ["operation", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "add-switch" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
     { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "replace-destination" }, existingSwitchId: { type: "string" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
     { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "move-switch" }, existingSwitchId: { type: "string" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
     { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId"], properties: { operation: { const: "remove-switch" }, existingSwitchId: { type: "string" } } },
-    { type: "object", additionalProperties: false, required: ["operation"], properties: { operation: { const: "hold" } } },
   ] } } } };
   const schema: JsonObject = { oneOf: [operationSchema, { type: "object", additionalProperties: false,
-    required: ["action", "reason", "basis"], properties: { action: { const: "decline-repair" },
+    required: ["outcome", "reason", "basis"], properties: { outcome: { const: "decline" },
       reason: { enum: ["current-shot-preferred", "candidate-support-too-weak", "pacing-change-would-overcorrect"] },
       basis: { enum: ["neighboring-micro-shots", "limited-destination-support", "current-hold-and-user-intent"] } } }] };
   const switchTimes = switches.map((item) => item.at);
@@ -94,7 +93,11 @@ export function buildRegionalRepairPacket(input: {
       current: region.current.map((decision) => ({ start: decision.start, end: decision.end, clipId: decision.clipId })), switches,
       neighboringShotDurations: { previous: region.before.slice(-3).map((d) => Number((d.end - d.start).toFixed(3))),
         current: region.current.map((d) => Number((d.end - d.start).toFixed(3))), next: region.after.slice(0, 3).map((d) => Number((d.end - d.start).toFixed(3))) },
-      repairObjective: { finding: region.finding, instruction: "Improve pacing toward the user's requested editorial energy while preserving grounded choices and avoiding mechanical or excessively short cuts. Strong holds remain legal; candidate opportunities are optional." },
+      repairObjective: { finding: region.finding, requiredEffect: requiredEditorialEffect(region.finding.code),
+        mandate: region.finding.severity === "material" && viable.length > 0 && /more cuts|substantially more|visual energy|faster pac|high.energy|dynamic|energetic|punchier|more visual variety/i.test(JSON.stringify(input.intent))
+          ? "Material finding conflicts with explicit user intent and grounded alternatives exist. Return a meaningful grounded timeline modification or explicitly decline with a constrained editorial reason." :
+            "Return a meaningful grounded timeline modification or explicitly decline with a constrained editorial reason.",
+        instruction: "Use neighboring shot durations to balance pacing and avoid overcorrection. Strong holds remain legal where they do not leave the material finding unanswered. Choose the cuts and destinations editorially." },
       opportunitySummary: { viableCandidateCount: viable.length, supportedDestinationCount: viable.reduce((sum, item) => sum + Object.values(item.targetSupport).filter((refs) => refs.length).length, 0) },
       findings: input.findings, userIntent: input.intent, classification: input.classification,
       candidates, academyGuidance: input.academy.slice(0, guidance) };
@@ -123,10 +126,10 @@ export function buildRegionalRepairPacket(input: {
   } };
 }
 
-export function resolveRegionalDecline(response: unknown, packet: ReturnType<typeof buildRegionalRepairPacket>, region: RepairRegion): Exclude<RepairProposal, EditingDecision[]> {
+export function resolveRegionalDecline(response: unknown, packet: ReturnType<typeof buildRegionalRepairPacket>, region: RepairRegion): Extract<RepairProposal, { outcome: "decline" }> {
   if (!response || typeof response !== "object" || Array.isArray(response)) throw new SectionValidationError("structure", "Invalid repair decline.");
   const value = response as JsonObject;
-  if (Object.keys(value).sort().join(",") !== "action,basis,reason" || value.action !== "decline-repair") throw new SectionValidationError("structure", "Repair decline requires constrained action, reason, and basis only.");
+  if (Object.keys(value).sort().join(",") !== "basis,outcome,reason" || value.outcome !== "decline") throw new SectionValidationError("structure", "Repair decline requires constrained outcome, reason, and basis only.");
   const reasons = ["current-shot-preferred", "candidate-support-too-weak", "pacing-change-would-overcorrect"];
   const bases = ["neighboring-micro-shots", "limited-destination-support", "current-hold-and-user-intent"];
   if (!reasons.includes(String(value.reason)) || !bases.includes(String(value.basis))) throw new SectionValidationError("structure", "Unsupported repair decline reason or basis.");
@@ -140,21 +143,29 @@ export function resolveRegionalDecline(response: unknown, packet: ReturnType<typ
   if (value.reason === "pacing-change-would-overcorrect" && value.basis !== "neighboring-micro-shots") throw new SectionValidationError("structure", "Pacing decline requires neighboring micro-shots.");
   if (value.reason === "candidate-support-too-weak" && value.basis !== "limited-destination-support") throw new SectionValidationError("structure", "Support decline requires limited destination support.");
   if (value.reason === "current-shot-preferred" && value.basis !== "current-hold-and-user-intent") throw new SectionValidationError("structure", "Current shot preference requires aligned hold intent.");
-  return value as Exclude<RepairProposal, EditingDecision[]>;
+  return value as Extract<RepairProposal, { outcome: "decline" }>;
+}
+
+export function requiredEditorialEffect(code: string): string {
+  if (code === "long-stretch") return "meaningfully alter pacing inside the flagged uninterrupted region";
+  if (code === "mechanical-alternation") return "break the detected repetitive source pattern";
+  if (code === "micro-shot-abuse") return "reduce excessive short-shot concentration";
+  return "change the timeline structure relevant to the flagged finding";
 }
 
 export function resolveRegionalOperations(response: unknown, packet: ReturnType<typeof buildRegionalRepairPacket>, region: RepairRegion): JsonObject[] {
-  if (!response || typeof response !== "object" || !Array.isArray((response as JsonObject).operations)) throw new SectionValidationError("structure", "Repair response requires operations.");
+  if (!response || typeof response !== "object" || Array.isArray(response) || (response as JsonObject).outcome !== "repair" || Object.keys(response).sort().join(",") !== "operations,outcome" || !Array.isArray((response as JsonObject).operations)) throw new SectionValidationError("structure", "Repair response requires outcome=repair and operations only.");
   const operations = (response as { operations: unknown[] }).operations;
+  if (!operations.length) throw new SectionValidationError("structure", "Repair contract requires at least one semantic operation; choose repair or constrained decline.");
   if (operations.length > 32) throw new SectionValidationError("structure", "Too many repair operations.");
   const switches = new Map(packet.switches.map((item, index) => [item.id, { at: item.at, clipId: item.clipId, action: region.current[index + 1].action, confidence: region.current[index + 1].confidence, creativeIntent: region.current[index + 1].creativeIntent, evidenceRefs: region.current[index + 1].evidenceRefs }]));
   const used = new Set<string>();
   for (const raw of operations) {
     if (!raw || typeof raw !== "object") throw new SectionValidationError("structure", "Invalid repair operation.");
     const op = raw as JsonObject, operation = op.operation;
+    if (!["add-switch", "remove-switch", "move-switch", "replace-destination"].includes(String(operation))) throw new SectionValidationError("structure", "Unsupported repair operation.");
     const allowedFields = new Set(["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"]);
     if (Object.keys(op).some((key) => !allowedFields.has(key))) throw new SectionValidationError("structure", "Repair operation contains unsupported fields.");
-    if (operation === "hold") { if (Object.keys(op).length !== 1) throw new SectionValidationError("structure", "Hold cannot carry repair fields."); continue; }
     const existingId = op.existingSwitchId;
     if (operation === "add-switch" && existingId !== undefined) throw new SectionValidationError("structure", "Add-switch cannot reference an existing switch ID.");
     if (operation === "remove-switch" && Object.keys(op).some((key) => !["operation", "existingSwitchId"].includes(key))) throw new SectionValidationError("structure", "Remove-switch cannot carry candidate fields.");

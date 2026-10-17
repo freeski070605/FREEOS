@@ -4,7 +4,8 @@ import { critiqueTimeline, type CriticContext, type EditorialFinding } from "../
 
 export interface RepairRegion { start: number; end: number; finding: EditorialFinding; current: EditingDecision[]; before: EditingDecision[]; after: EditingDecision[]; openingClipId: string; priorDecision?: EditingDecision; nextDecision?: EditingDecision; exitClipBeforeRepair: string }
 export type RepairDeclineReason = "current-shot-preferred" | "candidate-support-too-weak" | "pacing-change-would-overcorrect";
-export type RepairProposal = EditingDecision[] | { action: "decline-repair"; reason: RepairDeclineReason; basis: "neighboring-micro-shots" | "limited-destination-support" | "current-hold-and-user-intent" };
+export type RepairProposal = { outcome: "repair"; operations: JsonObject[]; decisions: EditingDecision[] } |
+  { outcome: "decline"; reason: RepairDeclineReason; basis: "neighboring-micro-shots" | "limited-destination-support" | "current-hold-and-user-intent" };
 
 export function normalizeRegionalSwitches(switches: unknown[], start: number, openingClipId: string): { switches: unknown[]; boundaryNoOpsRemoved: number } {
   let boundaryNoOpsRemoved = 0;
@@ -77,6 +78,21 @@ function semanticTimeline(decisions: EditingDecision[]): string {
   return JSON.stringify(reconcileRegionalTimeline(decisions).map((item) => [Number(item.start.toFixed(3)), Number(item.end.toFixed(3)), item.clipId, item.action === "punch-in" ? item.action : "cut"]));
 }
 
+export function repairEffectPlausible(before: EditingDecision[], after: EditingDecision[], finding: EditorialFinding): boolean {
+  const switches = (items: EditingDecision[]) => reconcileRegionalTimeline(items).slice(1)
+    .filter((item) => item.start >= finding.start - 0.001 && item.start < finding.end - 0.001)
+    .map((item) => [Number(item.start.toFixed(3)), item.clipId]);
+  const prior = switches(before), next = switches(after);
+  if (finding.code === "long-stretch") return JSON.stringify(prior) !== JSON.stringify(next) && next.length > prior.length;
+  if (finding.code === "micro-shot-abuse") {
+    const shortCount = (items: EditingDecision[]) => reconcileRegionalTimeline(items)
+      .filter((item) => item.start < finding.end && item.end > finding.start && item.end - item.start < 0.75).length;
+    return shortCount(after) < shortCount(before) || next.length < prior.length;
+  }
+  if (finding.code === "mechanical-alternation") return JSON.stringify(prior) !== JSON.stringify(next);
+  return JSON.stringify(prior) !== JSON.stringify(next);
+}
+
 export async function runGlobalEditorialRepair(input: {
   decisions: EditingDecision[]; videos: JsonObject[]; candidates: JsonObject[]; boundaries: number[];
   context: CriticContext; maxPasses: number;
@@ -95,6 +111,8 @@ export async function runGlobalEditorialRepair(input: {
   let globalRepairNoOpRetries = 0;
   let globalRepairNoOpDeclines = 0;
   let globalRepairCreativeNonConvergence = 0;
+  let globalRepairRepairOutcomes = 0, globalRepairDeclineOutcomes = 0, globalRepairContractFailures = 0;
+  let globalRepairIneffectiveProposals = 0, globalRepairEffectCheckFailures = 0;
   const regionLogs: JsonObject[] = [];
   const attempted = new Set<string>();
   const regionAttemptCount = new Map<string, number>();
@@ -131,7 +149,9 @@ export async function runGlobalEditorialRepair(input: {
     const regionLog: JsonObject = { regionStart: region.start, regionEnd: region.end, openingClipId: region.openingClipId,
       exitClipBeforeRepair: region.exitClipBeforeRepair, candidateCount: input.candidates.filter((candidate) => Number(candidate.at) >= region.start && Number(candidate.at) < region.end).length,
       viableCandidateCount, supportedDestinationCount, repairRegionNeighborShotDurations: neighboringDurations,
-      switchesBefore: Math.max(0, region.current.length - 1), switchesAfter: Math.max(0, region.current.length - 1), repairApplied: false };
+      switchesBefore: Math.max(0, region.current.length - 1), switchesAfter: Math.max(0, region.current.length - 1), repairApplied: false,
+      requestedFindingCode: region.finding.code, requiredEditorialEffect: region.finding.code === "long-stretch" ? "meaningfully alter pacing inside the flagged uninterrupted region" : region.finding.code === "mechanical-alternation" ? "break the detected repetitive source pattern" : region.finding.code === "micro-shot-abuse" ? "reduce excessive short-shot concentration" : "change the timeline structure relevant to the flagged finding",
+      modelOutcome: null, operationCount: 0, semanticTimelineChanged: false, declineReason: null, criticFindingAfterRepair: null };
     regionLogs.push(regionLog);
     if (input.context.candidateSupport !== undefined && !viableCandidateCount && region.current.length === 1) {
       const message = `editorial-limitation: no viable supported alternate camera in region ${region.start}-${region.end}.`;
@@ -142,14 +162,16 @@ export async function runGlobalEditorialRepair(input: {
     try {
       let replacement: RepairProposal = await input.regenerate(region, findings, totalRegionAttempts, () => { globalRepairModelAttempts++; });
       for (let retry = 0; retry <= 1; retry++) {
-        if (!Array.isArray(replacement)) {
+        regionLog.modelOutcome = replacement.outcome;
+        if (replacement.outcome === "decline") {
+          globalRepairDeclineOutcomes++;
           globalRepairNoOpDeclines++;
           regionLog.declineReason = replacement.reason;
           regionLog.declineBasis = replacement.basis;
           // A decline is advice; the critic's material finding remains in force.
           const energeticIntent = /more cuts|substantially more|visual energy|faster pac|high.energy|dynamic|energetic|punchier|more visual variety/i.test(JSON.stringify(input.context.userIntent ?? ""));
-          const credibleLimitation = viableCandidateCount <= 2 && !energeticIntent &&
-            (replacement.basis === "limited-destination-support" || replacement.basis === "neighboring-micro-shots");
+          const credibleLimitation = !energeticIntent && (replacement.basis === "limited-destination-support" && viableCandidateCount === 0 ||
+            replacement.basis === "neighboring-micro-shots" && neighboringDurations.previous.concat(neighboringDurations.next).some((duration) => duration < .75) && viableCandidateCount === 0);
           if (viableCandidateCount > 0 && !credibleLimitation) {
             const message = `creative-nonconvergence: grounded decline leaves ${region.finding.code} unresolved in region ${region.start}-${region.end}.`;
             creativeNonConvergence.push(message); regionLog.failureKind = "creative-nonconvergence";
@@ -159,13 +181,21 @@ export async function runGlobalEditorialRepair(input: {
           }
           break;
         }
-        if (!replacement.length || Math.abs(replacement[0].start - region.start) > 0.01 || Math.abs(replacement.at(-1)!.end - region.end) > 0.01) throw new Error("Repair changed regional coverage.");
-        const assembled = reconcileRegionalTimeline([...region.before, ...replacement, ...region.after]);
+        globalRepairRepairOutcomes++;
+        regionLog.operationCount = replacement.operations.length;
+        const repaired = replacement.decisions;
+        if (!replacement.operations.length || !repaired.length) throw new Error("repair-contract: semantic operation and regional coverage required.");
+        if (Math.abs(repaired[0].start - region.start) > 0.01 || Math.abs(repaired.at(-1)!.end - region.end) > 0.01) throw new Error("Repair changed regional coverage.");
+        const assembled = reconcileRegionalTimeline([...region.before, ...repaired, ...region.after]);
         validateAssembledTimeline(assembled, input.videos);
         // A downstream decision that becomes a same-camera handoff is normalized by assembly.
         const changed = semanticTimeline(assembled) !== semanticTimeline(decisions);
-        regionLog.switchesAfter = Math.max(0, replacement.length - 1);
-        if (!changed) {
+        regionLog.switchesAfter = Math.max(0, repaired.length - 1);
+        regionLog.semanticTimelineChanged = changed;
+        const effect = changed && repairEffectPlausible(decisions, assembled, region.finding);
+        if (!effect) {
+          globalRepairIneffectiveProposals++;
+          if (changed) globalRepairEffectCheckFailures++;
           globalRepairNoOpProposals++; regionLog.noOp = true;
           if (viableCandidateCount > 0 && retry === 0) {
             globalRepairNoOpRetries++;
@@ -173,7 +203,7 @@ export async function runGlobalEditorialRepair(input: {
             continue;
           }
           const message = viableCandidateCount > 0
-            ? `creative-nonconvergence: two no-op proposals leave ${region.finding.code} unresolved in region ${region.start}-${region.end}.`
+            ? `creative-nonconvergence: repair proposals did not affect ${region.finding.code} in region ${region.start}-${region.end}.`
             : `editorial-limitation: no viable supported alternative in region ${region.start}-${region.end}.`;
           if (viableCandidateCount > 0) { creativeNonConvergence.push(message); regionLog.failureKind = "creative-nonconvergence"; }
           else { editorialLimitations.push(message); regionLog.failureKind = "editorial-limitation"; }
@@ -184,13 +214,17 @@ export async function runGlobalEditorialRepair(input: {
         globalRepairPasses = globalRepairAppliedPasses;
         regionLog.repairApplied = true;
         findings = critiqueTimeline(decisions, input.videos, input.candidates, input.boundaries, input.context);
+        regionLog.criticFindingAfterRepair = findings.some((finding) => finding.code === region.finding.code && finding.start < region.finding.end && finding.end > region.finding.start);
         globalRepairCritiquePasses++;
         attempted.clear();
         break;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const infrastructure = !message.startsWith("editorial-limitation:");
+      const contract = /repair-contract:|Repair contract|Repair response requires|Repair decline requires|Unsupported repair decline|Unsupported repair operation/i.test(message);
+      if (contract) globalRepairContractFailures++;
+      const infrastructure = !contract && !message.startsWith("editorial-limitation:");
+      if (contract) { creativeNonConvergence.push(`creative-nonconvergence: ${message}`); regionLog.failureKind = "creative-nonconvergence"; errors.push(message); continue; }
       if (infrastructure) infrastructureFailures.push(message);
       else editorialLimitations.push(message);
       regionLog.failureKind = infrastructure ? "repair-infrastructure" : "editorial-limitation";
@@ -205,6 +239,7 @@ export async function runGlobalEditorialRepair(input: {
   const resolvedFindings = initialCriticFindings.filter((initial) => !findings.some((final) => final.code === initial.code && final.start < initial.end && final.end > initial.start));
   globalRepairCreativeNonConvergence = creativeNonConvergence.length;
   return { decisions, initialCriticFindings, globalRepairPasses, globalRepairModelAttempts, globalRepairValidationFailures, globalRepairNoOpProposals, globalRepairNoOpRetries, globalRepairNoOpDeclines, globalRepairCreativeNonConvergence,
+    globalRepairRepairOutcomes, globalRepairDeclineOutcomes, globalRepairContractFailures, globalRepairIneffectiveProposals, globalRepairEffectCheckFailures,
     globalRepairAppliedPasses, globalRepairCritiquePasses, globalRepairMergedRegions, regionLogs,
     resolvedFindings, remainingFindings: findings, finalCriticFindings, unresolvedMaterialFindings, errors, infrastructureFailures, editorialLimitations, creativeNonConvergence };
 }

@@ -16,8 +16,9 @@ const { buildSectionEditMoments } = require('../../apps/api-server/dist/services
 const { buildSectionPacket, resolveSectionChoices, ContextBudgetPlanningError, sectionModelBudget, estimatePromptTokens } = require('../../apps/api-server/dist/services/editing/planning/sectionPacket.js');
 const { compactVideo } = require('../../apps/api-server/dist/services/editing/evidence/videoEvidence.js');
 const { resolveOpeningEvidenceScope, openingEvidenceByClip } = require('../../apps/api-server/dist/services/editing/evidence/openingEvidence.js');
-const { runGlobalEditorialRepair, findRepairRegion, normalizeRegionalSwitches, buildMaterialRepairRegions } = require('../../apps/api-server/dist/services/editing/repair/globalEditorialRepair.js');
+const { runGlobalEditorialRepair, findRepairRegion, normalizeRegionalSwitches, buildMaterialRepairRegions, repairEffectPlausible } = require('../../apps/api-server/dist/services/editing/repair/globalEditorialRepair.js');
 const { buildRegionalRepairPacket, resolveRegionalOperations, resolveRegionalDecline } = require('../../apps/api-server/dist/services/editing/repair/regionalPacket.js');
+const repair = (decisions) => ({ outcome: 'repair', operations: [{ operation: 'add-switch' }], decisions });
 const { factualEvidenceSummary } = require('../../apps/api-server/dist/services/editing/critique/factualSummary.js');
 const { selectEditingAcademyItems } = require('../../apps/api-server/dist/services/editingAcademy.service.js');
 
@@ -510,7 +511,7 @@ test('global editorial repair is triggered only by material findings, bounded, r
   const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
   let calls = 0;
   const options = { decisions: draft, videos: sources, candidates, boundaries: [], maxPasses: 1,
-    regenerate: async (region) => { calls++; return [decision(region.start, 20, 'a'), decision(20, 30, 'b'), decision(30, region.end, 'a')]; } };
+    regenerate: async (region) => { calls++; return repair([decision(region.start, 20, 'a'), decision(20, 30, 'b'), decision(30, region.end, 'a')]); } };
   const energetic = await runGlobalEditorialRepair({ ...options, context: { userIntent: 'substantially more cuts and visual energy' } });
   assert.equal(calls, 1);
   assert.equal(energetic.globalRepairPasses, 1);
@@ -520,7 +521,7 @@ test('global editorial repair is triggered only by material findings, bounded, r
   const quiet = await runGlobalEditorialRepair({ ...options, context: { userIntent: 'slow contemplative interview' } });
   assert.equal(calls, 0);
   assert.equal(quiet.globalRepairPasses, 0);
-  const invalid = await runGlobalEditorialRepair({ ...options, context: { userIntent: 'substantially more cuts and visual energy' }, regenerate: async () => [decision(0, 90, 'b')] });
+  const invalid = await runGlobalEditorialRepair({ ...options, context: { userIntent: 'substantially more cuts and visual energy' }, regenerate: async () => repair([decision(0, 90, 'b')]) });
   assert.equal(invalid.globalRepairPasses, 0);
   assert(invalid.unresolvedMaterialFindings.length > 0);
   assert(invalid.errors.length > 0);
@@ -586,14 +587,14 @@ test('dense global repair packet is bounded, distributed, and resolves only cano
   assert.equal(packet.packet.findings[0].code, 'long-stretch');
   assert(packet.packet.switches.some((item) => item.id === 's0'));
   const selected = packet.candidates.find((item) => item.targetSupport.c?.length);
-  const switchRows = resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: selected.candidateId, destinationClipId: 'c', creativeIntent: 'visual-contrast' }] }, packet, region);
+  const switchRows = resolveRegionalOperations({ outcome: 'repair', operations: [{ operation: 'add-switch', candidateId: selected.candidateId, destinationClipId: 'c', creativeIntent: 'visual-contrast' }] }, packet, region);
   const added = switchRows.find((item) => item.at === selected.at && item.clipId === 'c');
   assert(added);
   assert(added.evidenceRefs.some((id) => id.startsWith('visual')));
   assert(!added.evidenceRefs.includes('distant'));
-  assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: selected.candidateId, destinationClipId: 'z', creativeIntent: 'visual-contrast' }] }, packet, region), /target-grounding/);
-  assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: selected.candidateId, destinationClipId: 'c', at: 99, creativeIntent: 'visual-contrast' }] }, packet, region), /unsupported fields/);
-  assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', existingSwitchId: 's0', candidateId: selected.candidateId, destinationClipId: 'c', creativeIntent: 'visual-contrast' }] }, packet, region), /Add-switch cannot/);
+  assert.throws(() => resolveRegionalOperations({ outcome: 'repair', operations: [{ operation: 'add-switch', candidateId: selected.candidateId, destinationClipId: 'z', creativeIntent: 'visual-contrast' }] }, packet, region), /target-grounding/);
+  assert.throws(() => resolveRegionalOperations({ outcome: 'repair', operations: [{ operation: 'add-switch', candidateId: selected.candidateId, destinationClipId: 'c', at: 99, creativeIntent: 'visual-contrast' }] }, packet, region), /unsupported fields/);
+  assert.throws(() => resolveRegionalOperations({ outcome: 'repair', operations: [{ operation: 'add-switch', existingSwitchId: 's0', candidateId: selected.candidateId, destinationClipId: 'c', creativeIntent: 'visual-contrast' }] }, packet, region), /Add-switch cannot/);
   const validated = validateSectionSwitches(undefined, [added], new Set(videos.map((item) => item.id)), region.start, region.end, videos, candidates, region.openingClipId, catalog);
   assert(validated.some((item) => item.start === selected.at && item.clipId === 'c'));
   assert.throws(() => buildRegionalRepairPacket({ ...input, intent: 'x'.repeat(100000) }), /global-repair-context-budget/);
@@ -610,7 +611,7 @@ test('global repair context overflow is reported before any model attempt', asyn
     regenerate: async (region, findings, pass, reportModelAttempt) => {
       buildRegionalRepairPacket({ region, findings, candidates, catalog, videos, intent: 'x'.repeat(100000), classification: 'performance', academy: '', system: 'Repair.', numPredict: 2200 });
       reportModelAttempt(); modelAttempts++;
-      return region.current;
+      return repair(region.current);
     } });
   assert.equal(modelAttempts, 0);
   assert.equal(result.globalRepairModelAttempts, 0);
@@ -626,7 +627,7 @@ test('existing switches remain removable when no alternate destinations are supp
   let calls = 0;
   const result = await runGlobalEditorialRepair({ decisions, videos, candidates, boundaries: [], maxPasses: 1,
     context: { userIntent: 'avoid mechanical alternation', candidateSupport: [] },
-    regenerate: async () => { calls++; return decisions; } });
+    regenerate: async () => { calls++; return repair(decisions); } });
   assert.equal(calls, 1);
   assert(result.editorialLimitations.length > 0);
   assert.equal(result.infrastructureFailures.length, 0);
@@ -640,12 +641,12 @@ test('global repair operation IDs cover hold, remove, replace, and move', () => 
   const candidates = [moment(12), moment(15), moment(20), moment(25)];
   const catalog = candidates.flatMap((candidate) => videos.map((source) => ({ id: `${candidate.at}-${source.id}`, type: 'framing', at: candidate.at, clipId: source.id, label: 'wide' })));
   const packet = buildRegionalRepairPacket({ region, findings: [region.finding], candidates, catalog, videos, intent: 'vary shots', classification: 'performance', academy: '', system: 'Repair.', numPredict: 2200 });
-  assert.equal(resolveRegionalOperations({ operations: [{ operation: 'hold' }] }, packet, region).length, region.current.length - 1);
-  assert.equal(resolveRegionalOperations({ operations: [{ operation: 'remove-switch', existingSwitchId: 's0' }] }, packet, region).length, region.current.length - 2);
+  assert.throws(() => resolveRegionalOperations({ outcome: 'repair', operations: [{ operation: 'hold' }] }, packet, region), /Unsupported/);
+  assert.equal(resolveRegionalOperations({ outcome: 'repair', operations: [{ operation: 'remove-switch', existingSwitchId: 's0' }] }, packet, region).length, region.current.length - 2);
   const c15 = packet.candidates.find((item) => item.at === 15);
-  const replace = resolveRegionalOperations({ operations: [{ operation: 'replace-destination', existingSwitchId: 's0', candidateId: c15.candidateId, destinationClipId: 'c', creativeIntent: 'visual-contrast' }] }, packet, region);
+  const replace = resolveRegionalOperations({ outcome: 'repair', operations: [{ operation: 'replace-destination', existingSwitchId: 's0', candidateId: c15.candidateId, destinationClipId: 'c', creativeIntent: 'visual-contrast' }] }, packet, region);
   assert(replace.some((item) => item.at === 15 && item.clipId === 'c'));
-  const moved = resolveRegionalOperations({ operations: [{ operation: 'move-switch', existingSwitchId: 's0', candidateId: c15.candidateId, destinationClipId: 'c', creativeIntent: 'visual-contrast' }] }, packet, region);
+  const moved = resolveRegionalOperations({ outcome: 'repair', operations: [{ operation: 'move-switch', existingSwitchId: 's0', candidateId: c15.candidateId, destinationClipId: 'c', creativeIntent: 'visual-contrast' }] }, packet, region);
   assert(moved.some((item) => item.at === 15 && item.clipId === 'c'));
   assert(!moved.some((item) => item.at === 20));
 });
@@ -674,13 +675,13 @@ test('regional edits can remove, replace, and move switches while preserving out
       assert.equal(region.start, 0);
       assert.equal(region.end, 16);
       assert.equal(region.nextDecision.clipId, 'c');
-      return proposal;
+      return repair(proposal);
     } });
     assert.equal(result.globalRepairAppliedPasses, 1);
     assert.deepEqual(result.decisions.slice(0, -1), proposal);
     assert.deepEqual(result.decisions.at(-1), draft.at(-1));
   }
-  const exitNoOp = await runGlobalEditorialRepair({ ...base, regenerate: async () => [decision(0, 16, 'c')] });
+  const exitNoOp = await runGlobalEditorialRepair({ ...base, regenerate: async () => repair([decision(0, 16, 'c')]) });
   assert.equal(exitNoOp.globalRepairAppliedPasses, 1);
   assert.equal(exitNoOp.decisions.length, 1);
   assert.equal(exitNoOp.decisions[0].end, 24);
@@ -691,7 +692,7 @@ test('overlapping material findings share a bounded regional request', async () 
   const candidates = Array.from({ length: 19 }, (_, index) => moment((index + 1) * 5, 11));
   const result = await runGlobalEditorialRepair({ decisions: draft, videos: ['a', 'b', 'c'].map((id) => video(id, 100)),
     candidates, boundaries: [], context: { userIntent: 'substantially more cuts and visual energy' }, maxPasses: 1,
-    regenerate: async (region) => region.current });
+    regenerate: async (region) => repair(region.current) });
   assert(result.regionLogs.length >= 1 && result.regionLogs.length <= 3);
   assert(result.regionLogs.every((region) => region.regionEnd - region.regionStart <= 75 && region.repairApplied === false));
 });
@@ -700,7 +701,7 @@ test('successful repair re-critiques the accepted timeline before choosing anoth
   const draft = [decision(0, 4, 'a'), decision(4, 8, 'b'), decision(8, 12, 'a'), decision(12, 16, 'b')];
   const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 20), video('b', 20)],
     candidates: [], boundaries: [], context: {}, maxPasses: 4,
-    regenerate: async (region) => [decision(region.start, region.end, 'a')] });
+    regenerate: async (region) => repair([decision(region.start, region.end, 'a')]) });
   assert.equal(result.globalRepairAppliedPasses, 1);
   assert.equal(result.globalRepairCritiquePasses, 1);
   assert.equal(result.regionLogs.length, 1);
@@ -728,10 +729,10 @@ test('canonical evidence IDs survive regional reconstruction and subset compacti
   const region = findRepairRegion(draft, { code: 'long-stretch', severity: 'material', start: 12, end: 50, evidence: '' });
   const catalog = [{ id: 'e1', type: 'audio-transient', at: 10 }, { id: 'e2', type: 'framing', at: 10, clipId: 'a', label: 'wide' }, { id: 'e3', type: 'framing', at: 20, clipId: 'b', label: 'wide' }];
   const packet = buildRegionalRepairPacket({ region, findings: [], candidates: [moment(20)], catalog, videos: sources, intent: '', classification: '', academy: '', system: '', numPredict: 2200 });
-  const rows = resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: packet.candidates[0].candidateId, destinationClipId: 'b', creativeIntent: 'visual-contrast' }] }, packet, region);
+  const rows = resolveRegionalOperations({ outcome: 'repair', operations: [{ operation: 'add-switch', candidateId: packet.candidates[0].candidateId, destinationClipId: 'b', creativeIntent: 'visual-contrast' }] }, packet, region);
   assert(rows.some((row) => row.evidenceRefs.includes('e3')));
-  assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: packet.candidates[0].candidateId, destinationClipId: 'b', creativeIntent: 'visual-contrast', evidenceRefs: ['e1'] }] }, packet, region), /unsupported fields/);
-  assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: packet.candidates[0].candidateId, destinationClipId: 'b', creativeIntent: 'visual-contrast', at: 20 }] }, packet, region), /unsupported fields/);
+  assert.throws(() => resolveRegionalOperations({ outcome: 'repair', operations: [{ operation: 'add-switch', candidateId: packet.candidates[0].candidateId, destinationClipId: 'b', creativeIntent: 'visual-contrast', evidenceRefs: ['e1'] }] }, packet, region), /unsupported fields/);
+  assert.throws(() => resolveRegionalOperations({ outcome: 'repair', operations: [{ operation: 'add-switch', candidateId: packet.candidates[0].candidateId, destinationClipId: 'b', creativeIntent: 'visual-contrast', at: 20 }] }, packet, region), /unsupported fields/);
 });
 
 test('record-derived canonical keys and compact wire IDs are stable and collision checked', () => {
@@ -801,7 +802,7 @@ test('failed packet includes all compaction estimates and bypasses model attempt
 
 test('global repair no-op does not consume applied pass or re-critique', async () => {
   const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
-  const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 80), video('b', 80)], candidates: [10, 20, 30, 40].map((at) => moment(at, 11)), boundaries: [], context: { userIntent: 'substantially more cuts and visual energy' }, maxPasses: 1, regenerate: async (region) => region.current.map((item) => ({ ...item, rationale: 'metadata only' })) });
+  const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 80), video('b', 80)], candidates: [10, 20, 30, 40].map((at) => moment(at, 11)), boundaries: [], context: { userIntent: 'substantially more cuts and visual energy' }, maxPasses: 1, regenerate: async (region) => repair(region.current.map((item) => ({ ...item, rationale: 'metadata only' }))) });
   assert.equal(result.globalRepairAppliedPasses, 0);
   assert.equal(result.globalRepairPasses, 0);
   assert.equal(result.globalRepairNoOpProposals, 1);
@@ -815,7 +816,7 @@ test('material no-op with supported alternatives retries once and reports creati
   const attempts = [];
   const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 80), video('b', 80)], candidates, boundaries: [],
     context: { userIntent: 'substantially more cuts and visual energy', candidateSupport: candidates.map((item) => ({ at: item.at, targetSupport: { b: [`b${item.at}`] } })) }, maxPasses: 1,
-    regenerate: async (region, _findings, _pass, report, retry) => { attempts.push(retry ?? false); report(); return region.current; } });
+    regenerate: async (region, _findings, _pass, report, retry) => { attempts.push(retry ?? false); report(); return repair(region.current); } });
   assert.deepEqual(attempts, [false, true]);
   assert.equal(result.globalRepairNoOpProposals, 2);
   assert.equal(result.globalRepairNoOpRetries, 1);
@@ -832,7 +833,7 @@ test('bounded creative retry can add one measured cut while preserving a long ho
   const candidates = [10, 20, 30, 40].map((at) => moment(at, 11));
   const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 80), video('b', 80)], candidates, boundaries: [],
     context: { userIntent: 'substantially more cuts and visual energy', candidateSupport: candidates.map((item) => ({ at: item.at, targetSupport: { b: [`b${item.at}`] } })) }, maxPasses: 1,
-    regenerate: async (region, _findings, _pass, _report, retry) => retry ? [decision(0, 30, 'a'), decision(30, 50, 'b')] : region.current });
+    regenerate: async (region, _findings, _pass, _report, retry) => repair(retry ? [decision(0, 30, 'a'), decision(30, 50, 'b')] : region.current) });
   assert.equal(result.globalRepairNoOpRetries, 1);
   assert.equal(result.globalRepairAppliedPasses, 1);
   assert.equal(result.globalRepairNoOpProposals, 1);
@@ -845,7 +846,7 @@ test('grounded decline remains subject to material quality gate', async () => {
   const candidates = [10, 20, 30, 40].map((at) => moment(at, 11));
   const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 80), video('b', 80)], candidates, boundaries: [],
     context: { userIntent: 'substantially more cuts and visual energy', candidateSupport: candidates.map((item) => ({ at: item.at, targetSupport: { b: [`b${item.at}`] } })) }, maxPasses: 1,
-    regenerate: async () => ({ action: 'decline-repair', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' }) });
+    regenerate: async () => ({ outcome: 'decline', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' }) });
   assert.equal(result.globalRepairNoOpDeclines, 1);
   assert.equal(result.globalRepairAppliedPasses, 0);
   assert(result.unresolvedMaterialFindings.length > 0);
@@ -865,10 +866,72 @@ test('regional packet exposes pacing objective, neighbors, warning, and constrai
   assert.equal(packet.packet.userIntent, 'more visual energy');
   assert.deepEqual(packet.packet.neighboringShotDurations.previous, [.5]);
   assert(packet.packet.findings.some((item) => item.code === 'micro-shot-abuse'));
-  assert.deepEqual(resolveRegionalDecline({ action: 'decline-repair', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' }, packet, region),
-    { action: 'decline-repair', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' });
-  assert.throws(() => resolveRegionalDecline({ action: 'decline-repair', reason: 'I prefer this', basis: 'neighboring-micro-shots' }, packet, region), /Unsupported/);
-  assert.throws(() => resolveRegionalDecline({ action: 'decline-repair', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots', prose: 'invented' }, packet, region), /requires constrained/);
+  assert.deepEqual(resolveRegionalDecline({ outcome: 'decline', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' }, packet, region),
+    { outcome: 'decline', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' });
+  assert.throws(() => resolveRegionalDecline({ outcome: 'decline', reason: 'I prefer this', basis: 'neighboring-micro-shots' }, packet, region), /Unsupported/);
+  assert.throws(() => resolveRegionalDecline({ outcome: 'decline', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots', prose: 'invented' }, packet, region), /requires constrained/);
+});
+
+test('material repair contract has exclusive nonempty repair or constrained decline', () => {
+  const videos = [video('a', 80), video('b', 80), video('c', 80)];
+  const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
+  const region = findRepairRegion(draft, { code: 'long-stretch', severity: 'material', start: 0, end: 50, evidence: '' });
+  const candidates = [10, 20, 30, 40].map((at) => moment(at));
+  const catalog = candidates.flatMap((item) => ['b', 'c'].map((clipId) => ({ id: `${clipId}${item.at}`, type: 'framing', at: item.at, clipId, label: 'wide' })));
+  const packet = buildRegionalRepairPacket({ region, findings: [region.finding], candidates, catalog, videos,
+    intent: 'substantially more cuts and visual energy', classification: 'performance', academy: '', system: 'Repair.', numPredict: 2200 });
+  const [repairSchema, declineSchema] = packet.schema.oneOf;
+  assert.equal(repairSchema.properties.operations.minItems, 1);
+  assert.deepEqual(repairSchema.required, ['outcome', 'operations']);
+  assert.deepEqual(declineSchema.required, ['outcome', 'reason', 'basis']);
+  assert(!JSON.stringify(packet.schema).includes('"hold"'));
+  assert.match(packet.packet.repairObjective.mandate, /conflicts with explicit user intent/);
+  assert.match(packet.packet.repairObjective.requiredEffect, /alter pacing/);
+  assert.deepEqual(packet.packet.neighboringShotDurations.current, [50]);
+  for (const response of [{ operations: [] }, { outcome: 'repair', operations: [] }, { outcome: 'repair', operations: [], reason: 'current-shot-preferred' }])
+    assert.throws(() => resolveRegionalOperations(response, packet, region), /requires|contract/);
+  assert.throws(() => resolveRegionalDecline({ outcome: 'decline', reason: 'free prose', basis: 'limited-destination-support' }, packet, region), /Unsupported/);
+  assert.throws(() => resolveRegionalDecline({ outcome: 'decline', reason: 'candidate-support-too-weak', basis: 'limited-destination-support', operations: [] }, packet, region), /constrained/);
+  const options = packet.candidates[0];
+  for (const destinationClipId of ['b', 'c']) assert.equal(resolveRegionalOperations({ outcome: 'repair', operations: [
+    { operation: 'add-switch', candidateId: options.candidateId, destinationClipId, creativeIntent: 'visual-contrast' }] }, packet, region)[0].clipId, destinationClipId);
+});
+
+test('finding-specific effect check rejects unrelated and metadata-only edits', () => {
+  const long = { code: 'long-stretch', severity: 'material', start: 0, end: 50, evidence: '' };
+  const before = [decision(0, 50, 'a'), decision(50, 80, 'b')];
+  assert.equal(repairEffectPlausible(before, before, long), false);
+  assert.equal(repairEffectPlausible(before, before.map((item) => ({ ...item, rationale: 'changed' })), long), false);
+  assert.equal(repairEffectPlausible(before, [decision(0, 50, 'a'), decision(50, 65, 'b'), decision(65, 80, 'c')], long), false);
+  assert.equal(repairEffectPlausible(before, [decision(0, 20, 'a'), decision(20, 50, 'b'), decision(50, 80, 'b')], long), true);
+  const alternating = [decision(0, 4, 'a'), decision(4, 8, 'b'), decision(8, 12, 'a'), decision(12, 16, 'b')];
+  const finding = { code: 'mechanical-alternation', severity: 'material', start: 0, end: 16, evidence: '' };
+  assert.equal(repairEffectPlausible(alternating, [alternating[0], alternating[1], decision(8, 12, 'c'), alternating[3]], finding), true);
+  assert.equal(repairEffectPlausible(alternating, alternating.map((item) => ({ ...item, rationale: 'metadata' })), finding), false);
+});
+
+test('empty repair gets one contract retry and remains creative non-convergence if repeated', async () => {
+  const videos = [video('a', 80), video('b', 80)];
+  const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
+  const candidates = Array.from({ length: 33 }, (_, i) => moment(1 + i * 1.4));
+  const catalog = candidates.map((item) => ({ id: `b${item.at}`, type: 'framing', at: item.at, clipId: 'b', label: 'wide' }));
+  const region = findRepairRegion(draft, { code: 'long-stretch', severity: 'material', start: 0, end: 50, evidence: '' });
+  const packet = buildRegionalRepairPacket({ region, findings: [region.finding], candidates, catalog, videos,
+    intent: 'substantially more cuts and visual energy', classification: 'performance', academy: '', system: 'Repair.', numPredict: 2200 });
+  let attempts = 0;
+  await assert.rejects(runBoundedPlanRepair({ maxAttempts: 2,
+    generate: async () => { attempts++; return { outcome: 'repair', operations: [] }; },
+    validate: (value) => resolveRegionalOperations(value, packet, region),
+    classify: (error) => error.category ?? 'structure',
+  }), PlanRepairError);
+  assert.equal(attempts, 2);
+  const result = await runGlobalEditorialRepair({ decisions: draft, videos, candidates, boundaries: [], maxPasses: 1,
+    context: { userIntent: 'substantially more cuts and visual energy', candidateSupport: candidates.map((item) => ({ at: item.at, targetSupport: { b: [`b${item.at}`] } })) },
+    regenerate: async () => { throw new PlanRepairError([{ attempt: 1, category: 'structure', message: 'Repair contract requires at least one semantic operation' }, { attempt: 2, category: 'structure', message: 'Repair contract requires at least one semantic operation' }]); } });
+  assert.equal(result.globalRepairContractFailures, 1);
+  assert.equal(result.globalRepairCreativeNonConvergence, 1);
+  assert.equal(result.infrastructureFailures.length, 0);
+  assert.equal(result.globalRepairAppliedPasses, 0);
 });
 
 test('infrastructure failure in one material region does not starve another', async () => {
@@ -876,7 +939,7 @@ test('infrastructure failure in one material region does not starve another', as
   const candidates = [10, 20, 30, 40, 60, 70, 80, 90, 110, 120, 130, 140].map((at) => moment(at, 11));
   const starts = [];
   const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 150), video('b', 150)], candidates, boundaries: [], context: { userIntent: 'substantially more cuts and visual energy' }, maxPasses: 1,
-    regenerate: async (region) => { starts.push(region.start); if (starts.length === 1) throw new Error('invalid-evidence-reference: synthetic infrastructure failure'); return region.current; } });
+    regenerate: async (region) => { starts.push(region.start); if (starts.length === 1) throw new Error('invalid-evidence-reference: synthetic infrastructure failure'); return repair(region.current); } });
   assert(starts.length >= 2);
   assert.notEqual(starts[0], starts[1]);
   assert.equal(result.globalRepairAppliedPasses, 0);
