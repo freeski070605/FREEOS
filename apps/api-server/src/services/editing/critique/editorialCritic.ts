@@ -8,7 +8,8 @@ export interface EditorialFinding {
   evidence: string;
 }
 
-export interface CriticContext { userIntent?: unknown; classification?: string; academyGuidance?: string }
+export interface CriticContext { userIntent?: unknown; classification?: string; academyGuidance?: string;
+  candidateSupport?: Array<{ at: number; targetSupport: Record<string, string[]> }> }
 
 export function critiqueTimeline(decisions: EditingDecision[], videos: JsonObject[], candidates: JsonObject[] = [], boundaries: number[] = [], context: CriticContext = {}): EditorialFinding[] {
   const findings: EditorialFinding[] = [];
@@ -35,7 +36,9 @@ export function critiqueTimeline(decisions: EditingDecision[], videos: JsonObjec
     if (mean > 0 && intervals.every((value) => Math.abs(value - mean) <= Math.max(0.08, mean * 0.06))) add("fixed-cadence", academyPacing ? "material" : "warning", decisions[0].start, decisions.at(-1)!.end, `Intervals cluster around ${mean.toFixed(2)} seconds`);
   }
   const total = decisions.at(-1)!.end - decisions[0].start;
-  const density = candidates.length / Math.max(1, total / 60);
+  const viable = (at: number, activeClip: string) => context.candidateSupport?.some((candidate) => Math.abs(candidate.at - at) <= 0.001 &&
+    Object.entries(candidate.targetSupport).some(([clipId, refs]) => clipId !== activeClip && refs.length > 0)) ?? true;
+  const density = (context.candidateSupport ? candidates.filter((candidate) => decisions.some((decision) => Number(candidate.at) >= decision.start && Number(candidate.at) < decision.end && viable(Number(candidate.at), decision.clipId))).length : candidates.length) / Math.max(1, total / 60);
   const materialHold = energetic && !slow && videos.length > 1 && density >= 3;
   const sortedDurations = [...durations].sort((a, b) => a - b);
   const medianDuration = sortedDurations[Math.floor(sortedDurations.length / 2)];
@@ -43,9 +46,10 @@ export function critiqueTimeline(decisions: EditingDecision[], videos: JsonObjec
   for (const item of decisions) {
     const length = item.end - item.start;
     if (length > longThreshold && videos.length > 1) {
-      const localCandidates = candidates.filter((candidate) => Number(candidate.at) > item.start + 1 && Number(candidate.at) < item.end - 1).length;
-      const severity = materialHold && localCandidates >= 2 ? "material" : slow ? "info" : "warning";
-      add("long-stretch", severity, item.start, item.end, `Uninterrupted ${length.toFixed(1)} second shot; ${localCandidates} measured opportunities inside; requested pacing ${energetic ? "energetic" : slow ? "contemplative" : "unspecified"}`);
+      const local = candidates.filter((candidate) => Number(candidate.at) > item.start + 1 && Number(candidate.at) < item.end - 1);
+      const alternativeCount = local.filter((candidate) => viable(Number(candidate.at), item.clipId)).length;
+      const severity = materialHold && alternativeCount >= 2 ? "material" : slow ? "info" : "warning";
+      add("long-stretch", severity, item.start, item.end, `Uninterrupted ${length.toFixed(1)} second shot; rawCandidateCount=${local.length}; viableCandidateCount=${alternativeCount}; candidateWithAlternativeSupportCount=${alternativeCount}; requested pacing ${energetic ? "energetic" : slow ? "contemplative" : "unspecified"}`);
     }
     if (boundaries.some((at) => Math.abs(item.start - at) < 0.02) && item.start > 0) add("boundary-artifact", "warning", item.start, item.end, "Switch aligns with an internal planning boundary");
   }

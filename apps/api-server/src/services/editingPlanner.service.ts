@@ -22,7 +22,7 @@ import { recordEditingExperience } from "./editing/learning/editingExperience";
 import { runBoundedPlanRepair, PlanRepairError } from "./editing/repair/planRepair";
 import { buildSectionPacket, estimatePromptTokens } from "./editing/planning/sectionPacket";
 import { buildCandidateSupportIndex } from "./editing/evidence/targetSupport";
-import { runGlobalEditorialRepair } from "./editing/repair/globalEditorialRepair";
+import { runGlobalEditorialRepair, normalizeRegionalSwitches } from "./editing/repair/globalEditorialRepair";
 import { deterministicOpening, availableOpeningClips } from "./editing/planning/openingState";
 
 export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promise<EditingPlan> {
@@ -193,6 +193,7 @@ ${editingKnowledge.context}`;
   const sectionSeconds = 60;
   const decisions: EditingDecision[] = [];
   const allCandidateEditMoments: JsonObject[] = [];
+  const allCandidateSupport: Array<{ at: number; targetSupport: Record<string, string[]> }> = [];
   let previousClipId = "";
   for (let sectionStart = 0; sectionStart < availableEnd; sectionStart += sectionSeconds) {
     const sectionEnd = Math.min(availableEnd, sectionStart + sectionSeconds);
@@ -229,6 +230,7 @@ ${editingKnowledge.context}`;
         );
     const openingScope = sectionStart === 0 ? resolveOpeningEvidenceScope(videos, sectionStart) : undefined;
     const evidenceCatalog = buildEvidenceCatalog(audio, videos, sectionStart, sectionEnd, candidateEditTimes, openingScope);
+    allCandidateSupport.push(...buildCandidateSupportIndex(candidateEditMoments, evidenceCatalog, videos));
     const fixedOpening = deterministicOpening(previousClipId, videos, sectionStart);
     const openingMode = fixedOpening?.mode ?? (previousClipId ? "availability-transition" : "initial-selection");
     const openingSourceAvailable = fixedOpening ? availableOpeningClips(videos, sectionStart).includes(fixedOpening.clipId) : undefined;
@@ -622,34 +624,45 @@ Return only schema-valid JSON.`;
     }
   }
   const cautions = buildGroundedCautions(videos, duration, availableEnd).slice(0, 50);
-  const criticContext = { userIntent: intent, classification: profile.primary, academyGuidance: sectionAcademy };
+  const criticContext = { userIntent: intent, classification: profile.primary, academyGuidance: sectionAcademy, candidateSupport: allCandidateSupport };
+  let globalRepairBoundaryNoOpsRemoved = 0;
+  let globalRepairDuplicateFailures = 0;
+  let globalRepairInnerValidationFailures = 0;
+  let globalRepairTargetGroundingFailures = 0;
   const globalReview = await runGlobalEditorialRepair({
     decisions: normalizedDecisions, videos, candidates: allCandidateEditMoments, boundaries: internalBoundaries,
     context: criticContext, maxPasses: 4,
-    regenerate: async (region, findings) => {
+    regenerate: async (region, findings, _pass, reportModelAttempt) => {
       const localCandidates = allCandidateEditMoments.filter((item) => number(item.at, NaN) >= region.start && number(item.at, NaN) < region.end);
       const localCatalog = buildEvidenceCatalog(audio, videos, region.start, region.end, localCandidates.map((item) => number(item.at, NaN)));
-      const previousClipId = region.current[0].clipId;
-      const system = `You are FREEOS's global editorial repair editor. Repair ONLY the supplied region. The deterministic critic identifies problems but never chooses cameras. You choose creative cameras from local measured evidence. Preserve the opening source and the final source at the region boundary. Candidate times are options, not a cadence. Every switch needs local measured evidence for its destination clip when multiple sources are available. Return schema-valid section JSON with switches only.`;
+      const previousClipId = region.openingClipId;
+      const system = `You are FREEOS's global editorial repair editor. Repair ONLY the supplied region. The opening clip is existing timeline state, not a creative switch; do not emit a same-clip switch at the region start. You may add, remove, move, or replace switches inside the region. The deterministic critic identifies problems but never chooses cameras. Choose creative destinations only from candidate targetSupport, citing local target evidence. Candidate times are options, not a cadence. Return schema-valid JSON with switches only. An empty switches array is a legal hold.`;
       const packet = buildSectionPacket({ start: region.start, end: region.end, videos,
         availability: videos.map((video) => ({ id: video.id, start: video.timelineAvailableStart, end: video.timelineAvailableEnd })),
         candidates: localCandidates, catalog: localCatalog, intent, brief, profiles: cameraProfiles,
         previousClipId, academy: sectionAcademy, system, numPredict: 2200 });
       const repairContext = { currentTimeline: [...region.before, ...region.current, ...region.after].map((decision) => ({ start: decision.start, end: decision.end, clipId: decision.clipId })),
-        region: [region.start, region.end], currentRegion: region.current,
+        region: [region.start, region.end], openingClipId: region.openingClipId, priorDecision: region.priorDecision,
+        nextDecision: region.nextDecision, exitClipBeforeRepair: region.exitClipBeforeRepair, currentRegion: region.current,
         criticFindings: findings.filter((finding) => finding.start < region.end && finding.end > region.start),
-        requiredFinalClipId: region.current.at(-1)!.clipId, projectClassification: profile.primary };
+        supportedDestinations: packet.supportIndex.map((item) => ({ candidateId: item.candidateId, at: item.at,
+          currentClipId: region.current.find((decision) => decision.start <= item.at && decision.end > item.at)?.clipId,
+          availableClips: item.availableClips,
+          targetSupport: Object.fromEntries(Object.entries(item.targetSupport).filter(([, refs]) => refs.length)), holdAllowed: true })),
+        projectClassification: profile.primary };
       if (packet.estimatedPromptTokens + estimatePromptTokens(repairContext) > packet.budget.finalInputBudget) throw new Error("context-budget: global repair packet exceeds model context.");
+      const seenRepairFailures = new Set<string>();
       const repaired = await runBoundedPlanRepair({ maxAttempts: 2,
-        generate: async (_attempt, previous) => callModel({ system,
+        generate: async (_attempt, previous) => { reportModelAttempt(); return callModel({ system,
           prompt: { ...packet.packet, editorialRepair: { ...repairContext, ...(previous ? { validationDiagnostic: previous.message.slice(0, 500) } : {}) } },
-          schema: packet.schema, timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 180_000), numPredict: 2200, temperature: 0.15 }),
+          schema: packet.schema, timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 180_000), numPredict: 2200, temperature: 0.15 }); },
         validate: (response) => {
           const parsed = parseSectionPlan(String(response));
-          const decisions = validateSectionSwitches(parsed.opening, parsed.switches, allowedClipIds,
+          const normalized = normalizeRegionalSwitches(parsed.switches, region.start, region.openingClipId);
+          globalRepairBoundaryNoOpsRemoved += normalized.boundaryNoOpsRemoved;
+          const decisions = validateSectionSwitches(undefined, normalized.switches, allowedClipIds,
             region.start, region.end, videos, localCandidates, previousClipId, localCatalog);
-          if (region.after.length && decisions.at(-1)?.clipId !== region.current.at(-1)?.clipId) throw new SectionValidationError("continuity", "Global repair must preserve the final source at the region boundary.");
-          if (region.start === 0 && decisions[0]?.clipId === region.current[0].clipId) {
+          if (decisions[0]?.clipId === region.openingClipId) {
             decisions[0].rationale = region.current[0].rationale;
             decisions[0].evidenceRefs = region.current[0].evidenceRefs;
             decisions[0].creativeIntent = region.current[0].creativeIntent;
@@ -658,9 +671,14 @@ Return only schema-valid JSON.`;
         },
         classify: (error) => error instanceof SectionValidationError ? error.category : "structure",
         onFailure: (diagnostic) => {
+          globalRepairInnerValidationFailures++;
           telemetry.validationFailures[diagnostic.category] = (telemetry.validationFailures[diagnostic.category] ?? 0) + 1;
-          if (diagnostic.category === "target-grounding") telemetry.targetGroundingFailures++;
+          if (diagnostic.category === "target-grounding") { telemetry.targetGroundingFailures++; globalRepairTargetGroundingFailures++; }
+          const key = `${diagnostic.category}:${diagnostic.message}`;
+          if (seenRepairFailures.has(key)) globalRepairDuplicateFailures++;
+          seenRepairFailures.add(key);
         },
+        failureKey: (diagnostic) => `${diagnostic.category}:${diagnostic.message}`,
       });
       return repaired.value;
     },
@@ -671,9 +689,17 @@ Return only schema-valid JSON.`;
   telemetry.resolvedCriticFindings = globalReview.resolvedFindings.map((finding) => finding.code);
   telemetry.unresolvedMaterialFindings = globalReview.unresolvedMaterialFindings.map((finding) => finding.code);
   telemetry.criticFindings = telemetry.criticFindingsAfterRepair;
+  for (const regionLog of globalReview.regionLogs) console.log("[FREEOS Editing Planner] global repair region", JSON.stringify(regionLog));
   if (globalReview.unresolvedMaterialFindings.length) {
     console.error("[FREEOS Editing Planner] unresolved editorial quality gate", JSON.stringify({
       globalEditorialRepairPasses: telemetry.globalEditorialRepairPasses,
+      globalRepairRequestedRegions: globalReview.regionLogs.length,
+      globalRepairMergedRegions: globalReview.globalRepairMergedRegions,
+      globalRepairModelAttempts: globalReview.globalRepairModelAttempts,
+      globalRepairValidationFailures: globalRepairInnerValidationFailures + globalReview.globalRepairValidationFailures,
+      globalRepairAppliedPasses: globalReview.globalRepairAppliedPasses,
+      globalRepairCritiquePasses: globalReview.globalRepairCritiquePasses,
+      globalRepairBoundaryNoOpsRemoved, globalRepairTargetGroundingFailures, globalRepairDuplicateFailures,
       criticFindingsBeforeRepair: globalReview.initialCriticFindings,
       criticFindingsAfterRepair: globalReview.finalCriticFindings,
       resolvedCriticFindings: globalReview.resolvedFindings,
@@ -685,7 +711,14 @@ Return only schema-valid JSON.`;
   const finalDecisions = globalReview.decisions;
   const factualSummary = factualEvidenceSummary(finalDecisions);
   const editorialFindings = globalReview.finalCriticFindings;
-  const planningTelemetry = { ...telemetry, repairs: Math.max(0, telemetry.sectionAttempts - Math.ceil(availableEnd / sectionSeconds)), finalDecisionCount: finalDecisions.length, totalPlanningMs: Date.now() - startedAt };
+  const planningTelemetry = { ...telemetry, globalRepairModelAttempts: globalReview.globalRepairModelAttempts,
+    globalRepairValidationFailures: globalRepairInnerValidationFailures + globalReview.globalRepairValidationFailures, globalRepairAppliedPasses: globalReview.globalRepairAppliedPasses,
+    globalRepairCritiquePasses: globalReview.globalRepairCritiquePasses, globalRepairBoundaryNoOpsRemoved,
+    globalRepairRequestedRegions: globalReview.regionLogs.length, globalRepairMergedRegions: globalReview.globalRepairMergedRegions, globalRepairRegions: globalReview.regionLogs,
+    globalRepairViableCandidateCounts: globalReview.regionLogs.map((region) => region.viableCandidateCount),
+    globalRepairSupportedDestinationCounts: globalReview.regionLogs.map((region) => region.supportedDestinationCount),
+    globalRepairTargetGroundingFailures, globalRepairDuplicateFailures,
+    repairs: Math.max(0, telemetry.sectionAttempts - Math.ceil(availableEnd / sectionSeconds)), finalDecisionCount: finalDecisions.length, totalPlanningMs: Date.now() - startedAt };
   console.log("[FREEOS Editing Planner] telemetry", JSON.stringify({ classification: profile.primary, academyCompetencies: editingKnowledge.gap.relevantCompetencies, ...planningTelemetry }));
 
   return {
