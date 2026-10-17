@@ -868,6 +868,8 @@ test('regional packet exposes pacing objective, neighbors, warning, and constrai
   assert(packet.packet.findings.some((item) => item.code === 'micro-shot-abuse'));
   assert.deepEqual(resolveRegionalDecline({ outcome: 'decline', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' }, packet, region),
     { outcome: 'decline', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' });
+  assert.deepEqual(resolveRegionalDecline({ outcome: 'decline', declineReason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' }, packet, region),
+    { outcome: 'decline', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' });
   assert.throws(() => resolveRegionalDecline({ outcome: 'decline', reason: 'I prefer this', basis: 'neighboring-micro-shots' }, packet, region), /Unsupported/);
   assert.throws(() => resolveRegionalDecline({ outcome: 'decline', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots', prose: 'invented' }, packet, region), /requires constrained/);
 });
@@ -883,7 +885,8 @@ test('material repair contract has exclusive nonempty repair or constrained decl
   const [repairSchema, declineSchema] = packet.schema.oneOf;
   assert.equal(repairSchema.properties.operations.minItems, 1);
   assert.deepEqual(repairSchema.required, ['outcome', 'operations']);
-  assert.deepEqual(declineSchema.required, ['outcome', 'reason', 'basis']);
+  assert.deepEqual(declineSchema.required, ['outcome', 'basis']);
+  assert(declineSchema.anyOf.some((variant) => variant.required.includes('declineReason')));
   assert(!JSON.stringify(packet.schema).includes('"hold"'));
   assert.match(packet.packet.repairObjective.mandate, /conflicts with explicit user intent/);
   assert.match(packet.packet.repairObjective.requiredEffect, /alter pacing/);

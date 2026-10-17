@@ -4,7 +4,7 @@ import { creativeIntents } from "../evidence/evidenceRefs";
 import { availableClipIdsAt, buildCandidateSupportIndex, isLocalSwitchEvidence, targetSupportRefs } from "../evidence/targetSupport";
 import { estimatePromptTokens, sectionModelBudget } from "../planning/sectionPacket";
 import { SectionValidationError } from "../validation/section";
-import type { RepairRegion, RepairProposal } from "./globalEditorialRepair";
+import type { RepairDeclineReason, RepairRegion, RepairProposal } from "./globalEditorialRepair";
 
 type Support = ReturnType<typeof buildCandidateSupportIndex>[number];
 const significance: Record<string, number> = { "audio-section-boundary": 8, "silence-boundary": 8, "scene-change": 7, "audio-transient": 7, "motion-shift": 6, framing: 5, "face-presence": 4, "camera-motion": 3, "motion-state": 3, sharpness: 2, exposure: 2, "audio-energy": 1 };
@@ -74,10 +74,13 @@ export function buildRegionalRepairPacket(input: {
     { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "move-switch" }, existingSwitchId: { type: "string" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
     { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId"], properties: { operation: { const: "remove-switch" }, existingSwitchId: { type: "string" } } },
   ] } } } };
-  const schema: JsonObject = { oneOf: [operationSchema, { type: "object", additionalProperties: false,
-    required: ["outcome", "reason", "basis"], properties: { outcome: { const: "decline" },
+  const declineSchema: JsonObject = { type: "object", additionalProperties: false,
+    required: ["outcome", "basis"], properties: { outcome: { const: "decline" },
       reason: { enum: ["current-shot-preferred", "candidate-support-too-weak", "pacing-change-would-overcorrect"] },
-      basis: { enum: ["neighboring-micro-shots", "limited-destination-support", "current-hold-and-user-intent"] } } }] };
+      declineReason: { enum: ["current-shot-preferred", "candidate-support-too-weak", "pacing-change-would-overcorrect"] },
+      basis: { enum: ["neighboring-micro-shots", "limited-destination-support", "current-hold-and-user-intent"] } },
+    anyOf: [{ required: ["reason"] }, { required: ["declineReason"] }] };
+  const schema: JsonObject = { oneOf: [operationSchema, declineSchema] };
   const switchTimes = switches.map((item) => item.at);
   let result: ReturnType<typeof makePacket> | undefined;
   let smallest: ReturnType<typeof makePacket> | undefined;
@@ -129,21 +132,25 @@ export function buildRegionalRepairPacket(input: {
 export function resolveRegionalDecline(response: unknown, packet: ReturnType<typeof buildRegionalRepairPacket>, region: RepairRegion): Extract<RepairProposal, { outcome: "decline" }> {
   if (!response || typeof response !== "object" || Array.isArray(response)) throw new SectionValidationError("structure", "Invalid repair decline.");
   const value = response as JsonObject;
-  if (Object.keys(value).sort().join(",") !== "basis,outcome,reason" || value.outcome !== "decline") throw new SectionValidationError("structure", "Repair decline requires constrained outcome, reason, and basis only.");
+  const allowedKeys = new Set(["outcome", "reason", "declineReason", "basis"]);
+  if (value.outcome !== "decline" || Object.keys(value).some((key) => !allowedKeys.has(key))) throw new SectionValidationError("structure", "Repair decline requires constrained outcome, reason, and basis only.");
   const reasons = ["current-shot-preferred", "candidate-support-too-weak", "pacing-change-would-overcorrect"];
   const bases = ["neighboring-micro-shots", "limited-destination-support", "current-hold-and-user-intent"];
-  if (!reasons.includes(String(value.reason)) || !bases.includes(String(value.basis))) throw new SectionValidationError("structure", "Unsupported repair decline reason or basis.");
+  const reasonValue = typeof value.reason === "string" ? value.reason : typeof value.declineReason === "string" ? value.declineReason : undefined;
+  const basisValue = typeof value.basis === "string" ? value.basis : undefined;
+  if (reasonValue === undefined || !reasons.includes(reasonValue) || basisValue === undefined || !bases.includes(basisValue)) throw new SectionValidationError("structure", "Unsupported repair decline reason or basis.");
+  if ("reason" in value && "declineReason" in value && String(value.reason) !== String(value.declineReason)) throw new SectionValidationError("structure", "Repair decline requires exactly one constrained reason.");
   const durations = [...region.before.slice(-3), ...region.current, ...region.after.slice(0, 3)].map((d) => d.end - d.start);
   const supported = packet.support.filter((item) => item.at >= region.start && item.at < region.end)
     .reduce((sum, item) => sum + Object.values(item.targetSupport).filter((refs) => refs.length).length, 0);
-  if (value.basis === "neighboring-micro-shots" && !durations.some((duration) => duration < .75)) throw new SectionValidationError("structure", "Decline basis lacks neighboring micro-shots.");
+  if (basisValue === "neighboring-micro-shots" && !durations.some((duration) => duration < .75)) throw new SectionValidationError("structure", "Decline basis lacks neighboring micro-shots.");
   const regionalCandidates = packet.support.filter((item) => item.at >= region.start && item.at < region.end).length;
-  if (value.basis === "limited-destination-support" && supported > regionalCandidates * 2) throw new SectionValidationError("structure", "Decline basis conflicts with destination support.");
-  if (value.basis === "current-hold-and-user-intent" && (region.current.length !== 1 || !/hold|slow|contemplative|sustain|meditative|deliberate/i.test(JSON.stringify(packet.packet.userIntent)))) throw new SectionValidationError("structure", "Decline basis conflicts with current hold or user intent.");
-  if (value.reason === "pacing-change-would-overcorrect" && value.basis !== "neighboring-micro-shots") throw new SectionValidationError("structure", "Pacing decline requires neighboring micro-shots.");
-  if (value.reason === "candidate-support-too-weak" && value.basis !== "limited-destination-support") throw new SectionValidationError("structure", "Support decline requires limited destination support.");
-  if (value.reason === "current-shot-preferred" && value.basis !== "current-hold-and-user-intent") throw new SectionValidationError("structure", "Current shot preference requires aligned hold intent.");
-  return value as Extract<RepairProposal, { outcome: "decline" }>;
+  if (basisValue === "limited-destination-support" && supported > regionalCandidates * 2) throw new SectionValidationError("structure", "Decline basis conflicts with destination support.");
+  if (basisValue === "current-hold-and-user-intent" && (region.current.length !== 1 || !/hold|slow|contemplative|sustain|meditative|deliberate/i.test(JSON.stringify(packet.packet.userIntent)))) throw new SectionValidationError("structure", "Decline basis conflicts with current hold or user intent.");
+  if (reasonValue === "pacing-change-would-overcorrect" && basisValue !== "neighboring-micro-shots") throw new SectionValidationError("structure", "Pacing decline requires neighboring micro-shots.");
+  if (reasonValue === "candidate-support-too-weak" && basisValue !== "limited-destination-support") throw new SectionValidationError("structure", "Support decline requires limited destination support.");
+  if (reasonValue === "current-shot-preferred" && basisValue !== "current-hold-and-user-intent") throw new SectionValidationError("structure", "Current shot preference requires aligned hold intent.");
+  return { outcome: "decline", reason: reasonValue as RepairDeclineReason, basis: basisValue as "neighboring-micro-shots" | "limited-destination-support" | "current-hold-and-user-intent" } as Extract<RepairProposal, { outcome: "decline" }>;
 }
 
 export function requiredEditorialEffect(code: string): string {

@@ -5,7 +5,8 @@ import { critiqueTimeline, type CriticContext, type EditorialFinding } from "../
 export interface RepairRegion { start: number; end: number; finding: EditorialFinding; current: EditingDecision[]; before: EditingDecision[]; after: EditingDecision[]; openingClipId: string; priorDecision?: EditingDecision; nextDecision?: EditingDecision; exitClipBeforeRepair: string }
 export type RepairDeclineReason = "current-shot-preferred" | "candidate-support-too-weak" | "pacing-change-would-overcorrect";
 export type RepairProposal = { outcome: "repair"; operations: JsonObject[]; decisions: EditingDecision[] } |
-  { outcome: "decline"; reason: RepairDeclineReason; basis: "neighboring-micro-shots" | "limited-destination-support" | "current-hold-and-user-intent" };
+  { outcome: "decline"; reason: RepairDeclineReason; basis: "neighboring-micro-shots" | "limited-destination-support" | "current-hold-and-user-intent" } |
+  { outcome: "decline"; declineReason: RepairDeclineReason; basis: "neighboring-micro-shots" | "limited-destination-support" | "current-hold-and-user-intent" };
 
 export function normalizeRegionalSwitches(switches: unknown[], start: number, openingClipId: string): { switches: unknown[]; boundaryNoOpsRemoved: number } {
   let boundaryNoOpsRemoved = 0;
@@ -164,9 +165,10 @@ export async function runGlobalEditorialRepair(input: {
       for (let retry = 0; retry <= 1; retry++) {
         regionLog.modelOutcome = replacement.outcome;
         if (replacement.outcome === "decline") {
+          const declineReason = "reason" in replacement ? replacement.reason : replacement.declineReason;
           globalRepairDeclineOutcomes++;
           globalRepairNoOpDeclines++;
-          regionLog.declineReason = replacement.reason;
+          regionLog.declineReason = declineReason;
           regionLog.declineBasis = replacement.basis;
           // A decline is advice; the critic's material finding remains in force.
           const energeticIntent = /more cuts|substantially more|visual energy|faster pac|high.energy|dynamic|energetic|punchier|more visual variety/i.test(JSON.stringify(input.context.userIntent ?? ""));
