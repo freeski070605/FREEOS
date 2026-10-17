@@ -70,6 +70,8 @@ export async function runGlobalEditorialRepair(input: {
   const attempted = new Set<string>();
   const failedRegions = new Set<string>();
   const errors: string[] = [];
+  const infrastructureFailures: string[] = [];
+  const editorialLimitations: string[] = [];
   while (globalRepairPasses < input.maxPasses) {
     const target = findings.find((finding) => (finding.severity === "material" || finding.severity === "invalid") && !attempted.has(`${finding.code}:${finding.start.toFixed(3)}:${finding.end.toFixed(3)}`));
     if (!target) break;
@@ -93,22 +95,36 @@ export async function runGlobalEditorialRepair(input: {
       viableCandidateCount, supportedDestinationCount: regionalSupport.reduce((sum, candidate) => sum + Object.values(candidate.targetSupport).filter((refs) => refs.length).length, 0),
       switchesBefore: Math.max(0, region.current.length - 1), switchesAfter: Math.max(0, region.current.length - 1), repairApplied: false };
     regionLogs.push(regionLog);
+    if (input.context.candidateSupport !== undefined && !viableCandidateCount && region.current.length === 1) {
+      const message = `editorial-limitation: no viable supported alternate camera in region ${region.start}-${region.end}.`;
+      editorialLimitations.push(message); errors.push(message); failedRegions.add(regionKey);
+      regionLog.failureKind = "editorial-limitation";
+      continue;
+    }
     try {
       const replacement = await input.regenerate(region, findings, globalRepairPasses, () => { globalRepairModelAttempts++; });
       if (!replacement.length || Math.abs(replacement[0].start - region.start) > 0.01 || Math.abs(replacement.at(-1)!.end - region.end) > 0.01) throw new Error("Repair changed regional coverage.");
       const assembled = reconcileRegionalTimeline([...region.before, ...replacement, ...region.after]);
       validateAssembledTimeline(assembled, input.videos);
       // A downstream decision that becomes a same-camera handoff is normalized by assembly.
+      const changed = JSON.stringify(assembled.map((item) => [item.start, item.end, item.clipId])) !== JSON.stringify(decisions.map((item) => [item.start, item.end, item.clipId]));
       decisions = assembled;
       globalRepairAppliedPasses++;
       regionLog.switchesAfter = Math.max(0, replacement.length - 1);
       regionLog.repairApplied = true;
       findings = critiqueTimeline(decisions, input.videos, input.candidates, input.boundaries, input.context);
       globalRepairCritiquePasses++;
+      // Every subsequent region is selected from the newly accepted timeline and fresh critique.
+      if (changed) { attempted.clear(); failedRegions.clear(); }
     } catch (error) {
-      globalRepairValidationFailures++;
+      const message = error instanceof Error ? error.message : String(error);
+      const infrastructure = /^(?:global-repair-context-budget|context-budget|structure|target-grounding|invalid-evidence-reference|non-local-evidence|missing-evidence-reference|unsupported-creative-intent|repair parser|plan repair failed)/i.test(message);
+      if (infrastructure) infrastructureFailures.push(message);
+      else editorialLimitations.push(message);
+      regionLog.failureKind = infrastructure ? "repair-infrastructure" : "editorial-limitation";
+      if (!message.startsWith("global-repair-context-budget")) globalRepairValidationFailures++;
       failedRegions.add(regionKey);
-      errors.push(error instanceof Error ? error.message : String(error));
+      errors.push(message);
     }
   }
   const finalCriticFindings = findings;
@@ -116,5 +132,5 @@ export async function runGlobalEditorialRepair(input: {
   const resolvedFindings = initialCriticFindings.filter((initial) => !findings.some((final) => final.code === initial.code && final.start < initial.end && final.end > initial.start));
   return { decisions, initialCriticFindings, globalRepairPasses, globalRepairModelAttempts, globalRepairValidationFailures,
     globalRepairAppliedPasses, globalRepairCritiquePasses, globalRepairMergedRegions, regionLogs,
-    resolvedFindings, remainingFindings: findings, finalCriticFindings, unresolvedMaterialFindings, errors };
+    resolvedFindings, remainingFindings: findings, finalCriticFindings, unresolvedMaterialFindings, errors, infrastructureFailures, editorialLimitations };
 }

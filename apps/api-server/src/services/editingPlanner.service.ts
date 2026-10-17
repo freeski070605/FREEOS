@@ -23,6 +23,7 @@ import { runBoundedPlanRepair, PlanRepairError } from "./editing/repair/planRepa
 import { buildSectionPacket, estimatePromptTokens } from "./editing/planning/sectionPacket";
 import { buildCandidateSupportIndex } from "./editing/evidence/targetSupport";
 import { runGlobalEditorialRepair, normalizeRegionalSwitches } from "./editing/repair/globalEditorialRepair";
+import { buildRegionalRepairPacket, resolveRegionalOperations } from "./editing/repair/regionalPacket";
 import { deterministicOpening, availableOpeningClips } from "./editing/planning/openingState";
 
 export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promise<EditingPlan> {
@@ -629,6 +630,7 @@ Return only schema-valid JSON.`;
   let globalRepairDuplicateFailures = 0;
   let globalRepairInnerValidationFailures = 0;
   let globalRepairTargetGroundingFailures = 0;
+  const globalRepairPacketTelemetry: JsonObject[] = [];
   const globalReview = await runGlobalEditorialRepair({
     decisions: normalizedDecisions, videos, candidates: allCandidateEditMoments, boundaries: internalBoundaries,
     context: criticContext, maxPasses: 4,
@@ -636,29 +638,22 @@ Return only schema-valid JSON.`;
       const localCandidates = allCandidateEditMoments.filter((item) => number(item.at, NaN) >= region.start && number(item.at, NaN) < region.end);
       const localCatalog = buildEvidenceCatalog(audio, videos, region.start, region.end, localCandidates.map((item) => number(item.at, NaN)));
       const previousClipId = region.openingClipId;
-      const system = `You are FREEOS's global editorial repair editor. Repair ONLY the supplied region. The opening clip is existing timeline state, not a creative switch; do not emit a same-clip switch at the region start. You may add, remove, move, or replace switches inside the region. The deterministic critic identifies problems but never chooses cameras. Choose creative destinations only from candidate targetSupport, citing local target evidence. Candidate times are options, not a cadence. Return schema-valid JSON with switches only. An empty switches array is a legal hold.`;
-      const packet = buildSectionPacket({ start: region.start, end: region.end, videos,
-        availability: videos.map((video) => ({ id: video.id, start: video.timelineAvailableStart, end: video.timelineAvailableEnd })),
-        candidates: localCandidates, catalog: localCatalog, intent, brief, profiles: cameraProfiles,
-        previousClipId, academy: sectionAcademy, system, numPredict: 2200 });
-      const repairContext = { currentTimeline: [...region.before, ...region.current, ...region.after].map((decision) => ({ start: decision.start, end: decision.end, clipId: decision.clipId })),
-        region: [region.start, region.end], openingClipId: region.openingClipId, priorDecision: region.priorDecision,
-        nextDecision: region.nextDecision, exitClipBeforeRepair: region.exitClipBeforeRepair, currentRegion: region.current,
-        criticFindings: findings.filter((finding) => finding.start < region.end && finding.end > region.start),
-        supportedDestinations: packet.supportIndex.map((item) => ({ candidateId: item.candidateId, at: item.at,
-          currentClipId: region.current.find((decision) => decision.start <= item.at && decision.end > item.at)?.clipId,
-          availableClips: item.availableClips,
-          targetSupport: Object.fromEntries(Object.entries(item.targetSupport).filter(([, refs]) => refs.length)), holdAllowed: true })),
-        projectClassification: profile.primary };
-      if (packet.estimatedPromptTokens + estimatePromptTokens(repairContext) > packet.budget.finalInputBudget) throw new Error("context-budget: global repair packet exceeds model context.");
+      const system = `You are FREEOS's global editorial repair editor. Repair only the supplied region. Opening clip is existing state. Return operations using supplied candidate IDs, supported destination clip IDs, and existing switch IDs. Choose whether and where to cut; candidates are opportunities, not a cadence. Use add-switch, remove-switch, replace-destination, move-switch, or hold. Never supply times or evidence IDs. Factual evidence is attached and validated by the system. Return schema-valid JSON.`;
+      const packet = buildRegionalRepairPacket({ region, findings: findings.filter((finding) => finding.start < region.end && finding.end > region.start),
+        candidates: localCandidates, catalog: localCatalog, videos, intent, classification: profile.primary, academy: sectionAcademy, system, numPredict: 2200 });
+      globalRepairPacketTelemetry.push(packet.telemetry);
       const seenRepairFailures = new Set<string>();
       const repaired = await runBoundedPlanRepair({ maxAttempts: 2,
-        generate: async (_attempt, previous) => { reportModelAttempt(); return callModel({ system,
-          prompt: { ...packet.packet, editorialRepair: { ...repairContext, ...(previous ? { validationDiagnostic: previous.message.slice(0, 500) } : {}) } },
+        generate: async (_attempt, previous) => { const prompt = { ...packet.packet, ...(previous ? { validationDiagnostic: previous.message.slice(0, 500) } : {}) };
+          if (estimatePromptTokens(system) + estimatePromptTokens(prompt) + estimatePromptTokens(packet.schema) + 256 > packet.budget.finalInputBudget)
+            throw new Error("global-repair-context-budget: retry diagnostic exceeds input budget.");
+          reportModelAttempt(); return callModel({ system,
+          prompt,
           schema: packet.schema, timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 180_000), numPredict: 2200, temperature: 0.15 }); },
         validate: (response) => {
-          const parsed = parseSectionPlan(String(response));
-          const normalized = normalizeRegionalSwitches(parsed.switches, region.start, region.openingClipId);
+          const parsed = asObject(JSON.parse(String(response)), "global repair response");
+          const resolved = resolveRegionalOperations(parsed, packet, region);
+          const normalized = normalizeRegionalSwitches(resolved, region.start, region.openingClipId);
           globalRepairBoundaryNoOpsRemoved += normalized.boundaryNoOpsRemoved;
           const decisions = validateSectionSwitches(undefined, normalized.switches, allowedClipIds,
             region.start, region.end, videos, localCandidates, previousClipId, localCatalog);
@@ -669,8 +664,9 @@ Return only schema-valid JSON.`;
           }
           return decisions;
         },
-        classify: (error) => error instanceof SectionValidationError ? error.category : "structure",
+        classify: (error) => error instanceof SectionValidationError ? error.category : error instanceof Error && error.message.startsWith("global-repair-context-budget") ? "context-budget" : "structure",
         onFailure: (diagnostic) => {
+          if (diagnostic.category === "context-budget") return;
           globalRepairInnerValidationFailures++;
           telemetry.validationFailures[diagnostic.category] = (telemetry.validationFailures[diagnostic.category] ?? 0) + 1;
           if (diagnostic.category === "target-grounding") { telemetry.targetGroundingFailures++; globalRepairTargetGroundingFailures++; }
@@ -700,6 +696,9 @@ Return only schema-valid JSON.`;
       globalRepairAppliedPasses: globalReview.globalRepairAppliedPasses,
       globalRepairCritiquePasses: globalReview.globalRepairCritiquePasses,
       globalRepairBoundaryNoOpsRemoved, globalRepairTargetGroundingFailures, globalRepairDuplicateFailures,
+      globalRepairPackets: globalRepairPacketTelemetry,
+      globalRepairInfrastructureFailures: globalReview.infrastructureFailures,
+      globalRepairEditorialLimitations: globalReview.editorialLimitations,
       criticFindingsBeforeRepair: globalReview.initialCriticFindings,
       criticFindingsAfterRepair: globalReview.finalCriticFindings,
       resolvedCriticFindings: globalReview.resolvedFindings,
@@ -718,6 +717,10 @@ Return only schema-valid JSON.`;
     globalRepairViableCandidateCounts: globalReview.regionLogs.map((region) => region.viableCandidateCount),
     globalRepairSupportedDestinationCounts: globalReview.regionLogs.map((region) => region.supportedDestinationCount),
     globalRepairTargetGroundingFailures, globalRepairDuplicateFailures,
+    globalRepairPackets: globalRepairPacketTelemetry,
+    ...(globalRepairPacketTelemetry.at(-1) ?? {}),
+    globalRepairInfrastructureFailures: globalReview.infrastructureFailures,
+    globalRepairEditorialLimitations: globalReview.editorialLimitations,
     repairs: Math.max(0, telemetry.sectionAttempts - Math.ceil(availableEnd / sectionSeconds)), finalDecisionCount: finalDecisions.length, totalPlanningMs: Date.now() - startedAt };
   console.log("[FREEOS Editing Planner] telemetry", JSON.stringify({ classification: profile.primary, academyCompetencies: editingKnowledge.gap.relevantCompetencies, ...planningTelemetry }));
 

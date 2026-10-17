@@ -16,6 +16,7 @@ const { buildSectionPacket, sectionModelBudget, estimatePromptTokens } = require
 const { compactVideo } = require('../../apps/api-server/dist/services/editing/evidence/videoEvidence.js');
 const { resolveOpeningEvidenceScope, openingEvidenceByClip } = require('../../apps/api-server/dist/services/editing/evidence/openingEvidence.js');
 const { runGlobalEditorialRepair, findRepairRegion, normalizeRegionalSwitches } = require('../../apps/api-server/dist/services/editing/repair/globalEditorialRepair.js');
+const { buildRegionalRepairPacket, resolveRegionalOperations } = require('../../apps/api-server/dist/services/editing/repair/regionalPacket.js');
 const { factualEvidenceSummary } = require('../../apps/api-server/dist/services/editing/critique/factualSummary.js');
 const { selectEditingAcademyItems } = require('../../apps/api-server/dist/services/editingAcademy.service.js');
 
@@ -559,6 +560,95 @@ test('regional packet offers only canonical supported targets and its refs valid
     new Set(['a', 'b', 'c']), 10, 40, videos, [moment(20)], 'a', catalog), /target-grounding|local/);
 });
 
+test('dense global repair packet is bounded, distributed, and resolves only canonical local support', () => {
+  const videos = ['a', 'b', 'c', 'd', 'e'].map((id) => video(id, 80));
+  const draft = [decision(0, 10, 'a'), decision(10, 30, 'b'), decision(30, 60, 'a'), decision(60, 80, 'b')];
+  const region = findRepairRegion(draft, { code: 'long-stretch', severity: 'material', start: 12, end: 55, evidence: 'supported alternate views' });
+  const candidates = Array.from({ length: 160 }, (_, i) => moment(10.2 + i * .31, 8 + i % 7));
+  const catalog = [];
+  for (const [index, candidate] of candidates.entries()) {
+    catalog.push({ id: `beat${index}`, type: 'audio-transient', at: candidate.at });
+    for (const source of videos) for (let j = 0; j < 4; j++) catalog.push({ id: `visual${index}-${source.id}-${j}`, type: j ? 'face-presence' : 'framing', at: candidate.at, clipId: source.id, label: 'wide', value: .5 });
+  }
+  catalog.push({ id: 'distant', type: 'scene-change', at: 70, clipId: 'c' });
+  const input = { region, findings: [region.finding], candidates, catalog, videos, intent: 'more visual energy', classification: 'performance', academy: 'Use measured contrast.'.repeat(250), system: 'Repair the region.', numPredict: 2200 };
+  const packet = buildRegionalRepairPacket(input);
+  assert(estimatePromptTokens(catalog) > packet.budget.finalInputBudget);
+  assert(packet.estimated <= packet.budget.finalInputBudget);
+  assert(packet.telemetry.globalRepairCompactionApplied);
+  assert(packet.telemetry.exposedRegionalCandidateCount < candidates.length);
+  assert(packet.candidates.some((item) => item.at < 20));
+  assert(packet.candidates.some((item) => item.at > 50));
+  assert(new Set(packet.candidates.slice(1).map((item, i) => (item.at - packet.candidates[i].at).toFixed(2))).size > 1);
+  assert.equal(packet.packet.openingClipId, 'b');
+  assert.equal(packet.packet.exitClipBeforeRepair, 'a');
+  assert.equal(packet.packet.current.length, region.current.length);
+  assert.equal(packet.packet.findings[0].code, 'long-stretch');
+  assert(packet.packet.switches.some((item) => item.id === 's0'));
+  const selected = packet.candidates.find((item) => item.targetSupport.c?.length);
+  const switchRows = resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: selected.candidateId, destinationClipId: 'c', creativeIntent: 'visual-contrast' }] }, packet, region);
+  const added = switchRows.find((item) => item.at === selected.at && item.clipId === 'c');
+  assert(added);
+  assert(added.evidenceRefs.some((id) => id.startsWith('visual')));
+  assert(!added.evidenceRefs.includes('distant'));
+  assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: selected.candidateId, destinationClipId: 'z', creativeIntent: 'visual-contrast' }] }, packet, region), /target-grounding/);
+  assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: selected.candidateId, destinationClipId: 'c', at: 99, creativeIntent: 'visual-contrast' }] }, packet, region), /unsupported fields/);
+  const validated = validateSectionSwitches(undefined, [added], new Set(videos.map((item) => item.id)), region.start, region.end, videos, candidates, region.openingClipId, catalog);
+  assert(validated.some((item) => item.start === selected.at && item.clipId === 'c'));
+  assert.throws(() => buildRegionalRepairPacket({ ...input, intent: 'x'.repeat(100000) }), /global-repair-context-budget/);
+});
+
+test('global repair context overflow is reported before any model attempt', async () => {
+  const videos = [video('a', 80), video('b', 80)];
+  const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
+  const candidates = [10, 20, 30, 40].map((at) => moment(at, 11));
+  const catalog = candidates.map((candidate) => ({ id: `b${candidate.at}`, type: 'framing', at: candidate.at, clipId: 'b', label: 'wide' }));
+  let modelAttempts = 0;
+  const result = await runGlobalEditorialRepair({ decisions: draft, videos, candidates, boundaries: [],
+    context: { userIntent: 'substantially more cuts and visual energy', candidateSupport: candidates.map((candidate) => ({ at: candidate.at, targetSupport: { b: [`b${candidate.at}`] } })) }, maxPasses: 1,
+    regenerate: async (region, findings, pass, reportModelAttempt) => {
+      buildRegionalRepairPacket({ region, findings, candidates, catalog, videos, intent: 'x'.repeat(100000), classification: 'performance', academy: '', system: 'Repair.', numPredict: 2200 });
+      reportModelAttempt(); modelAttempts++;
+      return region.current;
+    } });
+  assert.equal(modelAttempts, 0);
+  assert.equal(result.globalRepairModelAttempts, 0);
+  assert.equal(result.globalRepairValidationFailures, 0);
+  assert.equal(result.infrastructureFailures.length, 1);
+  assert.equal(result.editorialLimitations.length, 0);
+});
+
+test('existing switches remain removable when no alternate destinations are supported', async () => {
+  const videos = [video('a', 40), video('b', 40)];
+  const decisions = [decision(0, 4, 'a'), decision(4, 8, 'b'), decision(8, 12, 'a'), decision(12, 16, 'b')];
+  const candidates = [4, 8, 12].map((at) => moment(at, 11));
+  let calls = 0;
+  const result = await runGlobalEditorialRepair({ decisions, videos, candidates, boundaries: [], maxPasses: 1,
+    context: { userIntent: 'avoid mechanical alternation', candidateSupport: [] },
+    regenerate: async () => { calls++; return decisions; } });
+  assert.equal(calls, 1);
+  assert.equal(result.editorialLimitations.length, 0);
+  assert.equal(result.infrastructureFailures.length, 0);
+  assert(result.unresolvedMaterialFindings.length > 0);
+});
+
+test('global repair operation IDs cover hold, remove, replace, and move', () => {
+  const videos = ['a', 'b', 'c'].map((id) => video(id, 50));
+  const draft = [decision(0, 10, 'a'), decision(10, 20, 'b'), decision(20, 30, 'a')];
+  const region = findRepairRegion(draft, { code: 'mechanical-alternation', severity: 'material', start: 10, end: 29, evidence: '' });
+  const candidates = [moment(12), moment(15), moment(20), moment(25)];
+  const catalog = candidates.flatMap((candidate) => videos.map((source) => ({ id: `${candidate.at}-${source.id}`, type: 'framing', at: candidate.at, clipId: source.id, label: 'wide' })));
+  const packet = buildRegionalRepairPacket({ region, findings: [region.finding], candidates, catalog, videos, intent: 'vary shots', classification: 'performance', academy: '', system: 'Repair.', numPredict: 2200 });
+  assert.equal(resolveRegionalOperations({ operations: [{ operation: 'hold' }] }, packet, region).length, region.current.length - 1);
+  assert.equal(resolveRegionalOperations({ operations: [{ operation: 'remove-switch', existingSwitchId: 's0' }] }, packet, region).length, region.current.length - 2);
+  const c15 = packet.candidates.find((item) => item.at === 15);
+  const replace = resolveRegionalOperations({ operations: [{ operation: 'replace-destination', existingSwitchId: 's0', candidateId: c15.candidateId, destinationClipId: 'c', creativeIntent: 'visual-contrast' }] }, packet, region);
+  assert(replace.some((item) => item.at === 15 && item.clipId === 'c'));
+  const moved = resolveRegionalOperations({ operations: [{ operation: 'move-switch', existingSwitchId: 's0', candidateId: c15.candidateId, destinationClipId: 'c', creativeIntent: 'visual-contrast' }] }, packet, region);
+  assert(moved.some((item) => item.at === 15 && item.clipId === 'c'));
+  assert(!moved.some((item) => item.at === 20));
+});
+
 test('critic counts supported alternate destinations rather than raw transients', () => {
   const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
   const candidates = [10, 20, 30, 40].map((at) => moment(at, 11));
@@ -604,6 +694,17 @@ test('overlapping material findings share a bounded regional request', async () 
   assert.equal(result.regionLogs.length, 1);
   assert(result.globalRepairMergedRegions > 0);
   assert(result.regionLogs[0].regionEnd - result.regionLogs[0].regionStart <= 75);
+});
+
+test('successful repair re-critiques the accepted timeline before choosing another region', async () => {
+  const draft = [decision(0, 4, 'a'), decision(4, 8, 'b'), decision(8, 12, 'a'), decision(12, 16, 'b')];
+  const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 20), video('b', 20)],
+    candidates: [], boundaries: [], context: {}, maxPasses: 4,
+    regenerate: async (region) => [decision(region.start, region.end, 'a')] });
+  assert.equal(result.globalRepairAppliedPasses, 1);
+  assert.equal(result.globalRepairCritiquePasses, 1);
+  assert.equal(result.regionLogs.length, 1);
+  assert.equal(result.unresolvedMaterialFindings.length, 0);
 });
 
 test('factual summary ignores creative prose and reflects validated scene changes', () => {
