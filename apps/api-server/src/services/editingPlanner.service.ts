@@ -23,12 +23,12 @@ import { runBoundedPlanRepair, PlanRepairError } from "./editing/repair/planRepa
 import { buildSectionPacket, estimatePromptTokens, resolveSectionChoices } from "./editing/planning/sectionPacket";
 import { buildCandidateSupportIndex } from "./editing/evidence/targetSupport";
 import { runGlobalEditorialRepair, normalizeRegionalSwitches } from "./editing/repair/globalEditorialRepair";
-import { buildRegionalRepairPacket, resolveRegionalOperations } from "./editing/repair/regionalPacket";
+import { buildRegionalRepairPacket, resolveRegionalOperations, resolveRegionalDecline } from "./editing/repair/regionalPacket";
 import { deterministicOpening, availableOpeningClips } from "./editing/planning/openingState";
 
 export class EditorialQualityGateError extends Error {
   readonly code = "editorial-quality-gate";
-  constructor(public readonly details: { unresolvedMaterialFindings: unknown[]; repairInfrastructureFailures: string[]; editorialLimitations: string[]; telemetry: JsonObject }) {
+  constructor(public readonly details: { unresolvedMaterialFindings: unknown[]; repairInfrastructureFailures: string[]; editorialLimitations: string[]; creativeNonConvergence?: string[]; telemetry: JsonObject }) {
     super(details.repairInfrastructureFailures.length ? "Editorial planning could not complete because repair infrastructure failed." : "Editorial planning could not resolve material quality findings.");
   }
 }
@@ -671,17 +671,20 @@ Return only schema-valid JSON.`;
   const globalReview = await runGlobalEditorialRepair({
     decisions: normalizedDecisions, videos, candidates: allCandidateEditMoments, boundaries: internalBoundaries,
     context: criticContext, maxPasses: 4,
-    regenerate: async (region, findings, _pass, reportModelAttempt) => {
+    regenerate: async (region, findings, _pass, reportModelAttempt, noOpRetry) => {
       const localCandidates = allCandidateEditMoments.filter((item) => number(item.at, NaN) >= region.start && number(item.at, NaN) < region.end);
       const localCatalog = [...canonicalEvidence.values()];
       const previousClipId = region.openingClipId;
-      const system = `You are FREEOS's global editorial repair editor. Repair only the supplied region. Opening clip is existing state. Return operations using supplied candidate IDs, supported destination clip IDs, and existing switch IDs. Choose whether and where to cut; candidates are opportunities, not a cadence. Use add-switch, remove-switch, replace-destination, move-switch, or hold. Never supply times or evidence IDs. Factual evidence is attached and validated by the system. Return schema-valid JSON.`;
-      const packet = buildRegionalRepairPacket({ region, findings: findings.filter((finding) => finding.start < region.end && finding.end > region.start),
+      const system = `You are FREEOS's global editorial repair editor. Repair the supplied material critic finding in the supplied region. Use the finding, user pacing intent, current holds, nearby shot durations, and warnings to improve pacing without mechanical or excessively short cutting. Strong holds remain legal. Opening clip is existing state. Return meaningful operations using supplied candidate IDs, supported destination clip IDs, and existing switch IDs, or a constrained decline-repair with a basis supported by packet facts. Candidates are optional opportunities, not a cadence. Never supply times, evidence IDs, or invented factual prose. Factual evidence is attached and validated by the system. Return schema-valid JSON.`;
+      const nearbyStart = region.before.at(-3)?.start ?? region.start;
+      const nearbyEnd = region.after[2]?.end ?? region.end;
+      const packet = buildRegionalRepairPacket({ region, findings: findings.filter((finding) => finding.start < region.end && finding.end > region.start ||
+        finding.severity === "warning" && finding.start < nearbyEnd && finding.end > nearbyStart),
         candidates: localCandidates, catalog: localCatalog, videos, intent, classification: profile.primary, academy: sectionAcademy, system, numPredict: 2200 });
       globalRepairPacketTelemetry.push(packet.telemetry);
       const seenRepairFailures = new Set<string>();
       const repaired = await runBoundedPlanRepair({ maxAttempts: 2,
-        generate: async (_attempt, previous) => { const prompt = { ...packet.packet, ...(previous ? { validationDiagnostic: previous.message.slice(0, 500) } : {}) };
+        generate: async (_attempt, previous) => { const prompt = { ...packet.packet, ...(noOpRetry ? { noOpRetry: "The material critic finding remains unresolved. The prior proposal made no semantic timeline change despite viable supported alternatives. Propose a meaningful valid change or return a structured grounded decline." } : {}), ...(previous ? { validationDiagnostic: previous.message.slice(0, 500) } : {}) };
           if (estimatePromptTokens(system) + estimatePromptTokens(prompt) + estimatePromptTokens(packet.schema) + 256 > packet.budget.finalInputBudget)
             throw new Error("global-repair-context-budget: retry diagnostic exceeds input budget.");
           reportModelAttempt(); return callModel({ system,
@@ -689,6 +692,7 @@ Return only schema-valid JSON.`;
           schema: packet.schema, timeoutMs: Math.max(config.ollamaGenerateTimeoutMs, 180_000), numPredict: 2200, temperature: 0.15 }); },
         validate: (response) => {
           const parsed = asObject(JSON.parse(String(response)), "global repair response");
+          if (parsed.action === "decline-repair") return resolveRegionalDecline(parsed, packet, region);
           const resolved = resolveRegionalOperations(parsed, packet, region);
           const normalized = normalizeRegionalSwitches(resolved, region.start, region.openingClipId);
           globalRepairBoundaryNoOpsRemoved += normalized.boundaryNoOpsRemoved;
@@ -731,11 +735,16 @@ Return only schema-valid JSON.`;
       globalRepairModelAttempts: globalReview.globalRepairModelAttempts,
       globalRepairValidationFailures: globalRepairInnerValidationFailures + globalReview.globalRepairValidationFailures,
       globalRepairAppliedPasses: globalReview.globalRepairAppliedPasses,
+      globalRepairNoOpProposals: globalReview.globalRepairNoOpProposals,
+      globalRepairNoOpRetries: globalReview.globalRepairNoOpRetries,
+      globalRepairNoOpDeclines: globalReview.globalRepairNoOpDeclines,
+      globalRepairCreativeNonConvergence: globalReview.globalRepairCreativeNonConvergence,
       globalRepairCritiquePasses: globalReview.globalRepairCritiquePasses,
       globalRepairBoundaryNoOpsRemoved, globalRepairTargetGroundingFailures, globalRepairDuplicateFailures,
       globalRepairPackets: globalRepairPacketTelemetry,
       globalRepairInfrastructureFailures: globalReview.infrastructureFailures,
       globalRepairEditorialLimitations: globalReview.editorialLimitations,
+      globalRepairCreativeNonConvergenceRegions: globalReview.creativeNonConvergence,
       criticFindingsBeforeRepair: globalReview.initialCriticFindings,
       criticFindingsAfterRepair: globalReview.finalCriticFindings,
       resolvedCriticFindings: globalReview.resolvedFindings,
@@ -744,9 +753,10 @@ Return only schema-valid JSON.`;
     }));
     throw new EditorialQualityGateError({
       unresolvedMaterialFindings: globalReview.unresolvedMaterialFindings.map(({ code, severity, start, end }) => ({ code, severity, start, end })),
-      repairInfrastructureFailures: globalReview.infrastructureFailures.slice(0, 12), editorialLimitations: globalReview.editorialLimitations.slice(0, 12),
+      repairInfrastructureFailures: globalReview.infrastructureFailures.slice(0, 12), editorialLimitations: globalReview.editorialLimitations.slice(0, 12), creativeNonConvergence: globalReview.creativeNonConvergence.slice(0, 12),
       telemetry: { globalRepairAppliedPasses: globalReview.globalRepairAppliedPasses, globalRepairModelAttempts: globalReview.globalRepairModelAttempts,
-        globalRepairNoOpProposals: globalReview.globalRepairNoOpProposals, globalRepairValidationFailures: globalReview.globalRepairValidationFailures },
+        globalRepairNoOpProposals: globalReview.globalRepairNoOpProposals, globalRepairNoOpRetries: globalReview.globalRepairNoOpRetries, globalRepairNoOpDeclines: globalReview.globalRepairNoOpDeclines, globalRepairCreativeNonConvergence: globalReview.globalRepairCreativeNonConvergence,
+        repairRegionNeighborShotDurations: globalReview.regionLogs.map((item) => item.repairRegionNeighborShotDurations), repairRegionViableCandidateCount: globalReview.regionLogs.map((item) => item.viableCandidateCount), repairRegionSupportedDestinationCount: globalReview.regionLogs.map((item) => item.supportedDestinationCount), globalRepairValidationFailures: globalReview.globalRepairValidationFailures },
     });
   }
   const finalDecisions = globalReview.decisions;
@@ -754,6 +764,8 @@ Return only schema-valid JSON.`;
   const editorialFindings = globalReview.finalCriticFindings;
   const planningTelemetry = { ...telemetry, globalRepairModelAttempts: globalReview.globalRepairModelAttempts,
     globalRepairNoOpProposals: globalReview.globalRepairNoOpProposals,
+    globalRepairNoOpRetries: globalReview.globalRepairNoOpRetries, globalRepairNoOpDeclines: globalReview.globalRepairNoOpDeclines, globalRepairCreativeNonConvergence: globalReview.globalRepairCreativeNonConvergence,
+    repairRegionNeighborShotDurations: globalReview.regionLogs.map((item) => item.repairRegionNeighborShotDurations), repairRegionViableCandidateCount: globalReview.regionLogs.map((item) => item.viableCandidateCount), repairRegionSupportedDestinationCount: globalReview.regionLogs.map((item) => item.supportedDestinationCount),
     globalRepairValidationFailures: globalRepairInnerValidationFailures + globalReview.globalRepairValidationFailures, globalRepairAppliedPasses: globalReview.globalRepairAppliedPasses,
     globalRepairCritiquePasses: globalReview.globalRepairCritiquePasses, globalRepairBoundaryNoOpsRemoved,
     globalRepairRequestedRegions: globalReview.regionLogs.length, globalRepairMergedRegions: globalReview.globalRepairMergedRegions, globalRepairRegions: globalReview.regionLogs,
@@ -764,6 +776,7 @@ Return only schema-valid JSON.`;
     ...(globalRepairPacketTelemetry.at(-1) ?? {}),
     globalRepairInfrastructureFailures: globalReview.infrastructureFailures,
     globalRepairEditorialLimitations: globalReview.editorialLimitations,
+    globalRepairCreativeNonConvergenceRegions: globalReview.creativeNonConvergence,
     repairs: Math.max(0, telemetry.sectionAttempts - Math.ceil(availableEnd / sectionSeconds)), finalDecisionCount: finalDecisions.length, totalPlanningMs: Date.now() - startedAt };
   console.log("[FREEOS Editing Planner] telemetry", JSON.stringify({ classification: profile.primary, academyCompetencies: editingKnowledge.gap.relevantCompetencies, ...planningTelemetry }));
 

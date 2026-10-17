@@ -4,7 +4,7 @@ import { creativeIntents } from "../evidence/evidenceRefs";
 import { availableClipIdsAt, buildCandidateSupportIndex, isLocalSwitchEvidence, targetSupportRefs } from "../evidence/targetSupport";
 import { estimatePromptTokens, sectionModelBudget } from "../planning/sectionPacket";
 import { SectionValidationError } from "../validation/section";
-import type { RepairRegion } from "./globalEditorialRepair";
+import type { RepairRegion, RepairProposal } from "./globalEditorialRepair";
 
 type Support = ReturnType<typeof buildCandidateSupportIndex>[number];
 const significance: Record<string, number> = { "audio-section-boundary": 8, "silence-boundary": 8, "scene-change": 7, "audio-transient": 7, "motion-shift": 6, framing: 5, "face-presence": 4, "camera-motion": 3, "motion-state": 3, sharpness: 2, exposure: 2, "audio-energy": 1 };
@@ -68,13 +68,17 @@ export function buildRegionalRepairPacket(input: {
     return Object.entries(item.targetSupport).some(([clip, refs]) => clip !== active && refs.length);
   });
   const switches = region.current.slice(1).map((decision, index) => ({ id: `s${index}`, at: decision.start, clipId: decision.clipId }));
-  const schema: JsonObject = { type: "object", additionalProperties: false, required: ["operations"], properties: { operations: { type: "array", maxItems: 32, items: { oneOf: [
+  const operationSchema: JsonObject = { type: "object", additionalProperties: false, required: ["operations"], properties: { operations: { type: "array", maxItems: 32, items: { oneOf: [
     { type: "object", additionalProperties: false, required: ["operation", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "add-switch" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
     { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "replace-destination" }, existingSwitchId: { type: "string" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
     { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "move-switch" }, existingSwitchId: { type: "string" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
     { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId"], properties: { operation: { const: "remove-switch" }, existingSwitchId: { type: "string" } } },
     { type: "object", additionalProperties: false, required: ["operation"], properties: { operation: { const: "hold" } } },
   ] } } } };
+  const schema: JsonObject = { oneOf: [operationSchema, { type: "object", additionalProperties: false,
+    required: ["action", "reason", "basis"], properties: { action: { const: "decline-repair" },
+      reason: { enum: ["current-shot-preferred", "candidate-support-too-weak", "pacing-change-would-overcorrect"] },
+      basis: { enum: ["neighboring-micro-shots", "limited-destination-support", "current-hold-and-user-intent"] } } }] };
   const switchTimes = switches.map((item) => item.at);
   let result: ReturnType<typeof makePacket> | undefined;
   let smallest: ReturnType<typeof makePacket> | undefined;
@@ -88,10 +92,15 @@ export function buildRegionalRepairPacket(input: {
       prior: region.priorDecision && { at: region.priorDecision.start, clipId: region.priorDecision.clipId },
       next: region.nextDecision && { at: region.nextDecision.start, clipId: region.nextDecision.clipId }, exitClipBeforeRepair: region.exitClipBeforeRepair,
       current: region.current.map((decision) => ({ start: decision.start, end: decision.end, clipId: decision.clipId })), switches,
+      neighboringShotDurations: { previous: region.before.slice(-3).map((d) => Number((d.end - d.start).toFixed(3))),
+        current: region.current.map((d) => Number((d.end - d.start).toFixed(3))), next: region.after.slice(0, 3).map((d) => Number((d.end - d.start).toFixed(3))) },
+      repairObjective: { finding: region.finding, instruction: "Improve pacing toward the user's requested editorial energy while preserving grounded choices and avoiding mechanical or excessively short cuts. Strong holds remain legal; candidate opportunities are optional." },
+      opportunitySummary: { viableCandidateCount: viable.length, supportedDestinationCount: viable.reduce((sum, item) => sum + Object.values(item.targetSupport).filter((refs) => refs.length).length, 0) },
       findings: input.findings, userIntent: input.intent, classification: input.classification,
       candidates, academyGuidance: input.academy.slice(0, guidance) };
     const components = { globalRepairCandidateTokens: estimatePromptTokens(candidates), globalRepairSupportTokens: estimatePromptTokens(candidates.map((item) => item.destinations)), globalRepairTimelineTokens: estimatePromptTokens({ current: packet.current, switches, prior: packet.prior, next: packet.next }), globalRepairCriticTokens: estimatePromptTokens(input.findings), globalRepairAcademyTokens: estimatePromptTokens(packet.academyGuidance), globalRepairSchemaTokens: estimatePromptTokens(schema) };
-    const estimated = estimatePromptTokens(input.system) + estimatePromptTokens(packet) + components.globalRepairSchemaTokens + 256;
+    // Reserve room for the single no-op retry instruction and bounded validation diagnostic.
+    const estimated = estimatePromptTokens(input.system) + estimatePromptTokens(packet) + components.globalRepairSchemaTokens + 512;
     return { packet, candidates: exposed, estimated, components, detail };
   }
   for (const guidance of [1200, 400, 0]) {
@@ -112,6 +121,26 @@ export function buildRegionalRepairPacket(input: {
     rawRegionalCandidateCount: input.candidates.length, viableRegionalCandidateCount: viable.length,
     exposedRegionalCandidateCount: result.candidates.length, regionalCandidatesCompacted: viable.length - result.candidates.length,
   } };
+}
+
+export function resolveRegionalDecline(response: unknown, packet: ReturnType<typeof buildRegionalRepairPacket>, region: RepairRegion): Exclude<RepairProposal, EditingDecision[]> {
+  if (!response || typeof response !== "object" || Array.isArray(response)) throw new SectionValidationError("structure", "Invalid repair decline.");
+  const value = response as JsonObject;
+  if (Object.keys(value).sort().join(",") !== "action,basis,reason" || value.action !== "decline-repair") throw new SectionValidationError("structure", "Repair decline requires constrained action, reason, and basis only.");
+  const reasons = ["current-shot-preferred", "candidate-support-too-weak", "pacing-change-would-overcorrect"];
+  const bases = ["neighboring-micro-shots", "limited-destination-support", "current-hold-and-user-intent"];
+  if (!reasons.includes(String(value.reason)) || !bases.includes(String(value.basis))) throw new SectionValidationError("structure", "Unsupported repair decline reason or basis.");
+  const durations = [...region.before.slice(-3), ...region.current, ...region.after.slice(0, 3)].map((d) => d.end - d.start);
+  const supported = packet.support.filter((item) => item.at >= region.start && item.at < region.end)
+    .reduce((sum, item) => sum + Object.values(item.targetSupport).filter((refs) => refs.length).length, 0);
+  if (value.basis === "neighboring-micro-shots" && !durations.some((duration) => duration < .75)) throw new SectionValidationError("structure", "Decline basis lacks neighboring micro-shots.");
+  const regionalCandidates = packet.support.filter((item) => item.at >= region.start && item.at < region.end).length;
+  if (value.basis === "limited-destination-support" && supported > regionalCandidates * 2) throw new SectionValidationError("structure", "Decline basis conflicts with destination support.");
+  if (value.basis === "current-hold-and-user-intent" && (region.current.length !== 1 || !/hold|slow|contemplative|sustain|meditative|deliberate/i.test(JSON.stringify(packet.packet.userIntent)))) throw new SectionValidationError("structure", "Decline basis conflicts with current hold or user intent.");
+  if (value.reason === "pacing-change-would-overcorrect" && value.basis !== "neighboring-micro-shots") throw new SectionValidationError("structure", "Pacing decline requires neighboring micro-shots.");
+  if (value.reason === "candidate-support-too-weak" && value.basis !== "limited-destination-support") throw new SectionValidationError("structure", "Support decline requires limited destination support.");
+  if (value.reason === "current-shot-preferred" && value.basis !== "current-hold-and-user-intent") throw new SectionValidationError("structure", "Current shot preference requires aligned hold intent.");
+  return value as Exclude<RepairProposal, EditingDecision[]>;
 }
 
 export function resolveRegionalOperations(response: unknown, packet: ReturnType<typeof buildRegionalRepairPacket>, region: RepairRegion): JsonObject[] {

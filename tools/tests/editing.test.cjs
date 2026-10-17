@@ -17,7 +17,7 @@ const { buildSectionPacket, resolveSectionChoices, ContextBudgetPlanningError, s
 const { compactVideo } = require('../../apps/api-server/dist/services/editing/evidence/videoEvidence.js');
 const { resolveOpeningEvidenceScope, openingEvidenceByClip } = require('../../apps/api-server/dist/services/editing/evidence/openingEvidence.js');
 const { runGlobalEditorialRepair, findRepairRegion, normalizeRegionalSwitches, buildMaterialRepairRegions } = require('../../apps/api-server/dist/services/editing/repair/globalEditorialRepair.js');
-const { buildRegionalRepairPacket, resolveRegionalOperations } = require('../../apps/api-server/dist/services/editing/repair/regionalPacket.js');
+const { buildRegionalRepairPacket, resolveRegionalOperations, resolveRegionalDecline } = require('../../apps/api-server/dist/services/editing/repair/regionalPacket.js');
 const { factualEvidenceSummary } = require('../../apps/api-server/dist/services/editing/critique/factualSummary.js');
 const { selectEditingAcademyItems } = require('../../apps/api-server/dist/services/editingAcademy.service.js');
 
@@ -809,6 +809,68 @@ test('global repair no-op does not consume applied pass or re-critique', async (
   assert.equal(result.regionLogs[0].repairApplied, false);
 });
 
+test('material no-op with supported alternatives retries once and reports creative non-convergence', async () => {
+  const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
+  const candidates = [10, 20, 30, 40].map((at) => moment(at, 11));
+  const attempts = [];
+  const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 80), video('b', 80)], candidates, boundaries: [],
+    context: { userIntent: 'substantially more cuts and visual energy', candidateSupport: candidates.map((item) => ({ at: item.at, targetSupport: { b: [`b${item.at}`] } })) }, maxPasses: 1,
+    regenerate: async (region, _findings, _pass, report, retry) => { attempts.push(retry ?? false); report(); return region.current; } });
+  assert.deepEqual(attempts, [false, true]);
+  assert.equal(result.globalRepairNoOpProposals, 2);
+  assert.equal(result.globalRepairNoOpRetries, 1);
+  assert.equal(result.globalRepairAppliedPasses, 0);
+  assert.equal(result.globalRepairCritiquePasses, 0);
+  assert.equal(result.globalRepairCreativeNonConvergence, 1);
+  assert.equal(result.editorialLimitations.length, 0);
+  assert.equal(result.infrastructureFailures.length, 0);
+  assert(result.unresolvedMaterialFindings.length > 0);
+});
+
+test('bounded creative retry can add one measured cut while preserving a long hold', async () => {
+  const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
+  const candidates = [10, 20, 30, 40].map((at) => moment(at, 11));
+  const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 80), video('b', 80)], candidates, boundaries: [],
+    context: { userIntent: 'substantially more cuts and visual energy', candidateSupport: candidates.map((item) => ({ at: item.at, targetSupport: { b: [`b${item.at}`] } })) }, maxPasses: 1,
+    regenerate: async (region, _findings, _pass, _report, retry) => retry ? [decision(0, 30, 'a'), decision(30, 50, 'b')] : region.current });
+  assert.equal(result.globalRepairNoOpRetries, 1);
+  assert.equal(result.globalRepairAppliedPasses, 1);
+  assert.equal(result.globalRepairNoOpProposals, 1);
+  assert.equal(result.decisions[0].end, 30);
+  assert.equal(result.globalRepairCreativeNonConvergence, 0);
+});
+
+test('grounded decline remains subject to material quality gate', async () => {
+  const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
+  const candidates = [10, 20, 30, 40].map((at) => moment(at, 11));
+  const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 80), video('b', 80)], candidates, boundaries: [],
+    context: { userIntent: 'substantially more cuts and visual energy', candidateSupport: candidates.map((item) => ({ at: item.at, targetSupport: { b: [`b${item.at}`] } })) }, maxPasses: 1,
+    regenerate: async () => ({ action: 'decline-repair', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' }) });
+  assert.equal(result.globalRepairNoOpDeclines, 1);
+  assert.equal(result.globalRepairAppliedPasses, 0);
+  assert(result.unresolvedMaterialFindings.length > 0);
+  assert.equal(result.globalRepairCreativeNonConvergence, 1);
+});
+
+test('regional packet exposes pacing objective, neighbors, warning, and constrained declines', () => {
+  const videos = [video('a', 80), video('b', 80)];
+  const draft = [decision(0, .5, 'b'), decision(.5, 50, 'a'), decision(50, 80, 'b')];
+  const region = findRepairRegion(draft, { code: 'long-stretch', severity: 'material', start: 1, end: 49, evidence: 'uninterrupted hold' });
+  const candidates = [moment(10), moment(20)];
+  const catalog = candidates.map((item) => ({ id: `b${item.at}`, type: 'framing', at: item.at, clipId: 'b', label: 'wide' }));
+  const packet = buildRegionalRepairPacket({ region, findings: [region.finding, { code: 'micro-shot-abuse', severity: 'warning', start: 0, end: 1, evidence: 'nearby brief shots' }],
+    candidates, catalog, videos, intent: 'more visual energy', classification: 'performance', academy: '', system: 'Repair.', numPredict: 2200 });
+  assert.equal(packet.packet.repairObjective.finding.code, 'long-stretch');
+  assert.match(packet.packet.repairObjective.instruction, /Strong holds remain legal/);
+  assert.equal(packet.packet.userIntent, 'more visual energy');
+  assert.deepEqual(packet.packet.neighboringShotDurations.previous, [.5]);
+  assert(packet.packet.findings.some((item) => item.code === 'micro-shot-abuse'));
+  assert.deepEqual(resolveRegionalDecline({ action: 'decline-repair', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' }, packet, region),
+    { action: 'decline-repair', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots' });
+  assert.throws(() => resolveRegionalDecline({ action: 'decline-repair', reason: 'I prefer this', basis: 'neighboring-micro-shots' }, packet, region), /Unsupported/);
+  assert.throws(() => resolveRegionalDecline({ action: 'decline-repair', reason: 'pacing-change-would-overcorrect', basis: 'neighboring-micro-shots', prose: 'invented' }, packet, region), /requires constrained/);
+});
+
 test('infrastructure failure in one material region does not starve another', async () => {
   const draft = [decision(0, 50, 'a'), decision(50, 100, 'b'), decision(100, 150, 'a')];
   const candidates = [10, 20, 30, 40, 60, 70, 80, 90, 110, 120, 130, 140].map((at) => moment(at, 11));
@@ -846,10 +908,16 @@ test('editing plan route returns structured quality gate 422 and unexpected 500'
   try {
     const url = `http://127.0.0.1:${server.address().port}/editing/plan`;
     const post = () => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ audioPath: 'audio.wav', clips: [] }) });
-    service.buildCreativeEditPlan = async () => { throw new service.EditorialQualityGateError({ unresolvedMaterialFindings: [{ code: 'long-stretch' }], repairInfrastructureFailures: ['invalid-evidence-reference'], editorialLimitations: [], telemetry: { globalRepairAppliedPasses: 0 } }); };
+    service.buildCreativeEditPlan = async () => { throw new service.EditorialQualityGateError({ unresolvedMaterialFindings: [{ code: 'long-stretch' }], repairInfrastructureFailures: ['invalid-evidence-reference'], editorialLimitations: [], creativeNonConvergence: [], telemetry: { globalRepairAppliedPasses: 0 } }); };
     const domain = await post();
     assert.equal(domain.status, 422);
     assert.equal((await domain.json()).error, 'editorial-quality-gate');
+    service.buildCreativeEditPlan = async () => { throw new service.EditorialQualityGateError({ unresolvedMaterialFindings: [{ code: 'long-stretch' }], repairInfrastructureFailures: [], editorialLimitations: [], creativeNonConvergence: ['creative-nonconvergence: two no-op proposals'], telemetry: { globalRepairNoOpRetries: 1, globalRepairAppliedPasses: 0 } }); };
+    const creative = await post();
+    assert.equal(creative.status, 422);
+    const creativeBody = await creative.json();
+    assert.equal(creativeBody.creativeNonConvergence.length, 1);
+    assert.equal(creativeBody.telemetry.globalRepairAppliedPasses, 0);
     service.buildCreativeEditPlan = async () => { throw new ContextBudgetPlanningError({ section: '0-60', estimatedInputTokens: 23000, inputBudget: 22474, compactionApplied: true, componentEstimates: { schemaTokens: 300 }, phases: [{ phase: 'compact', estimatedInputTokens: 23000 }] }); };
     const budget = await post();
     assert.equal(budget.status, 422);
