@@ -1,5 +1,6 @@
 import type { JsonObject } from "../planning/plannerTypes";
 import { number } from "../shared";
+import { createHash } from "node:crypto";
 
 export const creativeIntents = ["continuity", "visual-contrast", "framing-change", "motion-change", "rhythmic-response", "spatial-reset", "detail-emphasis", "hold-strong-shot"] as const;
 export type CreativeIntent = typeof creativeIntents[number];
@@ -86,8 +87,9 @@ export function buildEvidenceCatalog(audio: JsonObject, videos: JsonObject[], se
       if (/^(?:wide|medium|close|tight|long|full|mid|unknown)(?:[ -](?:shot|up|view))?$/i.test(label)) add({ type: "framing", at, clipId, label: label.toLowerCase(), windowStart, windowEnd });
     }
   }
-  return records.filter((record) => record.type === "source-availability" || record.type === "audio-energy" || record.type === "framing" || record.value === undefined || Number.isFinite(record.value))
-    .map((record, index) => ({ id: `e${index + 1}`, ...record }));
+  const identified = records.filter((record) => record.type === "source-availability" || record.type === "audio-energy" || record.type === "framing" || record.value === undefined || Number.isFinite(record.value))
+    .map((record) => ({ id: `e${createHash("sha256").update(JSON.stringify(record)).digest("hex").slice(0, 20)}`, ...record }));
+  return [...new Map(identified.map((record) => [record.id, record])).values()];
 }
 
 export function renderEvidenceRationale(records: EvidenceRecord[]): string {

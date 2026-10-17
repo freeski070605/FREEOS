@@ -26,6 +26,13 @@ import { runGlobalEditorialRepair, normalizeRegionalSwitches } from "./editing/r
 import { buildRegionalRepairPacket, resolveRegionalOperations } from "./editing/repair/regionalPacket";
 import { deterministicOpening, availableOpeningClips } from "./editing/planning/openingState";
 
+export class EditorialQualityGateError extends Error {
+  readonly code = "editorial-quality-gate";
+  constructor(public readonly details: { unresolvedMaterialFindings: unknown[]; repairInfrastructureFailures: string[]; editorialLimitations: string[]; telemetry: JsonObject }) {
+    super(details.repairInfrastructureFailures.length ? "Editorial planning could not complete because repair infrastructure failed." : "Editorial planning could not resolve material quality findings.");
+  }
+}
+
 export async function buildCreativeEditPlan(input: EditingPlannerRequest): Promise<EditingPlan> {
   const startedAt = Date.now();
   const telemetry = { modelCalls: 0, modelElapsedMs: 0, mediaCacheHits: 0, candidateMomentCount: 0, candidateSupportCount: 0, candidateNoAlternativeSupportCount: 0, averageSupportedDestinations: 0, minimumSupportedDestinations: 0, maximumSupportedDestinations: 0, targetGroundingRepairAlternatives: 0, nonLocalRepairFailures: 0, supportIndexCompactionCount: 0, sectionAttempts: 0, evidenceRefCount: 0, invalidEvidenceRefFailures: 0, nonLocalEvidenceRefFailures: 0, targetGroundingFailures: 0, globalEditorialRepairPasses: 0, criticFindingsBeforeRepair: [] as string[], criticFindingsAfterRepair: [] as string[], resolvedCriticFindings: [] as string[], unresolvedMaterialFindings: [] as string[], academySelectionReasons: [] as unknown[], validationFailures: {} as Record<string, number>, repairAttemptsByCategory: {} as Record<string, number>, criticFindings: [] as string[], initialSelection: undefined as undefined | { openingMode: "initial-selection"; timelineStart: number; openingEvidenceWindowStart: number; openingEvidenceWindowEnd: number; availableOpeningClips: string[]; openingEvidenceCountsByClip: Record<string, number>; selectedClipId: string; selectedEvidenceRefs: string[] } };
@@ -195,6 +202,7 @@ ${editingKnowledge.context}`;
   const decisions: EditingDecision[] = [];
   const allCandidateEditMoments: JsonObject[] = [];
   const allCandidateSupport: Array<{ at: number; targetSupport: Record<string, string[]> }> = [];
+  const canonicalEvidence = new Map<string, ReturnType<typeof buildEvidenceCatalog>[number]>();
   let previousClipId = "";
   for (let sectionStart = 0; sectionStart < availableEnd; sectionStart += sectionSeconds) {
     const sectionEnd = Math.min(availableEnd, sectionStart + sectionSeconds);
@@ -231,6 +239,11 @@ ${editingKnowledge.context}`;
         );
     const openingScope = sectionStart === 0 ? resolveOpeningEvidenceScope(videos, sectionStart) : undefined;
     const evidenceCatalog = buildEvidenceCatalog(audio, videos, sectionStart, sectionEnd, candidateEditTimes, openingScope);
+    for (const record of evidenceCatalog) {
+      const previous = canonicalEvidence.get(record.id);
+      if (previous && JSON.stringify(previous) !== JSON.stringify(record)) throw new Error(`Canonical evidence identity collision: ${record.id}`);
+      canonicalEvidence.set(record.id, record);
+    }
     allCandidateSupport.push(...buildCandidateSupportIndex(candidateEditMoments, evidenceCatalog, videos));
     const fixedOpening = deterministicOpening(previousClipId, videos, sectionStart);
     const openingMode = fixedOpening?.mode ?? (previousClipId ? "availability-transition" : "initial-selection");
@@ -636,7 +649,7 @@ Return only schema-valid JSON.`;
     context: criticContext, maxPasses: 4,
     regenerate: async (region, findings, _pass, reportModelAttempt) => {
       const localCandidates = allCandidateEditMoments.filter((item) => number(item.at, NaN) >= region.start && number(item.at, NaN) < region.end);
-      const localCatalog = buildEvidenceCatalog(audio, videos, region.start, region.end, localCandidates.map((item) => number(item.at, NaN)));
+      const localCatalog = [...canonicalEvidence.values()];
       const previousClipId = region.openingClipId;
       const system = `You are FREEOS's global editorial repair editor. Repair only the supplied region. Opening clip is existing state. Return operations using supplied candidate IDs, supported destination clip IDs, and existing switch IDs. Choose whether and where to cut; candidates are opportunities, not a cadence. Use add-switch, remove-switch, replace-destination, move-switch, or hold. Never supply times or evidence IDs. Factual evidence is attached and validated by the system. Return schema-valid JSON.`;
       const packet = buildRegionalRepairPacket({ region, findings: findings.filter((finding) => finding.start < region.end && finding.end > region.start),
@@ -705,12 +718,18 @@ Return only schema-valid JSON.`;
       unresolvedMaterialFindings: globalReview.unresolvedMaterialFindings,
       errors: globalReview.errors,
     }));
-    throw new Error(`Unresolved material editorial findings after ${globalReview.globalRepairPasses} global repair passes: ${JSON.stringify(globalReview.unresolvedMaterialFindings)}; repairErrors=${JSON.stringify(globalReview.errors)}`);
+    throw new EditorialQualityGateError({
+      unresolvedMaterialFindings: globalReview.unresolvedMaterialFindings.map(({ code, severity, start, end }) => ({ code, severity, start, end })),
+      repairInfrastructureFailures: globalReview.infrastructureFailures.slice(0, 12), editorialLimitations: globalReview.editorialLimitations.slice(0, 12),
+      telemetry: { globalRepairAppliedPasses: globalReview.globalRepairAppliedPasses, globalRepairModelAttempts: globalReview.globalRepairModelAttempts,
+        globalRepairNoOpProposals: globalReview.globalRepairNoOpProposals, globalRepairValidationFailures: globalReview.globalRepairValidationFailures },
+    });
   }
   const finalDecisions = globalReview.decisions;
   const factualSummary = factualEvidenceSummary(finalDecisions);
   const editorialFindings = globalReview.finalCriticFindings;
   const planningTelemetry = { ...telemetry, globalRepairModelAttempts: globalReview.globalRepairModelAttempts,
+    globalRepairNoOpProposals: globalReview.globalRepairNoOpProposals,
     globalRepairValidationFailures: globalRepairInnerValidationFailures + globalReview.globalRepairValidationFailures, globalRepairAppliedPasses: globalReview.globalRepairAppliedPasses,
     globalRepairCritiquePasses: globalReview.globalRepairCritiquePasses, globalRepairBoundaryNoOpsRemoved,
     globalRepairRequestedRegions: globalReview.regionLogs.length, globalRepairMergedRegions: globalReview.globalRepairMergedRegions, globalRepairRegions: globalReview.regionLogs,

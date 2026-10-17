@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { buildCreativeEditPlan, type EditingPlannerRequest } from "../services/editingPlanner.service";
+import { buildCreativeEditPlan, EditorialQualityGateError, type EditingPlannerRequest } from "../services/editingPlanner.service";
 import { buildEditingDryRun, type EditingDryRunRequest } from "../services/editingExecution.service";
 import { recordEditingExperience } from "../services/editing/learning/editingExperience";
 import { PlanRepairError } from "../services/editing/repair/planRepair";
@@ -22,6 +22,7 @@ editingPlannerRouter.post("/plan", async (request, response, next) => {
     const plan = await buildCreativeEditPlan(body as EditingPlannerRequest);
     response.json({ plan });
   } catch (error) {
+    if (error instanceof EditorialQualityGateError) return response.status(422).json({ error: error.code, message: error.message, ...error.details });
     if (error instanceof PlanRepairError) return response.status(422).json({ error: error.message, diagnostics: error.diagnostics });
     next(error);
   }

@@ -1,7 +1,7 @@
 import type { EditingDecision, JsonObject } from "../planning/plannerTypes";
 import type { EvidenceRecord } from "../evidence/evidenceRefs";
 import { creativeIntents } from "../evidence/evidenceRefs";
-import { buildCandidateSupportIndex, isLocalSwitchEvidence } from "../evidence/targetSupport";
+import { availableClipIdsAt, buildCandidateSupportIndex, isLocalSwitchEvidence, targetSupportRefs } from "../evidence/targetSupport";
 import { estimatePromptTokens, sectionModelBudget } from "../planning/sectionPacket";
 import { SectionValidationError } from "../validation/section";
 import type { RepairRegion } from "./globalEditorialRepair";
@@ -49,13 +49,28 @@ export function buildRegionalRepairPacket(input: {
   const { region, catalog } = input;
   const budget = sectionModelBudget(input.numPredict);
   const support = buildCandidateSupportIndex(input.candidates, catalog, input.videos);
+  const byId = new Map(catalog.map((record) => [record.id, record]));
+  if (byId.size !== catalog.length) throw new SectionValidationError("invalid-evidence-reference", "Canonical evidence catalog has duplicate IDs.");
+  for (const candidate of support) {
+    if (!Number.isFinite(candidate.at) || !input.candidates.some((item) => Number(item.at) === candidate.at)) throw new SectionValidationError("structure", "Repair candidate is absent from canonical candidates.");
+    for (const [destination, refs] of Object.entries(candidate.targetSupport)) {
+      if (!availableClipIdsAt(input.videos, candidate.at).includes(destination)) throw new SectionValidationError("target-grounding", "Repair destination is unavailable.");
+      const legal = new Set(targetSupportRefs(catalog, input.videos, candidate.at, destination));
+      for (const ref of refs) {
+        const record = byId.get(ref);
+        if (!record || record.clipId !== destination || !isLocalSwitchEvidence(record, candidate.at) || !legal.has(ref))
+          throw new SectionValidationError("invalid-evidence-reference", `Canonical support mismatch for ${candidate.candidateId}/${destination}/${ref}.`);
+      }
+    }
+  }
   const viable = support.map((item, index) => ({ ...item, score: Number(input.candidates[index].score) || 0 })).filter((item) => {
     const active = region.current.find((decision) => decision.start <= item.at && decision.end > item.at)?.clipId;
     return Object.entries(item.targetSupport).some(([clip, refs]) => clip !== active && refs.length);
   });
   const switches = region.current.slice(1).map((decision, index) => ({ id: `s${index}`, at: decision.start, clipId: decision.clipId }));
   const schema: JsonObject = { type: "object", additionalProperties: false, required: ["operations"], properties: { operations: { type: "array", maxItems: 32, items: { oneOf: [
-    { type: "object", additionalProperties: false, required: ["operation", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { enum: ["add-switch", "replace-destination"] }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, existingSwitchId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
+    { type: "object", additionalProperties: false, required: ["operation", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "add-switch" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
+    { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "replace-destination" }, existingSwitchId: { type: "string" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
     { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "move-switch" }, existingSwitchId: { type: "string" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
     { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId"], properties: { operation: { const: "remove-switch" }, existingSwitchId: { type: "string" } } },
     { type: "object", additionalProperties: false, required: ["operation"], properties: { operation: { const: "hold" } } },
@@ -110,8 +125,10 @@ export function resolveRegionalOperations(response: unknown, packet: ReturnType<
     const op = raw as JsonObject, operation = op.operation;
     const allowedFields = new Set(["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"]);
     if (Object.keys(op).some((key) => !allowedFields.has(key))) throw new SectionValidationError("structure", "Repair operation contains unsupported fields.");
-    if (operation === "hold") continue;
+    if (operation === "hold") { if (Object.keys(op).length !== 1) throw new SectionValidationError("structure", "Hold cannot carry repair fields."); continue; }
     const existingId = op.existingSwitchId;
+    if (operation === "add-switch" && existingId !== undefined) throw new SectionValidationError("structure", "Add-switch cannot reference an existing switch ID.");
+    if (operation === "remove-switch" && Object.keys(op).some((key) => !["operation", "existingSwitchId"].includes(key))) throw new SectionValidationError("structure", "Remove-switch cannot carry candidate fields.");
     if (operation !== "add-switch") {
       if (typeof existingId !== "string" || !switches.has(existingId) || used.has(existingId)) throw new SectionValidationError("structure", "Unknown or repeated existing switch ID.");
       used.add(existingId);
@@ -122,7 +139,7 @@ export function resolveRegionalOperations(response: unknown, packet: ReturnType<
     if (!["add-switch", "move-switch", "replace-destination"].includes(String(operation))) throw new SectionValidationError("structure", "Unsupported repair operation.");
     const candidate = packet.candidates.find((item) => item.candidateId === op.candidateId);
     const destination = op.destinationClipId;
-    if (!candidate || typeof destination !== "string" || !candidate.targetSupport[destination]?.length) throw new SectionValidationError("target-grounding", "Candidate or destination is not exposed and supported.");
+    if (!candidate || typeof destination !== "string" || !candidate.targetSupport[destination]?.length) throw new SectionValidationError("target-grounding", `Candidate or destination is not exposed and supported. Legal options: ${packet.candidates.map((item) => `${item.candidateId}=[${Object.entries(item.targetSupport).filter(([, refs]) => refs.length).map(([clip]) => clip).join(",")}]`).join("; ").slice(0, 350)}.`);
     if (!creativeIntents.includes(op.creativeIntent as typeof creativeIntents[number])) throw new SectionValidationError("unsupported-creative-intent", "Invalid repair creative intent.");
     const target = representative(packet.catalog.filter((record) => candidate.targetSupport[destination].includes(record.id)), 4).map((record) => record.id);
     const timing = representative(packet.catalog.filter((record) => isLocalSwitchEvidence(record, candidate.at) && (!record.clipId || record.type === "scene-change" || record.type === "motion-shift")), 2).map((record) => record.id);

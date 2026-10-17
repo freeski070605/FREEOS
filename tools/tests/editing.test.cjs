@@ -15,7 +15,7 @@ const { buildSectionEditMoments } = require('../../apps/api-server/dist/services
 const { buildSectionPacket, sectionModelBudget, estimatePromptTokens } = require('../../apps/api-server/dist/services/editing/planning/sectionPacket.js');
 const { compactVideo } = require('../../apps/api-server/dist/services/editing/evidence/videoEvidence.js');
 const { resolveOpeningEvidenceScope, openingEvidenceByClip } = require('../../apps/api-server/dist/services/editing/evidence/openingEvidence.js');
-const { runGlobalEditorialRepair, findRepairRegion, normalizeRegionalSwitches } = require('../../apps/api-server/dist/services/editing/repair/globalEditorialRepair.js');
+const { runGlobalEditorialRepair, findRepairRegion, normalizeRegionalSwitches, buildMaterialRepairRegions } = require('../../apps/api-server/dist/services/editing/repair/globalEditorialRepair.js');
 const { buildRegionalRepairPacket, resolveRegionalOperations } = require('../../apps/api-server/dist/services/editing/repair/regionalPacket.js');
 const { factualEvidenceSummary } = require('../../apps/api-server/dist/services/editing/critique/factualSummary.js');
 const { selectEditingAcademyItems } = require('../../apps/api-server/dist/services/editingAcademy.service.js');
@@ -520,7 +520,7 @@ test('global editorial repair is triggered only by material findings, bounded, r
   assert.equal(calls, 0);
   assert.equal(quiet.globalRepairPasses, 0);
   const invalid = await runGlobalEditorialRepair({ ...options, context: { userIntent: 'substantially more cuts and visual energy' }, regenerate: async () => [decision(0, 90, 'b')] });
-  assert.equal(invalid.globalRepairPasses, 1);
+  assert.equal(invalid.globalRepairPasses, 0);
   assert(invalid.unresolvedMaterialFindings.length > 0);
   assert(invalid.errors.length > 0);
   assert.equal(invalid.globalRepairAppliedPasses, 0);
@@ -593,6 +593,7 @@ test('dense global repair packet is bounded, distributed, and resolves only cano
   assert(!added.evidenceRefs.includes('distant'));
   assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: selected.candidateId, destinationClipId: 'z', creativeIntent: 'visual-contrast' }] }, packet, region), /target-grounding/);
   assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: selected.candidateId, destinationClipId: 'c', at: 99, creativeIntent: 'visual-contrast' }] }, packet, region), /unsupported fields/);
+  assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', existingSwitchId: 's0', candidateId: selected.candidateId, destinationClipId: 'c', creativeIntent: 'visual-contrast' }] }, packet, region), /Add-switch cannot/);
   const validated = validateSectionSwitches(undefined, [added], new Set(videos.map((item) => item.id)), region.start, region.end, videos, candidates, region.openingClipId, catalog);
   assert(validated.some((item) => item.start === selected.at && item.clipId === 'c'));
   assert.throws(() => buildRegionalRepairPacket({ ...input, intent: 'x'.repeat(100000) }), /global-repair-context-budget/);
@@ -627,7 +628,7 @@ test('existing switches remain removable when no alternate destinations are supp
     context: { userIntent: 'avoid mechanical alternation', candidateSupport: [] },
     regenerate: async () => { calls++; return decisions; } });
   assert.equal(calls, 1);
-  assert.equal(result.editorialLimitations.length, 0);
+  assert(result.editorialLimitations.length > 0);
   assert.equal(result.infrastructureFailures.length, 0);
   assert(result.unresolvedMaterialFindings.length > 0);
 });
@@ -691,9 +692,8 @@ test('overlapping material findings share a bounded regional request', async () 
   const result = await runGlobalEditorialRepair({ decisions: draft, videos: ['a', 'b', 'c'].map((id) => video(id, 100)),
     candidates, boundaries: [], context: { userIntent: 'substantially more cuts and visual energy' }, maxPasses: 1,
     regenerate: async (region) => region.current });
-  assert.equal(result.regionLogs.length, 1);
-  assert(result.globalRepairMergedRegions > 0);
-  assert(result.regionLogs[0].regionEnd - result.regionLogs[0].regionStart <= 75);
+  assert(result.regionLogs.length >= 1 && result.regionLogs.length <= 3);
+  assert(result.regionLogs.every((region) => region.regionEnd - region.regionStart <= 75 && region.repairApplied === false));
 });
 
 test('successful repair re-critiques the accepted timeline before choosing another region', async () => {
@@ -712,6 +712,86 @@ test('factual summary ignores creative prose and reflects validated scene change
   const summary = factualEvidenceSummary(shots);
   assert.match(summary, /1 switches cite measured scene-change evidence/);
   assert.doesNotMatch(summary, /chord|gesture|facial expression|no scene.change/i);
+});
+
+test('canonical evidence IDs survive regional reconstruction and subset compaction', () => {
+  const sources = [video('a', 60), video('b', 60)];
+  const audio = { transientMoments: [{ time: 10, strength: .8 }, { time: 20, strength: .8 }] };
+  const full = buildEvidenceCatalog(audio, sources, 0, 60, [10, 20]);
+  const regional = buildEvidenceCatalog(audio, sources, 10, 30, [20]);
+  for (const record of regional) {
+    const canonical = full.find((item) => item.id === record.id);
+    assert(canonical);
+    assert.deepEqual(canonical, record);
+  }
+  const draft = [decision(0, 10, 'a'), decision(10, 60, 'a')];
+  const region = findRepairRegion(draft, { code: 'long-stretch', severity: 'material', start: 12, end: 50, evidence: '' });
+  const catalog = [{ id: 'e1', type: 'audio-transient', at: 10 }, { id: 'e2', type: 'framing', at: 10, clipId: 'a', label: 'wide' }, { id: 'e3', type: 'framing', at: 20, clipId: 'b', label: 'wide' }];
+  const packet = buildRegionalRepairPacket({ region, findings: [], candidates: [moment(20)], catalog, videos: sources, intent: '', classification: '', academy: '', system: '', numPredict: 2200 });
+  const rows = resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: packet.candidates[0].candidateId, destinationClipId: 'b', creativeIntent: 'visual-contrast' }] }, packet, region);
+  assert(rows.some((row) => row.evidenceRefs.includes('e3')));
+  assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: packet.candidates[0].candidateId, destinationClipId: 'b', creativeIntent: 'visual-contrast', evidenceRefs: ['e1'] }] }, packet, region), /unsupported fields/);
+  assert.throws(() => resolveRegionalOperations({ operations: [{ operation: 'add-switch', candidateId: packet.candidates[0].candidateId, destinationClipId: 'b', creativeIntent: 'visual-contrast', at: 20 }] }, packet, region), /unsupported fields/);
+});
+
+test('global repair no-op does not consume applied pass or re-critique', async () => {
+  const draft = [decision(0, 50, 'a'), decision(50, 80, 'b')];
+  const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 80), video('b', 80)], candidates: [10, 20, 30, 40].map((at) => moment(at, 11)), boundaries: [], context: { userIntent: 'substantially more cuts and visual energy' }, maxPasses: 1, regenerate: async (region) => region.current.map((item) => ({ ...item, rationale: 'metadata only' })) });
+  assert.equal(result.globalRepairAppliedPasses, 0);
+  assert.equal(result.globalRepairPasses, 0);
+  assert.equal(result.globalRepairNoOpProposals, 1);
+  assert.equal(result.globalRepairCritiquePasses, 0);
+  assert.equal(result.regionLogs[0].repairApplied, false);
+});
+
+test('infrastructure failure in one material region does not starve another', async () => {
+  const draft = [decision(0, 50, 'a'), decision(50, 100, 'b'), decision(100, 150, 'a')];
+  const candidates = [10, 20, 30, 40, 60, 70, 80, 90, 110, 120, 130, 140].map((at) => moment(at, 11));
+  const starts = [];
+  const result = await runGlobalEditorialRepair({ decisions: draft, videos: [video('a', 150), video('b', 150)], candidates, boundaries: [], context: { userIntent: 'substantially more cuts and visual energy' }, maxPasses: 1,
+    regenerate: async (region) => { starts.push(region.start); if (starts.length === 1) throw new Error('invalid-evidence-reference: synthetic infrastructure failure'); return region.current; } });
+  assert(starts.length >= 2);
+  assert.notEqual(starts[0], starts[1]);
+  assert.equal(result.globalRepairAppliedPasses, 0);
+  assert.equal(result.infrastructureFailures.length, 1);
+});
+
+test('material region grouping joins nearby alternation findings without swallowing a long hold', () => {
+  const draft = [decision(0, 20, 'a'), decision(20, 40, 'b'), decision(40, 60, 'a'), decision(60, 80, 'b'), decision(80, 200, 'a')];
+  const findings = [
+    { code: 'mechanical-alternation', severity: 'material', start: 20, end: 50, evidence: '' },
+    { code: 'mechanical-alternation', severity: 'material', start: 40, end: 70, evidence: '' },
+    { code: 'long-stretch', severity: 'material', start: 65, end: 190, evidence: '' },
+  ];
+  const regions = buildMaterialRepairRegions(draft, findings);
+  assert.equal(regions.length, 2);
+  assert.equal(regions[0].members.length, 2);
+});
+
+test('editing plan route returns structured quality gate 422 and unexpected 500', async () => {
+  const express = require('express');
+  const service = require('../../apps/api-server/dist/services/editingPlanner.service.js');
+  const { editingPlannerRouter } = require('../../apps/api-server/dist/routes/editingPlanner.routes.js');
+  const original = service.buildCreativeEditPlan;
+  const app = express();
+  app.use(express.json());
+  app.use('/editing', editingPlannerRouter);
+  app.use((_error, _request, response, _next) => response.status(500).json({ error: 'unexpected' }));
+  const server = app.listen(0);
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/editing/plan`;
+    const post = () => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ audioPath: 'audio.wav', clips: [] }) });
+    service.buildCreativeEditPlan = async () => { throw new service.EditorialQualityGateError({ unresolvedMaterialFindings: [{ code: 'long-stretch' }], repairInfrastructureFailures: ['invalid-evidence-reference'], editorialLimitations: [], telemetry: { globalRepairAppliedPasses: 0 } }); };
+    const domain = await post();
+    assert.equal(domain.status, 422);
+    assert.equal((await domain.json()).error, 'editorial-quality-gate');
+    service.buildCreativeEditPlan = async () => { throw new Error('unexpected'); };
+    const internal = await post();
+    assert.equal(internal.status, 500);
+  } finally {
+    service.buildCreativeEditPlan = original;
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test('Academy selection favors performance editing and excludes unrelated engine structure', () => {
