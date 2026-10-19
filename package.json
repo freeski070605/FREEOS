@@ -24,6 +24,7 @@
     "audio:analyze": "npm run build --workspace @freeos/media-intelligence && node tools/scripts/audio-analyze.js",
     "animation:doctor": "npm run build --workspace @freeos/animation-core && node tools/scripts/animation-doctor.js",
     "animation:plan": "npm run build --workspace @freeos/media-intelligence && npm run build --workspace @freeos/animation-core && node tools/scripts/animation-plan.js",
+    "animation:render": "npm run build --workspace @freeos/animation-core && node tools/scripts/animation-render.js",
     "test:animation": "npm run build --workspace @freeos/animation-core && node --test tools/tests/animation.test.cjs",
     "test:adobe": "npm run build --workspace @freeos/adobe-worker && npm run build --workspace @freeos/editing-core && node --test tools/tests/adobe.test.js tools/tests/adobe-worker.test.js",
     "test:editing": "tsc -p apps/api-server/tsconfig.json && node --test tools/tests/editing.test.cjs",
