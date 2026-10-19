@@ -1,0 +1,17 @@
+{
+  "version": "freeos-comfy-binding-v1",
+  "workflowFamily": "wan-vace-video-to-video",
+  "assignments": [
+    { "nodeId": "CONTROL_VIDEO_NODE_ID", "input": "video", "source": "controlVideo" },
+    { "nodeId": "CHARACTER_REFERENCE_NODE_ID", "input": "image", "source": "characterReference" },
+    { "nodeId": "STYLE_REFERENCE_NODE_ID", "input": "image", "source": "styleReference", "required": false },
+    { "nodeId": "POSITIVE_PROMPT_NODE_ID", "input": "text", "source": "positivePrompt" },
+    { "nodeId": "NEGATIVE_PROMPT_NODE_ID", "input": "text", "source": "negativePrompt" },
+    { "nodeId": "VIDEO_SIZE_NODE_ID", "input": "width", "source": "width" },
+    { "nodeId": "VIDEO_SIZE_NODE_ID", "input": "height", "source": "height" },
+    { "nodeId": "VIDEO_SIZE_NODE_ID", "input": "length", "source": "controlFrameCount" },
+    { "nodeId": "SAMPLER_NODE_ID", "input": "seed", "source": "seed" },
+    { "nodeId": "VIDEO_OUTPUT_NODE_ID", "input": "frame_rate", "source": "fps" },
+    { "nodeId": "VIDEO_OUTPUT_NODE_ID", "input": "filename_prefix", "source": "outputPrefix" }
+  ]
+}
