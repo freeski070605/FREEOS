@@ -32,6 +32,7 @@ function printTick(result: Awaited<ReturnType<Btc15mPaperEngine["tick"]>>): void
   const payload = {
     at: new Date().toISOString(),
     event: result.snapshot?.event.slug,
+    marketStructure: result.snapshot?.marketStructure,
     pUp: p ? Number(p.pUp.toFixed(4)) : undefined,
     proxyOpen: p ? Number(p.proxyOpenTwap.toFixed(2)) : undefined,
     proxyCurrent: p ? Number(p.proxyCurrent.toFixed(2)) : undefined,
