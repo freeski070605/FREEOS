@@ -8,6 +8,8 @@ on:
       - 'tools/scripts/animation-*.js'
       - 'tools/tests/animation.test.cjs'
       - 'package.json'
+      - 'package-lock.json'
+      - '.npmrc'
       - '.github/workflows/animation-foundation.yml'
   push:
     branches: [main]
@@ -17,7 +19,14 @@ on:
       - 'tools/scripts/animation-*.js'
       - 'tools/tests/animation.test.cjs'
       - 'package.json'
+      - 'package-lock.json'
+      - '.npmrc'
       - '.github/workflows/animation-foundation.yml'
+
+env:
+  # FREEOS pins the local developer npm cache to E:/FREEOS_Data in .npmrc.
+  # Hosted runners do not have that drive, so CI must override it.
+  NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-cache
 
 jobs:
   build-and-test:
