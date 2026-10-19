@@ -7,7 +7,8 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "paper": "node dist/cli.js"
+    "paper": "node dist/cli.js",
+    "test": "npm run build && node --test ../../tools/tests/trading.test.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.18.1",
