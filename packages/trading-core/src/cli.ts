@@ -44,6 +44,7 @@ function printTick(result: Awaited<ReturnType<Btc15mPaperEngine["tick"]>>): void
     decision: result.decision,
     opened: result.opened,
     settled: result.settled,
+    resolvedOutcomes: result.resolvedOutcomes?.length ? result.resolvedOutcomes : undefined,
     message: result.message,
   };
   console.log(JSON.stringify(payload));
@@ -55,6 +56,7 @@ async function main(): Promise<void> {
     service: "FREEOS BTC15M Trader",
     mode: "paper",
     ledger: engine.ledger.ledgerPath,
+    observations: engine.observations.logPath,
     liveExecution: false,
   }));
 
