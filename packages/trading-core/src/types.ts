@@ -70,6 +70,7 @@ export interface StrategyDecision {
 export interface PaperPosition {
   id: string;
   eventSlug: string;
+  eventEndTime: string;
   marketSlug: string;
   side: TradeSide;
   openedAt: string;
