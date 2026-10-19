@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { btc15mProbability } = require("../../packages/trading-core/dist/model.js");
+const { complementBinaryQuote } = require("../../packages/trading-core/dist/polymarket-us-public.js");
 const { decideTrade } = require("../../packages/trading-core/dist/strategy.js");
 
 function quote(marketSlug, bid, ask) {
@@ -27,6 +28,7 @@ function snapshot(overrides = {}) {
       upMarket: { id: 11, slug: "up", title: "Up", outcome: "Up", active: true, closed: false },
       downMarket: { id: 12, slug: "down", title: "Down", outcome: "Down", active: true, closed: false },
     },
+    marketStructure: "distinct-outcomes",
     up: quote("up", 0.49, 0.50),
     down: quote("down", 0.49, 0.50),
     probability: {
@@ -65,6 +67,12 @@ test("probability moves above 50% when BTC proxy is above opening proxy", () => 
   assert.ok(result.pUp > 0.5);
   assert.equal(result.pDown, 1 - result.pUp);
   assert.ok(result.sampleCount >= 100);
+});
+
+test("shared binary short quote is complementary to the long book", () => {
+  const down = complementBinaryQuote(quote("btc-shared", 0.03, 0.04));
+  assert.equal(down.bestBid, 0.96);
+  assert.equal(down.bestAsk, 0.97);
 });
 
 test("strategy buys the side with sufficient adjusted edge", () => {
