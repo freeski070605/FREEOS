@@ -2,9 +2,9 @@ import { join, resolve } from "node:path";
 import { KrakenReferenceFeed } from "./kraken-reference";
 import { btc15mProbability } from "./model";
 import { PaperLedger } from "./paper-ledger";
-import { PolymarketUSPublicClient } from "./polymarket-us-public";
+import { complementBinaryQuote, PolymarketUSPublicClient } from "./polymarket-us-public";
 import { decideTrade } from "./strategy";
-import type { Btc15mEvent, PaperPosition, SettledPaperPosition, StrategyDecision, TradingEngineConfig, TradingSnapshot } from "./types";
+import type { Btc15mEvent, MarketQuote, PaperPosition, SettledPaperPosition, StrategyDecision, TradingEngineConfig, TradingSnapshot } from "./types";
 
 export interface TradingTickResult {
   snapshot?: TradingSnapshot;
@@ -58,17 +58,40 @@ export class Btc15mPaperEngine {
     return twap;
   }
 
+  private async marketQuotes(event: Btc15mEvent): Promise<{ marketStructure: "shared-binary" | "distinct-outcomes"; up: MarketQuote; down: MarketQuote }> {
+    if (event.upMarket.slug === event.downMarket.slug) {
+      const up = await this.polymarket.bbo(event.upMarket.slug);
+      return {
+        marketStructure: "shared-binary",
+        up,
+        down: complementBinaryQuote(up),
+      };
+    }
+
+    const [up, down] = await Promise.all([
+      this.polymarket.bbo(event.upMarket.slug),
+      this.polymarket.bbo(event.downMarket.slug),
+    ]);
+    return { marketStructure: "distinct-outcomes", up, down };
+  }
+
   private async settleOpenIfReady(nowMs: number): Promise<SettledPaperPosition | undefined> {
     const open = this.ledger.openPosition();
     if (!open) return undefined;
     const closeMs = Date.parse(open.eventEndTime);
     if (!Number.isFinite(closeMs) || nowMs < closeMs + 5_000) return undefined;
 
+    // Old paper records created before market-structure tracking cannot be settled safely.
+    if (!open.marketStructure) return undefined;
+
     // The public settlement endpoint may not be ready immediately after close. A failed read
     // is non-fatal and will be retried on the next tick.
     try {
-      const settlement = await this.polymarket.settlement(open.marketSlug);
-      return this.ledger.settle(open, settlement);
+      const rawSettlement = await this.polymarket.settlement(open.marketSlug);
+      const sideSettlement = open.marketStructure === "shared-binary" && open.side === "DOWN"
+        ? 1 - rawSettlement
+        : rawSettlement;
+      return this.ledger.settle(open, sideSettlement);
     } catch {
       return undefined;
     }
@@ -80,18 +103,18 @@ export class Btc15mPaperEngine {
     const eventEndMs = Date.parse(event.endTime);
     if (!Number.isFinite(eventEndMs)) throw new Error(`Invalid event end time for ${event.slug}.`);
 
-    const [proxyOpenTwap, recentPoints, up, down] = await Promise.all([
+    const [proxyOpenTwap, recentPoints, quotes] = await Promise.all([
       this.openingProxy(event),
       this.reference.recent(180, nowMs),
-      this.polymarket.bbo(event.upMarket.slug),
-      this.polymarket.bbo(event.downMarket.slug),
+      this.marketQuotes(event),
     ]);
 
     const probability = btc15mProbability(proxyOpenTwap, recentPoints, eventEndMs, nowMs);
     const snapshot: TradingSnapshot = {
       event,
-      up,
-      down,
+      marketStructure: quotes.marketStructure,
+      up: quotes.up,
+      down: quotes.down,
       probability,
       observedAt: new Date(nowMs).toISOString(),
     };
