@@ -66,6 +66,7 @@ export class PaperLedger {
       eventSlug: event.slug,
       eventEndTime: event.endTime,
       marketSlug: decision.marketSlug,
+      marketStructure: event.upMarket.slug === event.downMarket.slug ? "shared-binary" : "distinct-outcomes",
       side: decision.side,
       openedAt,
       modelProbability: decision.modelProbability,
