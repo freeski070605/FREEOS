@@ -1,4 +1,5 @@
 export type TradeSide = "UP" | "DOWN";
+export type MarketStructure = "shared-binary" | "distinct-outcomes";
 
 export interface OutcomeMarket {
   id: number;
@@ -49,6 +50,7 @@ export interface ProbabilitySnapshot {
 
 export interface TradingSnapshot {
   event: Btc15mEvent;
+  marketStructure: MarketStructure;
   up: MarketQuote;
   down: MarketQuote;
   probability: ProbabilitySnapshot;
@@ -72,6 +74,7 @@ export interface PaperPosition {
   eventSlug: string;
   eventEndTime: string;
   marketSlug: string;
+  marketStructure: MarketStructure;
   side: TradeSide;
   openedAt: string;
   modelProbability: number;
