@@ -16,6 +16,8 @@ Paper-mode research and execution framework for Polymarket US **BTC Up or Down 1
 - Compares model probability with the executable Polymarket ask after configurable friction and slippage buffers.
 - Paper-trades only when the adjusted edge clears the configured threshold.
 - Persists opens and settlements to a JSONL ledger.
+- Logs every successful 5-second market/model observation, not only trades.
+- Resolves every observed event after settlement is published so model calibration can be measured even when FREEOS passed.
 - Enforces one position per event, spread/time gates, a daily loss stop, and a consecutive-loss stop.
 
 ## Resolution truth vs. signal proxy
@@ -47,13 +49,34 @@ $env:FREEOS_TRADING_MODE="paper"
 npm run paper --workspace @freeos/trading-core -- --once
 ```
 
-The default ledger is written under:
+The paper ledger and observation stream are written under:
 
 ```text
 E:\FREEOS\data\trading\btc15m-paper-ledger.jsonl
+E:\FREEOS\data\trading\btc15m-observations.jsonl
 ```
 
 Set `FREEOS_DATA_DIR` to override the FREEOS data root.
+
+## Analyze collected data
+
+After observations and settlements have accumulated:
+
+```powershell
+npm run analyze --workspace @freeos/trading-core
+```
+
+The report includes:
+
+- number of observations and observed/resolved events;
+- Brier score and log loss for model calibration;
+- directional accuracy;
+- Polymarket midpoint Brier score when a two-sided quote was available;
+- average absolute disagreement between FREEOS probability and the market midpoint;
+- calibration split into `14-15m`, `12-14m`, `10-12m`, `8-10m`, `6-8m`, `4-6m`, `2-4m`, and `0-2m` time-remaining buckets;
+- paper trades opened/settled, wins/losses, total P&L, ROI, and win rate.
+
+Do not interpret tiny samples as evidence of an edge. The point of the observation stream is to accumulate enough resolved windows to compare model behavior by time remaining and disagreement size before changing strategy rules.
 
 ## Paper-mode controls
 
