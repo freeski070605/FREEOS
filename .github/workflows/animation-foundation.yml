@@ -1,0 +1,45 @@
+name: Animation Foundation
+
+on:
+  pull_request:
+    paths:
+      - 'packages/animation-core/**'
+      - 'packages/media-intelligence/**'
+      - 'tools/scripts/animation-*.js'
+      - 'tools/tests/animation.test.cjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.npmrc'
+      - '.github/workflows/animation-foundation.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/animation-core/**'
+      - 'packages/media-intelligence/**'
+      - 'tools/scripts/animation-*.js'
+      - 'tools/tests/animation.test.cjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.npmrc'
+      - '.github/workflows/animation-foundation.yml'
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      # FREEOS pins the local developer npm cache to E:/FREEOS_Data in .npmrc.
+      # Hosted runners do not have that drive, so CI overrides it without touching local config.
+      NPM_CONFIG_CACHE: C:/npm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install workspaces
+        run: npm install --ignore-scripts
+      - name: Build animation core
+        run: npm run build --workspace @freeos/animation-core
+      - name: Test animation core
+        run: npm run test:animation
