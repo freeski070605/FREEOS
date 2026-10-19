@@ -1,16 +1,18 @@
 import { join, resolve } from "node:path";
 import { KrakenReferenceFeed } from "./kraken-reference";
 import { btc15mProbability } from "./model";
+import { ObservationLog } from "./observation-log";
 import { PaperLedger } from "./paper-ledger";
 import { complementBinaryQuote, PolymarketUSPublicClient } from "./polymarket-us-public";
 import { decideTrade } from "./strategy";
-import type { Btc15mEvent, MarketQuote, PaperPosition, SettledPaperPosition, StrategyDecision, TradingEngineConfig, TradingSnapshot } from "./types";
+import type { Btc15mEvent, EventOutcomeRecord, MarketQuote, PaperPosition, SettledPaperPosition, StrategyDecision, TradingEngineConfig, TradingSnapshot } from "./types";
 
 export interface TradingTickResult {
   snapshot?: TradingSnapshot;
   decision?: StrategyDecision;
   opened?: PaperPosition;
   settled?: SettledPaperPosition;
+  resolvedOutcomes?: EventOutcomeRecord[];
   message: string;
 }
 
@@ -37,6 +39,7 @@ export function defaultTradingConfig(): TradingEngineConfig {
 
 export class Btc15mPaperEngine {
   readonly ledger: PaperLedger;
+  readonly observations: ObservationLog;
   private cachedEventSlug: string | null = null;
   private cachedOpeningProxyTwap: number | null = null;
 
@@ -46,6 +49,7 @@ export class Btc15mPaperEngine {
     readonly reference = new KrakenReferenceFeed(),
   ) {
     this.ledger = new PaperLedger(config.dataDir);
+    this.observations = new ObservationLog(config.dataDir);
   }
 
   private async openingProxy(event: Btc15mEvent): Promise<number> {
@@ -97,8 +101,49 @@ export class Btc15mPaperEngine {
     }
   }
 
+  private async resolveObservedEventsIfReady(nowMs: number): Promise<EventOutcomeRecord[]> {
+    const ready = this.observations.unresolvedEvents(nowMs, 5_000, 4);
+    const resolved: EventOutcomeRecord[] = [];
+
+    for (const observation of ready) {
+      try {
+        let upSettlement: number;
+        let downSettlement: number;
+        if (observation.marketStructure === "shared-binary") {
+          upSettlement = await this.polymarket.settlement(observation.upMarketSlug);
+          downSettlement = 1 - upSettlement;
+        } else {
+          [upSettlement, downSettlement] = await Promise.all([
+            this.polymarket.settlement(observation.upMarketSlug),
+            this.polymarket.settlement(observation.downMarketSlug),
+          ]);
+        }
+
+        if (![upSettlement, downSettlement].every(value => Number.isFinite(value) && value >= 0 && value <= 1)) continue;
+        const outcome: EventOutcomeRecord = {
+          eventSlug: observation.eventSlug,
+          eventEndTime: observation.eventEndTime,
+          marketStructure: observation.marketStructure,
+          upMarketSlug: observation.upMarketSlug,
+          downMarketSlug: observation.downMarketSlug,
+          resolvedAt: new Date(nowMs).toISOString(),
+          upSettlement,
+          downSettlement,
+        };
+        this.observations.appendOutcome(outcome);
+        resolved.push(outcome);
+      } catch {
+        // Settlement publication can lag close. Leave unresolved and retry on a later tick.
+      }
+    }
+    return resolved;
+  }
+
   async tick(nowMs = Date.now()): Promise<TradingTickResult> {
-    const settled = await this.settleOpenIfReady(nowMs);
+    const [settled, resolvedOutcomes] = await Promise.all([
+      this.settleOpenIfReady(nowMs),
+      this.resolveObservedEventsIfReady(nowMs),
+    ]);
     const event = await this.polymarket.discoverCurrentBtc15m(nowMs);
     const eventEndMs = Date.parse(event.endTime);
     if (!Number.isFinite(eventEndMs)) throw new Error(`Invalid event end time for ${event.slug}.`);
@@ -120,16 +165,23 @@ export class Btc15mPaperEngine {
     };
 
     if (probability.sampleCount < 30) {
+      const decision: StrategyDecision = {
+        action: "PASS",
+        reason: `Only ${probability.sampleCount} one-second returns available; need at least 30.`,
+      };
+      this.observations.appendObservation(snapshot, decision);
       return {
         snapshot,
         settled,
-        decision: { action: "PASS", reason: `Only ${probability.sampleCount} one-second returns available; need at least 30.` },
+        resolvedOutcomes,
+        decision,
         message: "Insufficient BTC proxy history for a probability estimate.",
       };
     }
 
     const state = this.ledger.riskState(event.slug, new Date(nowMs));
     const decision = decideTrade(snapshot, this.config.risk, state);
+    this.observations.appendObservation(snapshot, decision);
     const opened = decision.action === "BUY" ? this.ledger.open(decision, event, this.config.risk) : undefined;
 
     return {
@@ -137,6 +189,7 @@ export class Btc15mPaperEngine {
       decision,
       opened,
       settled,
+      resolvedOutcomes,
       message: opened ? `Paper ${opened.side} position opened on ${event.slug}.` : decision.reason,
     };
   }
