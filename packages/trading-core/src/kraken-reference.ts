@@ -57,11 +57,24 @@ export class KrakenReferenceFeed {
   }
 
   async recent(windowSeconds = 180, nowMs = Date.now()): Promise<PricePoint[]> {
-    // With no from_ts Kraken returns the newest slice instead of the first 1,000 rows from a
-    // busy multi-minute range. We then trim locally to the requested window.
-    const points = await this.queryTrades({ toMs: nowMs, count: 1000 });
+    // PostTrade's range filters are forward-window oriented. Supplying only to_ts can return
+    // an older slice which then disappears when trimmed to the latest few minutes. Request the
+    // exchange's newest BTC/USD trades with no time filter, then trim locally.
+    const points = await this.queryTrades({ count: 1000 });
     const cutoff = nowMs - windowSeconds * 1000;
-    return points.filter(point => point.ts >= cutoff && point.ts <= nowMs);
+    const recent = points.filter(point => point.ts >= cutoff && point.ts <= nowMs + 2_000);
+
+    if (!recent.length) {
+      const newest = points.at(-1);
+      const newestAge = newest ? Math.round((nowMs - newest.ts) / 1000) : null;
+      throw new Error(
+        newestAge === null
+          ? "Kraken returned no BTC/USD trades for the recent-price feed."
+          : `Kraken's newest BTC/USD trade is ${newestAge}s old; refusing stale proxy data.`,
+      );
+    }
+
+    return recent;
   }
 }
 
