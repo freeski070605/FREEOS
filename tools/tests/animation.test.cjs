@@ -64,10 +64,77 @@ test("render jobs stay inside the generated animation namespace", () => {
   assert.ok(jobs.every(job => job.controlStart <= job.sourceStart && job.controlEnd >= job.sourceEnd));
 });
 
+test("render jobs carry character and style locks forward", () => {
+  const characterBible = { id: "blakeo", referenceImages: ["E:\\refs\\blakeo.png"], approvedDesignImage: "E:\\refs\\approved.png" };
+  const styleBible = { id: "premium-cartoon", prompt: "cinematic cel animation", negativePrompt: "flicker, identity drift" };
+  const plan = animation.buildAnimationPlan(fakeAnalysis(), { characterBible, styleBible });
+  const [job] = animation.createRenderJobs(plan);
+  assert.deepEqual(job.characterBible, characterBible);
+  assert.deepEqual(job.styleBible, styleBible);
+});
+
 test("ComfyUI endpoint policy allows only loopback HTTP", () => {
   assert.equal(animation.validateLocalComfyEndpoint("http://127.0.0.1:8188"), "http://127.0.0.1:8188");
   assert.equal(animation.validateLocalComfyEndpoint("http://localhost:8188/"), "http://localhost:8188");
   assert.throws(() => animation.validateLocalComfyEndpoint("https://127.0.0.1:8188"), /local HTTP/);
   assert.throws(() => animation.validateLocalComfyEndpoint("http://192.168.1.50:8188"), /loopback/);
   assert.throws(() => animation.validateLocalComfyEndpoint("http://example.com:8188"), /loopback/);
+});
+
+test("workflow binding fills a reviewed ComfyUI graph without hard-coded node ids", () => {
+  const plan = animation.buildAnimationPlan(fakeAnalysis(), { projectId: "Blakeo Test", maxShotSeconds: 5, overlapSeconds: 0.35 });
+  const [job] = animation.createRenderJobs(plan);
+  const workflow = {
+    "17": { class_type: "VHS_LoadVideo", inputs: { video: "placeholder.mp4" } },
+    "42": { class_type: "EmptyLatentVideo", inputs: { width: 1, height: 1, length: 1 } },
+    "91": { class_type: "VHS_VideoCombine", inputs: { frame_rate: 1, filename_prefix: "placeholder" } },
+  };
+  const binding = {
+    version: "freeos-comfy-binding-v1",
+    workflowFamily: "wan-vace-video-to-video",
+    assignments: [
+      { nodeId: "17", input: "video", source: "controlVideo" },
+      { nodeId: "42", input: "width", source: "width" },
+      { nodeId: "42", input: "height", source: "height" },
+      { nodeId: "42", input: "length", source: "controlFrameCount" },
+      { nodeId: "91", input: "frame_rate", source: "fps" },
+      { nodeId: "91", input: "filename_prefix", source: "outputPrefix" },
+    ],
+  };
+
+  const bound = animation.bindComfyWorkflow(workflow, binding, {
+    job,
+    controlVideo: "freeos-animation/blakeo-test/shot-001/control.mp4",
+  });
+
+  assert.equal(bound["17"].inputs.video, "freeos-animation/blakeo-test/shot-001/control.mp4");
+  assert.equal(bound["42"].inputs.width, job.generation.width);
+  assert.equal(bound["42"].inputs.height, job.generation.height);
+  assert.equal(bound["42"].inputs.length, Math.round((job.controlEnd - job.controlStart) * job.generation.fps));
+  assert.equal(bound["91"].inputs.frame_rate, 30);
+  assert.equal(bound["91"].inputs.filename_prefix, job.outputPrefix);
+  assert.equal(workflow["17"].inputs.video, "placeholder.mp4", "template must not be mutated");
+});
+
+test("workflow binding refuses missing required identity references", () => {
+  const [job] = animation.createRenderJobs(animation.buildAnimationPlan(fakeAnalysis()));
+  const workflow = { "7": { inputs: { image: "placeholder.png" } } };
+  const binding = {
+    version: "freeos-comfy-binding-v1",
+    workflowFamily: "wan-vace-video-to-video",
+    assignments: [{ nodeId: "7", input: "image", source: "characterReference" }],
+  };
+  assert.throws(() => animation.bindComfyWorkflow(workflow, binding, { job, controlVideo: "control.mp4" }), /characterReference/);
+});
+
+test("ComfyUI history output extraction finds image, gif and video files", () => {
+  const files = animation.extractComfyOutputFiles({
+    abc: {
+      outputs: {
+        "10": { images: [{ filename: "frame.png", subfolder: "freeos", type: "output" }] },
+        "20": { videos: [{ filename: "shot.mp4", subfolder: "freeos", type: "output" }] },
+      },
+    },
+  }, "abc");
+  assert.deepEqual(files.map(file => file.filename), ["frame.png", "shot.mp4"]);
 });
