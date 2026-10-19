@@ -19,12 +19,12 @@ export class KrakenReferenceFeed {
     private readonly timeoutMs = 8_000,
   ) {}
 
-  async trades(fromMs: number, toMs = Date.now(), count = 1000): Promise<PricePoint[]> {
+  private async queryTrades(options: { fromMs?: number; toMs?: number; count?: number }): Promise<PricePoint[]> {
     const url = new URL("/0/public/PostTrade", this.baseUrl);
     url.searchParams.set("symbol", "BTC/USD");
-    url.searchParams.set("from_ts", new Date(fromMs).toISOString());
-    url.searchParams.set("to_ts", new Date(toMs).toISOString());
-    url.searchParams.set("count", String(Math.max(1, Math.min(1000, count))));
+    if (options.fromMs !== undefined) url.searchParams.set("from_ts", new Date(options.fromMs).toISOString());
+    if (options.toMs !== undefined) url.searchParams.set("to_ts", new Date(options.toMs).toISOString());
+    url.searchParams.set("count", String(Math.max(1, Math.min(1000, options.count ?? 1000))));
 
     const response = await fetch(url, {
       headers: { "Accept": "application/json", "User-Agent": "FREEOS-Trading-Core/0.1" },
@@ -40,13 +40,28 @@ export class KrakenReferenceFeed {
       .sort((a, b) => a.ts - b.ts);
   }
 
+  async trades(fromMs: number, toMs = Date.now(), count = 1000): Promise<PricePoint[]> {
+    return this.queryTrades({ fromMs, toMs, count });
+  }
+
   async openingProxyTwap(intervalStartMs: number): Promise<number> {
-    const points = await this.trades(intervalStartMs - 75_000, intervalStartMs, 1000);
-    return perSecondTwap(points, intervalStartMs - 60_000, intervalStartMs);
+    // Chunk the official-looking one-minute opening window so a busy BTC tape cannot silently
+    // truncate the minute to Kraken's 1,000-row response limit.
+    const points: PricePoint[] = [];
+    const windowStart = intervalStartMs - 60_000;
+    for (let chunkStart = windowStart; chunkStart < intervalStartMs; chunkStart += 10_000) {
+      const chunkEnd = Math.min(intervalStartMs, chunkStart + 10_000);
+      points.push(...await this.queryTrades({ fromMs: chunkStart, toMs: chunkEnd, count: 1000 }));
+    }
+    return perSecondTwap(points, windowStart, intervalStartMs);
   }
 
   async recent(windowSeconds = 180, nowMs = Date.now()): Promise<PricePoint[]> {
-    return this.trades(nowMs - windowSeconds * 1000, nowMs, 1000);
+    // With no from_ts Kraken returns the newest slice instead of the first 1,000 rows from a
+    // busy multi-minute range. We then trim locally to the requested window.
+    const points = await this.queryTrades({ toMs: nowMs, count: 1000 });
+    const cutoff = nowMs - windowSeconds * 1000;
+    return points.filter(point => point.ts >= cutoff && point.ts <= nowMs);
   }
 }
 
