@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { KrakenReferenceFeed } from "./kraken-reference";
 import { btc15mProbability } from "./model";
 import { PaperLedger } from "./paper-ledger";
@@ -15,7 +15,8 @@ export interface TradingTickResult {
 }
 
 export function defaultTradingConfig(): TradingEngineConfig {
-  const base = process.env.FREEOS_DATA_DIR?.trim() || join(process.cwd(), "data");
+  const repositoryDataDir = resolve(__dirname, "..", "..", "..", "data");
+  const base = process.env.FREEOS_DATA_DIR?.trim() || repositoryDataDir;
   return {
     pollMs: 5_000,
     dataDir: join(base, "trading"),
