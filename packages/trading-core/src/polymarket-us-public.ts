@@ -40,6 +40,10 @@ function amount(value?: Amount | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function optionalFinite(value?: number): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function utcEventSlug(startMs: number): string {
   const date = new Date(startMs);
   const yyyy = date.getUTCFullYear();
@@ -137,8 +141,8 @@ export class PolymarketUSPublicClient {
       bestBid: amount(data.bestBid),
       bestAsk: amount(data.bestAsk),
       lastTrade: amount(data.lastTradePx),
-      bidDepth: Number.isFinite(data.bidDepth) ? data.bidDepth ?? null : null,
-      askDepth: Number.isFinite(data.askDepth) ? data.askDepth ?? null : null,
+      bidDepth: optionalFinite(data.bidDepth),
+      askDepth: optionalFinite(data.askDepth),
       observedAt: new Date().toISOString(),
     };
   }
