@@ -32,6 +32,7 @@ From the repository root in PowerShell:
 cd E:\FREEOS
 git fetch origin
 git switch feature/btc15m-trading-core
+git pull --ff-only
 npm install
 npm run build --workspace @freeos/trading-core
 
@@ -49,10 +50,10 @@ npm run paper --workspace @freeos/trading-core -- --once
 The default ledger is written under:
 
 ```text
-<FREEOS_DATA_DIR>/trading/btc15m-paper-ledger.jsonl
+E:\FREEOS\data\trading\btc15m-paper-ledger.jsonl
 ```
 
-If `FREEOS_DATA_DIR` is unset, it defaults to `<current working directory>/data`.
+Set `FREEOS_DATA_DIR` to override the FREEOS data root.
 
 ## Paper-mode controls
 
