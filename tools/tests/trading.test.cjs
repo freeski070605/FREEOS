@@ -1,7 +1,13 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { mkdtempSync, rmSync } = require("node:fs");
+const { tmpdir } = require("node:os");
+const { join } = require("node:path");
 
+const { buildAnalyticsSummary } = require("../../packages/trading-core/dist/analytics.js");
 const { btc15mProbability } = require("../../packages/trading-core/dist/model.js");
+const { ObservationLog } = require("../../packages/trading-core/dist/observation-log.js");
+const { PaperLedger } = require("../../packages/trading-core/dist/paper-ledger.js");
 const { complementBinaryQuote } = require("../../packages/trading-core/dist/polymarket-us-public.js");
 const { decideTrade } = require("../../packages/trading-core/dist/strategy.js");
 
@@ -117,4 +123,74 @@ test("strategy refuses new entries too close to expiry", () => {
   });
   assert.equal(decision.action, "PASS");
   assert.match(decision.reason, /too close/i);
+});
+
+test("observation log tracks unresolved events until an outcome is recorded", () => {
+  const dir = mkdtempSync(join(tmpdir(), "freeos-trading-observation-"));
+  try {
+    const log = new ObservationLog(dir);
+    const s = snapshot();
+    log.appendObservation(s, { action: "PASS", reason: "test" });
+    assert.equal(log.observations().length, 1);
+    assert.equal(log.unresolvedEvents(906_000).length, 1);
+
+    log.appendOutcome({
+      eventSlug: s.event.slug,
+      eventEndTime: s.event.endTime,
+      marketStructure: s.marketStructure,
+      upMarketSlug: s.event.upMarket.slug,
+      downMarketSlug: s.event.downMarket.slug,
+      resolvedAt: new Date(906_000).toISOString(),
+      upSettlement: 1,
+      downSettlement: 0,
+    });
+    assert.equal(log.unresolvedEvents(906_000).length, 0);
+    assert.equal(log.outcomes().length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("analytics measures calibration and settled paper PnL", () => {
+  const dir = mkdtempSync(join(tmpdir(), "freeos-trading-analytics-"));
+  try {
+    const s = snapshot();
+    const log = new ObservationLog(dir);
+    log.appendObservation(s, { action: "PASS", reason: "test" });
+    log.appendOutcome({
+      eventSlug: s.event.slug,
+      eventEndTime: s.event.endTime,
+      marketStructure: s.marketStructure,
+      upMarketSlug: s.event.upMarket.slug,
+      downMarketSlug: s.event.downMarket.slug,
+      resolvedAt: new Date(906_000).toISOString(),
+      upSettlement: 1,
+      downSettlement: 0,
+    });
+
+    const ledger = new PaperLedger(dir);
+    const position = ledger.open({
+      action: "BUY",
+      side: "UP",
+      marketSlug: "up",
+      modelProbability: 0.66,
+      executablePrice: 0.5,
+      rawEdge: 0.16,
+      adjustedEdge: 0.16,
+      notionalUsd: 5,
+      reason: "test",
+    }, s.event, risk);
+    ledger.settle(position, 1);
+
+    const summary = buildAnalyticsSummary(dir);
+    assert.equal(summary.observations, 1);
+    assert.equal(summary.eventsResolved, 1);
+    assert.equal(summary.overall.n, 1);
+    assert.equal(summary.overall.brier, 0.1156);
+    assert.equal(summary.paper.settled, 1);
+    assert.equal(summary.paper.wins, 1);
+    assert.equal(summary.paper.totalPnlUsd, 5);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
