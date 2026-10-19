@@ -64,6 +64,7 @@ export class PaperLedger {
     const position: PaperPosition = {
       id: `${event.slug}:${decision.side}:${Date.now()}`,
       eventSlug: event.slug,
+      eventEndTime: event.endTime,
       marketSlug: decision.marketSlug,
       side: decision.side,
       openedAt,
