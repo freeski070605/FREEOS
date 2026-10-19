@@ -44,6 +44,25 @@ function optionalFinite(value?: number): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function complementPrice(value: number | null): number | null {
+  if (value === null) return null;
+  const complement = 1 - value;
+  return Math.max(0, Math.min(1, complement));
+}
+
+export function complementBinaryQuote(longQuote: MarketQuote): MarketQuote {
+  return {
+    marketSlug: longQuote.marketSlug,
+    // Buying the short side crosses the long-side best bid: short ask = 1 - long bid.
+    bestBid: complementPrice(longQuote.bestAsk),
+    bestAsk: complementPrice(longQuote.bestBid),
+    lastTrade: complementPrice(longQuote.lastTrade),
+    bidDepth: longQuote.askDepth,
+    askDepth: longQuote.bidDepth,
+    observedAt: longQuote.observedAt,
+  };
+}
+
 function utcEventSlug(startMs: number): string {
   const date = new Date(startMs);
   const yyyy = date.getUTCFullYear();
@@ -119,7 +138,7 @@ export class PolymarketUSPublicClient {
     const upMarket = outcomeMatch(markets, "up");
     const downMarket = outcomeMatch(markets, "down");
     if (!upMarket || !downMarket) {
-      throw new Error(`BTC 15m event ${event.slug} is missing explicit Up/Down markets.`);
+      throw new Error(`BTC 15m event ${event.slug} is missing explicit Up/Down market metadata.`);
     }
 
     return {
