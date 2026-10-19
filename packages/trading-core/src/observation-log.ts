@@ -15,6 +15,7 @@ function midpoint(bid: number | null, ask: number | null): number | null {
 export class ObservationLog {
   readonly directory: string;
   readonly logPath: string;
+  private cache: ObservationLogRecord[] | null = null;
 
   constructor(dataDir: string) {
     this.directory = resolve(dataDir);
@@ -23,18 +24,24 @@ export class ObservationLog {
   }
 
   private records(): ObservationLogRecord[] {
-    if (!existsSync(this.logPath)) return [];
-    return readFileSync(this.logPath, "utf8")
+    if (this.cache) return this.cache;
+    if (!existsSync(this.logPath)) {
+      this.cache = [];
+      return this.cache;
+    }
+    this.cache = readFileSync(this.logPath, "utf8")
       .split(/\r?\n/)
       .filter(Boolean)
       .flatMap(line => {
         try { return [JSON.parse(line) as ObservationLogRecord]; }
         catch { return []; }
       });
+    return this.cache;
   }
 
   private append(record: ObservationLogRecord): void {
     appendFileSync(this.logPath, `${JSON.stringify(record)}\n`, "utf8");
+    this.records().push(record);
   }
 
   appendObservation(snapshot: TradingSnapshot, decision: StrategyDecision): ObservationRecord {
