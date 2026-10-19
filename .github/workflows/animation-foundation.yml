@@ -23,15 +23,14 @@ on:
       - '.npmrc'
       - '.github/workflows/animation-foundation.yml'
 
-env:
-  # FREEOS pins the local developer npm cache to E:/FREEOS_Data in .npmrc.
-  # Hosted runners do not have that drive, so CI must override it.
-  NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-cache
-
 jobs:
   build-and-test:
     runs-on: windows-latest
     timeout-minutes: 15
+    env:
+      # FREEOS pins the local developer npm cache to E:/FREEOS_Data in .npmrc.
+      # Hosted runners do not have that drive, so CI overrides it without touching local config.
+      NPM_CONFIG_CACHE: C:/npm-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
