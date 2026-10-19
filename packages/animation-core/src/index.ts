@@ -300,6 +300,8 @@ export interface AnimationRenderJob {
   controls: AnimationShot["controls"];
   referenceFrameTimes: number[];
   outputPrefix: string;
+  characterBible?: CharacterBibleRef;
+  styleBible?: StyleBibleRef;
 }
 
 export function createRenderJobs(plan: AnimationPlan): AnimationRenderJob[] {
@@ -317,6 +319,8 @@ export function createRenderJobs(plan: AnimationPlan): AnimationRenderJob[] {
     controls: shot.controls,
     referenceFrameTimes: shot.referenceFrameTimes,
     outputPrefix: `generated/animation/${plan.projectId}/shots/${shot.id}`,
+    ...(plan.characterBible ? { characterBible: plan.characterBible } : {}),
+    ...(plan.styleBible ? { styleBible: plan.styleBible } : {}),
   }));
 }
 
@@ -372,3 +376,15 @@ export async function queueComfyWorkflow(workflow: Record<string, unknown>, opti
   if (typeof value.prompt_id !== "string" || !value.prompt_id) throw new Error("ComfyUI response did not include prompt_id.");
   return { promptId: value.prompt_id, endpoint };
 }
+
+export async function comfyPromptHistory(promptId: string, options: { endpoint?: string; timeoutMs?: number } = {}): Promise<unknown> {
+  if (!promptId?.trim()) throw new Error("ComfyUI prompt id is required.");
+  const endpoint = validateLocalComfyEndpoint(options.endpoint);
+  const response = await fetch(`${endpoint}/history/${encodeURIComponent(promptId.trim())}`, {
+    signal: AbortSignal.timeout(options.timeoutMs ?? 10000),
+  });
+  if (!response.ok) throw new Error(`ComfyUI history request failed with HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
+  return response.json();
+}
+
+export * from "./workflow";
