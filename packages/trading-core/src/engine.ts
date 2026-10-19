@@ -60,6 +60,8 @@ export class Btc15mPaperEngine {
   private async settleOpenIfReady(nowMs: number): Promise<SettledPaperPosition | undefined> {
     const open = this.ledger.openPosition();
     if (!open) return undefined;
+    const closeMs = Date.parse(open.eventEndTime);
+    if (!Number.isFinite(closeMs) || nowMs < closeMs + 5_000) return undefined;
 
     // The public settlement endpoint may not be ready immediately after close. A failed read
     // is non-fatal and will be retried on the next tick.
@@ -67,7 +69,6 @@ export class Btc15mPaperEngine {
       const settlement = await this.polymarket.settlement(open.marketSlug);
       return this.ledger.settle(open, settlement);
     } catch {
-      void nowMs;
       return undefined;
     }
   }
