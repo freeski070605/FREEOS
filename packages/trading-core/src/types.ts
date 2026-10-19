@@ -69,6 +69,44 @@ export interface StrategyDecision {
   reason: string;
 }
 
+export interface ObservationRecord {
+  eventSlug: string;
+  eventStartTime: string;
+  eventEndTime: string;
+  upMarketSlug: string;
+  downMarketSlug: string;
+  marketStructure: MarketStructure;
+  observedAt: string;
+  secondsLeft: number;
+  proxyOpenTwap: number;
+  proxyCurrent: number;
+  logDistance: number;
+  sigmaPerSqrtSecond: number;
+  sampleCount: number;
+  pUp: number;
+  pDown: number;
+  upBid: number | null;
+  upAsk: number | null;
+  downBid: number | null;
+  downAsk: number | null;
+  upMid: number | null;
+  decisionAction: StrategyDecision["action"];
+  decisionSide?: TradeSide;
+  decisionReason: string;
+  adjustedEdge?: number;
+}
+
+export interface EventOutcomeRecord {
+  eventSlug: string;
+  eventEndTime: string;
+  marketStructure: MarketStructure;
+  upMarketSlug: string;
+  downMarketSlug: string;
+  resolvedAt: string;
+  upSettlement: number;
+  downSettlement: number;
+}
+
 export interface PaperPosition {
   id: string;
   eventSlug: string;
