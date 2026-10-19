@@ -45,8 +45,8 @@ export class KrakenReferenceFeed {
   }
 
   async openingProxyTwap(intervalStartMs: number): Promise<number> {
-    // Chunk the official-looking one-minute opening window so a busy BTC tape cannot silently
-    // truncate the minute to Kraken's 1,000-row response limit.
+    // Chunk the resolution-aligned one-minute opening proxy window so a busy BTC tape cannot
+    // silently truncate the minute to Kraken's 1,000-row response limit.
     const points: PricePoint[] = [];
     const windowStart = intervalStartMs - 60_000;
     for (let chunkStart = windowStart; chunkStart < intervalStartMs; chunkStart += 10_000) {
