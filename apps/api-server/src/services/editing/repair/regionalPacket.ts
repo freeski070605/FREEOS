@@ -68,12 +68,13 @@ export function buildRegionalRepairPacket(input: {
     return Object.entries(item.targetSupport).some(([clip, refs]) => clip !== active && refs.length);
   });
   const switches = region.current.slice(1).map((decision, index) => ({ id: `s${index}`, at: decision.start, clipId: decision.clipId }));
-  const operationSchema: JsonObject = { type: "object", additionalProperties: false, required: ["outcome", "operations"], properties: { outcome: { const: "repair" }, operations: { type: "array", minItems: 1, maxItems: 32, items: { oneOf: [
-    { type: "object", additionalProperties: false, required: ["operation", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "add-switch" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
-    { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "replace-destination" }, existingSwitchId: { type: "string" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
-    { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "move-switch" }, existingSwitchId: { type: "string" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
-    { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId"], properties: { operation: { const: "remove-switch" }, existingSwitchId: { type: "string" } } },
-  ] } } } };
+  const operationSchema: JsonObject = { type: "object", additionalProperties: false, required: ["outcome", "operations"], properties: { outcome: { const: "repair" }, operations: { type: "array", minItems: 1, maxItems: 32, items: {
+    type: "object", additionalProperties: false, required: ["operation"], properties: {
+      operation: { enum: ["add-switch", "remove-switch", "move-switch", "replace-destination"] },
+      existingSwitchId: { type: "string" }, candidateId: { type: "string" }, destinationClipId: { type: "string" },
+      creativeIntent: { enum: [...creativeIntents] },
+    },
+  } } } };
   const declineSchema: JsonObject = { type: "object", additionalProperties: false,
     required: ["outcome", "basis"], properties: { outcome: { const: "decline" },
       reason: { enum: ["current-shot-preferred", "candidate-support-too-weak", "pacing-change-would-overcorrect"] },
@@ -170,7 +171,7 @@ export function resolveRegionalOperations(response: unknown, packet: ReturnType<
   for (const raw of operations) {
     if (!raw || typeof raw !== "object") throw new SectionValidationError("structure", "Invalid repair operation.");
     const op = raw as JsonObject, operation = op.operation;
-    if (!["add-switch", "remove-switch", "move-switch", "replace-destination"].includes(String(operation))) throw new SectionValidationError("structure", "Unsupported repair operation.");
+    if (!["add-switch", "remove-switch", "move-switch", "replace-destination"].includes(String(operation))) throw new SectionValidationError("structure", `Unsupported repair operation ${JSON.stringify(operation)}. Allowed operations: add-switch, remove-switch, move-switch, replace-destination.`);
     const allowedFields = new Set(["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"]);
     if (Object.keys(op).some((key) => !allowedFields.has(key))) throw new SectionValidationError("structure", "Repair operation contains unsupported fields.");
     const existingId = op.existingSwitchId;
