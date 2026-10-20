@@ -11,7 +11,7 @@ export interface TradingTickResult {
   snapshot?: TradingSnapshot;
   decision?: StrategyDecision;
   opened?: PaperPosition;
-  settled?: SettledPaperPosition;
+  settled?: SettledPaperPosition[];
   resolvedOutcomes?: EventOutcomeRecord[];
   message: string;
 }
@@ -79,26 +79,42 @@ export class Btc15mPaperEngine {
     return { marketStructure: "distinct-outcomes", up, down };
   }
 
-  private async settleOpenIfReady(nowMs: number): Promise<SettledPaperPosition | undefined> {
-    const open = this.ledger.openPosition();
-    if (!open) return undefined;
-    const closeMs = Date.parse(open.eventEndTime);
-    if (!Number.isFinite(closeMs) || nowMs < closeMs + 5_000) return undefined;
+  private sideSettlementFromOutcome(position: PaperPosition, outcome: EventOutcomeRecord): number {
+    return position.side === "UP" ? outcome.upSettlement : outcome.downSettlement;
+  }
 
-    // Old paper records created before market-structure tracking cannot be settled safely.
-    if (!open.marketStructure) return undefined;
+  private async settleOpenPositionsIfReady(nowMs: number, maxPerTick = 12): Promise<SettledPaperPosition[]> {
+    const ready = this.ledger.openPositions()
+      .filter(position => {
+        const closeMs = Date.parse(position.eventEndTime);
+        return Number.isFinite(closeMs) && nowMs >= closeMs + 5_000 && Boolean(position.marketStructure);
+      })
+      .slice(0, Math.max(1, maxPerTick));
 
-    // The public settlement endpoint may not be ready immediately after close. A failed read
-    // is non-fatal and will be retried on the next tick.
-    try {
-      const rawSettlement = await this.polymarket.settlement(open.marketSlug);
-      const sideSettlement = open.marketStructure === "shared-binary" && open.side === "DOWN"
-        ? 1 - rawSettlement
-        : rawSettlement;
-      return this.ledger.settle(open, sideSettlement);
-    } catch {
-      return undefined;
+    if (!ready.length) return [];
+    const outcomeByEvent = new Map(this.observations.outcomes().map(outcome => [outcome.eventSlug, outcome]));
+    const settled: SettledPaperPosition[] = [];
+
+    for (const position of ready) {
+      try {
+        const recordedOutcome = outcomeByEvent.get(position.eventSlug);
+        if (recordedOutcome) {
+          settled.push(this.ledger.settle(position, this.sideSettlementFromOutcome(position, recordedOutcome)));
+          continue;
+        }
+
+        const rawSettlement = await this.polymarket.settlement(position.marketSlug);
+        const sideSettlement = position.marketStructure === "shared-binary" && position.side === "DOWN"
+          ? 1 - rawSettlement
+          : rawSettlement;
+        settled.push(this.ledger.settle(position, sideSettlement));
+      } catch {
+        // Settlement publication can lag or an old market lookup can fail. Do not let one
+        // unresolved position block newer positions from being settled on this tick.
+      }
     }
+
+    return settled;
   }
 
   private async resolveObservedEventsIfReady(nowMs: number): Promise<EventOutcomeRecord[]> {
@@ -140,10 +156,11 @@ export class Btc15mPaperEngine {
   }
 
   async tick(nowMs = Date.now()): Promise<TradingTickResult> {
-    const [settled, resolvedOutcomes] = await Promise.all([
-      this.settleOpenIfReady(nowMs),
-      this.resolveObservedEventsIfReady(nowMs),
-    ]);
+    // Resolve event truth first so old paper positions can use the locally recorded outcome
+    // instead of depending on historical settlement endpoints remaining immediately available.
+    const resolvedOutcomes = await this.resolveObservedEventsIfReady(nowMs);
+    const settled = await this.settleOpenPositionsIfReady(nowMs);
+
     const event = await this.polymarket.discoverCurrentBtc15m(nowMs);
     const eventEndMs = Date.parse(event.endTime);
     if (!Number.isFinite(eventEndMs)) throw new Error(`Invalid event end time for ${event.slug}.`);
