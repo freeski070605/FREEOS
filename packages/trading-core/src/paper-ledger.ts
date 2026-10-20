@@ -37,14 +37,20 @@ export class PaperLedger {
     appendFileSync(this.ledgerPath, `${JSON.stringify(record)}\n`, "utf8");
   }
 
-  openPosition(eventSlug?: string): PaperPosition | null {
+  openPositions(eventSlug?: string): PaperPosition[] {
     const open = new Map<string, PaperPosition>();
     for (const record of this.records()) {
       if (record.type === "PAPER_OPEN") open.set(record.position.id, record.position);
       else open.delete(record.position.id);
     }
-    const positions = [...open.values()].sort((a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt));
-    return positions.find(position => !eventSlug || position.eventSlug === eventSlug) ?? null;
+    return [...open.values()]
+      .filter(position => !eventSlug || position.eventSlug === eventSlug)
+      .sort((a, b) => Date.parse(a.openedAt) - Date.parse(b.openedAt));
+  }
+
+  openPosition(eventSlug?: string): PaperPosition | null {
+    const positions = this.openPositions(eventSlug);
+    return positions.at(-1) ?? null;
   }
 
   hasTradedEvent(eventSlug: string): boolean {
