@@ -4,7 +4,7 @@ import { critiqueTimeline, type CriticContext, type EditorialFinding } from "../
 
 export interface RepairRegion { start: number; end: number; finding: EditorialFinding; current: EditingDecision[]; before: EditingDecision[]; after: EditingDecision[]; openingClipId: string; priorDecision?: EditingDecision; nextDecision?: EditingDecision; exitClipBeforeRepair: string }
 export type RepairDeclineReason = "current-shot-preferred" | "candidate-support-too-weak" | "pacing-change-would-overcorrect";
-export type RepairProposal = { outcome: "repair"; operations: JsonObject[]; decisions: EditingDecision[] } |
+export type RepairProposal = { outcome: "repair"; switches: JsonObject[]; decisions: EditingDecision[] } |
   { outcome: "decline"; reason: RepairDeclineReason; basis: "neighboring-micro-shots" | "limited-destination-support" | "current-hold-and-user-intent" } |
   { outcome: "decline"; declineReason: RepairDeclineReason; basis: "neighboring-micro-shots" | "limited-destination-support" | "current-hold-and-user-intent" };
 
@@ -94,6 +94,31 @@ export function repairEffectPlausible(before: EditingDecision[], after: EditingD
   return JSON.stringify(prior) !== JSON.stringify(next);
 }
 
+export function regionalSwitchDiff(before: EditingDecision[], after: EditingDecision[]) {
+  const old = before.slice(1).map((item) => ({ at: item.start, clipId: item.clipId }));
+  const next = after.slice(1).map((item) => ({ at: item.start, clipId: item.clipId }));
+  const remainingOld = [...old], remainingNext = [...next];
+  let moved = 0, destinationChanged = 0;
+  for (const current of [...remainingOld]) {
+    const index = remainingNext.findIndex((item) => Math.abs(item.at - current.at) <= 0.001);
+    if (index < 0) continue;
+    if (remainingNext[index].clipId !== current.clipId) destinationChanged++;
+    remainingOld.splice(remainingOld.indexOf(current), 1);
+    remainingNext.splice(index, 1);
+  }
+  for (const current of [...remainingOld]) {
+    const index = remainingNext.findIndex((item) => item.clipId === current.clipId);
+    if (index < 0) continue;
+    moved++;
+    remainingOld.splice(remainingOld.indexOf(current), 1);
+    remainingNext.splice(index, 1);
+  }
+  while (remainingOld.length && remainingNext.length) {
+    remainingOld.shift(); remainingNext.shift(); moved++; destinationChanged++;
+  }
+  return { added: remainingNext.length, removed: remainingOld.length, moved, destinationChanged };
+}
+
 export async function runGlobalEditorialRepair(input: {
   decisions: EditingDecision[]; videos: JsonObject[]; candidates: JsonObject[]; boundaries: number[];
   context: CriticContext; maxPasses: number;
@@ -152,7 +177,7 @@ export async function runGlobalEditorialRepair(input: {
       viableCandidateCount, supportedDestinationCount, repairRegionNeighborShotDurations: neighboringDurations,
       switchesBefore: Math.max(0, region.current.length - 1), switchesAfter: Math.max(0, region.current.length - 1), repairApplied: false,
       requestedFindingCode: region.finding.code, requiredEditorialEffect: region.finding.code === "long-stretch" ? "meaningfully alter pacing inside the flagged uninterrupted region" : region.finding.code === "mechanical-alternation" ? "break the detected repetitive source pattern" : region.finding.code === "micro-shot-abuse" ? "reduce excessive short-shot concentration" : "change the timeline structure relevant to the flagged finding",
-      modelOutcome: null, operationCount: 0, semanticTimelineChanged: false, declineReason: null, criticFindingAfterRepair: null };
+      modelOutcome: null, operationCount: 0, switchDiff: { added: 0, removed: 0, moved: 0, destinationChanged: 0 }, semanticTimelineChanged: false, declineReason: null, criticFindingAfterRepair: null };
     regionLogs.push(regionLog);
     if (input.context.candidateSupport !== undefined && !viableCandidateCount && region.current.length === 1) {
       const message = `editorial-limitation: no viable supported alternate camera in region ${region.start}-${region.end}.`;
@@ -184,15 +209,17 @@ export async function runGlobalEditorialRepair(input: {
           break;
         }
         globalRepairRepairOutcomes++;
-        regionLog.operationCount = replacement.operations.length;
         const repaired = replacement.decisions;
-        if (!replacement.operations.length || !repaired.length) throw new Error("repair-contract: semantic operation and regional coverage required.");
+        if (!repaired.length) throw new Error("repair-contract: regional coverage required.");
         if (Math.abs(repaired[0].start - region.start) > 0.01 || Math.abs(repaired.at(-1)!.end - region.end) > 0.01) throw new Error("Repair changed regional coverage.");
         const assembled = reconcileRegionalTimeline([...region.before, ...repaired, ...region.after]);
         validateAssembledTimeline(assembled, input.videos);
         // A downstream decision that becomes a same-camera handoff is normalized by assembly.
         const changed = semanticTimeline(assembled) !== semanticTimeline(decisions);
         regionLog.switchesAfter = Math.max(0, repaired.length - 1);
+        const switchDiff = regionalSwitchDiff(region.current, repaired);
+        regionLog.switchDiff = switchDiff;
+        regionLog.operationCount = switchDiff.added + switchDiff.removed + switchDiff.moved + switchDiff.destinationChanged;
         regionLog.semanticTimelineChanged = changed;
         const effect = changed && repairEffectPlausible(decisions, assembled, region.finding);
         if (!effect) {

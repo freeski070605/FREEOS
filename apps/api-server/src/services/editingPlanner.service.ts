@@ -23,7 +23,7 @@ import { runBoundedPlanRepair, PlanRepairError } from "./editing/repair/planRepa
 import { buildSectionPacket, estimatePromptTokens, resolveSectionChoices } from "./editing/planning/sectionPacket";
 import { buildCandidateSupportIndex } from "./editing/evidence/targetSupport";
 import { runGlobalEditorialRepair, normalizeRegionalSwitches, repairEffectPlausible, reconcileRegionalTimeline } from "./editing/repair/globalEditorialRepair";
-import { buildRegionalRepairPacket, resolveRegionalOperations, resolveRegionalDecline } from "./editing/repair/regionalPacket";
+import { buildRegionalRepairPacket, resolveRegionalSwitches, resolveRegionalDecline } from "./editing/repair/regionalPacket";
 import { deterministicOpening, availableOpeningClips } from "./editing/planning/openingState";
 
 export class EditorialQualityGateError extends Error {
@@ -676,7 +676,7 @@ Return only schema-valid JSON.`;
       const localCandidates = allCandidateEditMoments.filter((item) => number(item.at, NaN) >= region.start && number(item.at, NaN) < region.end);
       const localCatalog = [...canonicalEvidence.values()];
       const previousClipId = region.openingClipId;
-      const system = `You are FREEOS's global editorial repair editor. This material finding is an editorial repair mandate when it conflicts with explicit user intent and supported alternatives exist. Return exactly one outcome: repair with at least one relevant semantic timeline operation, or decline with a constrained editorial reason and fact-backed basis. Allowed repair operation tokens are exactly: add-switch, remove-switch, move-switch, replace-destination. These are literal protocol values. Never invent synonyms such as change-camera, change-destination, insert-cut, delete-cut, etc. Use the finding, user intent, current holds, neighboring shot durations, and warnings to balance pacing without overcorrection. You choose how many cuts, where to put them, and their supported destinations. Opening clip is existing state. Use supplied candidate IDs, supported destination clip IDs, and existing switch IDs. Never supply times, evidence IDs, or invented factual prose. Factual evidence is attached and validated by the system. Return schema-valid JSON.`;
+      const system = `You are FREEOS's global editorial repair editor. This material finding is an editorial repair mandate when it conflicts with explicit user intent and supported alternatives exist. Return exactly one outcome: repair with switches as the complete desired set of creative switches inside the region, or decline with a constrained editorial reason and fact-backed basis. The deterministic opening continuation is excluded from switches. Use the finding, user intent, current holds, neighboring shot durations, and warnings to balance pacing without overcorrection. Choose grounded candidate moments, supported destination cameras, and creative intent. An empty set is valid only if removing every current switch changes the timeline and plausibly addresses the finding. Use supplied candidate IDs and supported destination clip IDs. Never supply times, evidence IDs, or invented factual prose. Factual evidence is attached and validated by the system. Return schema-valid JSON.`;
       const nearbyStart = region.before.at(-3)?.start ?? region.start;
       const nearbyEnd = region.after[2]?.end ?? region.end;
       const packet = buildRegionalRepairPacket({ region, findings: findings.filter((finding) => finding.start < region.end && finding.end > region.start ||
@@ -685,7 +685,7 @@ Return only schema-valid JSON.`;
       globalRepairPacketTelemetry.push(packet.telemetry);
       const seenRepairFailures = new Set<string>();
       const repaired = await runBoundedPlanRepair({ maxAttempts: 2,
-        generate: async (_attempt, previous) => { const prompt = { ...packet.packet, ...(noOpRetry || previous ? { contractRetry: "Previous response did not satisfy the repair contract. Choose outcome=repair with at least one meaningful supported timeline operation, or outcome=decline with a constrained reason and supported basis. Allowed repair operation tokens are exactly: add-switch, remove-switch, move-switch, replace-destination. These are literal protocol values. Never invent synonyms such as change-camera, change-destination, insert-cut, delete-cut, etc." } : {}), ...(previous ? { validationDiagnostic: previous.message.slice(0, 500) } : {}) };
+        generate: async (_attempt, previous) => { const prompt = { ...packet.packet, ...(noOpRetry || previous ? { contractRetry: "Previous response did not satisfy the repair contract. Return the complete desired set of grounded regional switches, or a constrained decline. The set must change the timeline and plausibly address the finding." } : {}), ...(previous ? { validationDiagnostic: previous.message.slice(0, 500) } : {}) };
           if (estimatePromptTokens(system) + estimatePromptTokens(prompt) + estimatePromptTokens(packet.schema) + 256 > packet.budget.finalInputBudget)
             throw new Error("global-repair-context-budget: retry diagnostic exceeds input budget.");
           reportModelAttempt(); return callModel({ system,
@@ -694,7 +694,7 @@ Return only schema-valid JSON.`;
         validate: (response) => {
           const parsed = asObject(JSON.parse(String(response)), "global repair response");
           if (parsed.outcome === "decline") return resolveRegionalDecline(parsed, packet, region);
-          const resolved = resolveRegionalOperations(parsed, packet, region);
+          const resolved = resolveRegionalSwitches(parsed, packet, region);
           const normalized = normalizeRegionalSwitches(resolved, region.start, region.openingClipId);
           globalRepairBoundaryNoOpsRemoved += normalized.boundaryNoOpsRemoved;
           const decisions = validateSectionSwitches(undefined, normalized.switches, allowedClipIds,
@@ -706,12 +706,12 @@ Return only schema-valid JSON.`;
           }
           const assembled = reconcileRegionalTimeline([...region.before, ...decisions, ...region.after]);
           if (!repairEffectPlausible(normalizedDecisions, assembled, region.finding)) throw new SectionValidationError("structure", "repair-contract: proposal does not affect the targeted finding.");
-          return { outcome: "repair" as const, operations: parsed.operations as JsonObject[], decisions };
+          return { outcome: "repair" as const, switches: parsed.switches as JsonObject[], decisions };
         },
         classify: (error) => error instanceof SectionValidationError ? error.category : error instanceof Error && error.message.startsWith("global-repair-context-budget") ? "context-budget" : "structure",
         onFailure: (diagnostic) => {
           if (diagnostic.category === "context-budget") return;
-          if (diagnostic.category === "structure" && (/repair.contract|outcome=repair|requires operations|constrained outcome|Unsupported repair operation/i.test(diagnostic.message))) globalRepairInnerContractFailures++;
+          if (diagnostic.category === "structure" && (/repair.contract|outcome=repair|requires.*switch|constrained outcome/i.test(diagnostic.message))) globalRepairInnerContractFailures++;
           globalRepairInnerValidationFailures++;
           telemetry.validationFailures[diagnostic.category] = (telemetry.validationFailures[diagnostic.category] ?? 0) + 1;
           if (diagnostic.category === "target-grounding") { telemetry.targetGroundingFailures++; globalRepairTargetGroundingFailures++; }
