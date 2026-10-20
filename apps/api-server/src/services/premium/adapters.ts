@@ -11,12 +11,14 @@ const videoSkills: SkillDefinition[] = [
   { ...skill("video.edit.repair", "repair", "Apply bounded global editorial repair", "editing-core.global-repair"), repairParameterSchema: { strength: { type: "number", min: 0, max: 1 } } },
   skill("video.render.inspect", "inspection", "Inspect a rendered video", "adobe-worker.media-analysis", [], ["render-inspection"]),
   skill("video.render.review", "render", "Produce a review-quality render for analysis", "adobe-worker.review-render", [], ["video-review-render"]),
+  skill("video.render.final", "render", "Produce final delivery only after accepted rendered review", "adobe-worker.final-render", [], ["final-delivery"]),
   skill("video.color.basic-correction", "color", "Apply safe basic color correction", "adobe-worker.color-correction", [], ["video-color-adjusted"]),
   skill("video.reframe", "edit", "Reframe footage within safe bounds", "adobe-worker.reframe", [], ["reframed-video"]),
   skill("video.transition.zoom", "transition", "Apply a safe zoom transition", "adobe-worker.transition", [], ["video-transition"]),
   skill("video.effect.rgb-split", "effect", "Apply an rgb-split effect", "adobe-worker.effect", [], ["effect-rgb-split"]),
   skill("video.effect.flash", "effect", "Apply a flash effect", "adobe-worker.effect", [], ["effect-flash"]),
   skill("video.effect.temporal-echo", "effect", "Apply a temporal echo", "adobe-worker.effect", [], ["effect-temporal-echo"]),
+  { ...skill("video.effect.remove", "repair", "Remove one inspected effect component from one working-sequence clip", "adobe-worker.effect-remove", [], ["video-review-render"]), repairParameterSchema: { trackIndex: { type: "number", min: 0, max: 63 }, clipStart: { type: "number", min: 0, max: 7200 }, clipEnd: { type: "number", min: 0, max: 7200 }, componentMatchName: { type: "string", maxLength: 200 } } },
   skill("video.finish", "finishing", "Finish color, sound, graphics and delivery", "adobe-worker.approved-execution", [], ["final-delivery"]),
 ];
 
@@ -25,7 +27,7 @@ export function mapVideoFinding(finding: EditorialFinding, artifactId: string, i
 }
 export function reviewEditingPlan(plan: EditingPlan, artifact: Artifact): EvaluationResult {
   const findings = (plan.evidence.finalCriticFindings ?? plan.evidence.editorialFindings ?? []).map((f, i) => mapVideoFinding(f as EditorialFinding, artifact.artifactId, i));
-  return { id: randomUUID(), evaluatorId: "video.editing-core.plan-critic", artifactId: artifact.artifactId, reviewType: "plan", dimensionScores: [], findings, evidence: [{ decisionCount: plan.decisions.length, globalRepairPasses: plan.evidence.globalRepairPasses ?? 0, evidenceRefs: plan.decisions.flatMap(d => d.evidenceRefs ?? []) }], confidence: 1, status: "complete", source: "editing-core" };
+  return { id: randomUUID(), evaluatorId: "video.editing-core.plan-critic", artifactId: artifact.artifactId, reviewType: "plan", dimensionScores: [{ dimensionId: "editorial", score: findings.some(f => f.severity === "material" || f.severity === "blocking") ? .3 : 1, confidence: 1, measurementType: "editorial-critic" }], findings, evidence: [{ decisionCount: plan.decisions.length, globalRepairPasses: plan.evidence.globalRepairPasses ?? 0, evidenceRefs: plan.decisions.flatMap(d => d.evidenceRefs ?? []) }], confidence: 1, status: "complete", source: "editing-core" };
 }
 export function makeReviewRenderArtifact(artifactId: string, sourceArtifactIds: string[], previousVersionId?: string): Artifact {
   return { artifactId, type: "video-review-render", domain: "video", sourceArtifacts: sourceArtifactIds, version: previousVersionId ? 2 : 1, status: "produced", lineage: { sourceArtifactIds, operation: "video.render.review", evaluationIds: [], ...(previousVersionId ? { previousVersionId } : {}) } };
@@ -60,7 +62,7 @@ export const videoAdapter: PremiumDomainAdapter = {
   },
   buildPipelineStages: profile => [...profile.requiredStages, "accepted", "delivered"],
   getSkills: () => videoSkills,
-  getEvaluators: (): EvaluatorDefinition[] => [{ id: "video.editing-core.plan-critic", domain: "video", dimensions: ["editorial"], supportedArtifactTypes: ["edit-plan"], measurementType: "editorial-critic", evaluate: () => { throw new Error("Editing Core plan critic requires a completed EditingPlan; use reviewEditingPlan."); } }, { id: "video.render.review-analyzer", domain: "video", dimensions: ["render", "color"], supportedArtifactTypes: ["video-review-render", "final-delivery"], measurementType: "video-analysis", evaluate: (artifact, _profile) => renderedVideoAnalyzer({ artifactId: artifact.artifactId, blackLevel: 0.14, contrast: 0.78, sharpness: 0.78, brightness: 0.5, audioPresent: true, effectDensity: 0.4 }) }],
+  getEvaluators: (): EvaluatorDefinition[] => [{ id: "video.editing-core.plan-critic", domain: "video", dimensions: ["editorial"], supportedArtifactTypes: ["edit-plan"], measurementType: "editorial-critic", evaluate: () => { throw new Error("Editing Core plan critic requires a completed EditingPlan; use reviewEditingPlan."); } }, { id: "video.render.review-analyzer", domain: "video", dimensions: ["render", "artifact-integrity", "audio-quality"], supportedArtifactTypes: ["video-review-render", "final-delivery"], measurementType: "video-analysis", evaluate: () => { throw new Error("Rendered video review requires actual ffprobe and decoded frame measurements; use evaluateRenderQuality."); } }],
   getFinishers: () => ["video.finish"],
   getBenchmarks: (): BenchmarkDefinition[] => [{ id: "video.render.review-benchmark", domain: "video", fixture: "low-contrast haze", qualityTarget: "premium", expectedProperties: ["low-contrast-haze detection", "technical render review"], regressionRules: ["do-not-accept-plan-only-review"] }],
 };

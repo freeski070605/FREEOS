@@ -1,4 +1,14 @@
 import { spawn } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { resolve } from "node:path";
+const execFileAsync = promisify(execFile);
+export async function analyzeRenderQuality(path: string, sampleFps = 1): Promise<unknown> {
+  const python = process.env.FREEOS_VIDEO_PYTHON || process.env.FREEOS_AUDIO_PYTHON || resolve(__dirname, "../.venv/Scripts/python.exe");
+  const script = resolve(__dirname, "../python/render_quality.py");
+  const { stdout } = await execFileAsync(python, [script, path, String(sampleFps)], { timeout: 900000, maxBuffer: 24_000_000, windowsHide: true });
+  return JSON.parse(stdout);
+}
 export { analyzeAudio, audioBackendStatus, runBounded } from "./audio/analyzeAudio";
 export { parseAudioAnalysis, type AudioAnalysis } from "./audio/types";
 export { analyzeVideo, videoBackendStatus } from "./video/analyzeVideo";

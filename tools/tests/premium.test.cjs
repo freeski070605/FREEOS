@@ -2,6 +2,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const core = require('../../apps/api-server/dist/services/premium/core.js');
 const { videoAdapter, codingAdapter, mapVideoFinding, reviewEditingPlan } = require('../../apps/api-server/dist/services/premium/adapters.js');
+const { premiumVideoGate } = require('../../apps/api-server/dist/services/premium/iteration.js');
+const { effectDensityReview } = require('../../apps/api-server/dist/services/premium/renderQuality.js');
 
 const registry = () => { const r = new core.PremiumRegistry(); r.registerAdapter(videoAdapter); r.registerAdapter(codingAdapter); return r; };
 const profile = (target = 'professional') => videoAdapter.buildProductionProfile('test edit', target);
@@ -48,4 +50,40 @@ test('finishing is a separate approved stage with lineage', async () => {
   const executor={authorize:()=>true,execute:async()=>({...artifact('b',2,['a']),generatedBySkill:'video.finish',generatedByCapability:'c'})};
   await core.runFinishing(x,x.artifacts[0],'video.finish','c',r,executor);
   assert.equal(x.currentStage,'finishing'); assert.equal(x.artifacts.length,2);
+});
+test('premium video gate requires an actual registered render analysis', () => {
+  const x = run();
+  core.addArtifact(x, artifact('plan'));
+  x.evaluations.push({ ...evaluation('plan-review', [], [{ dimensionId: 'editorial', score: 1, confidence: 1, measurementType: 'critic' }], 'plan'), artifactId: 'plan' });
+  assert.equal(premiumVideoGate(x).outcome, 'FAIL');
+  const review = { ...artifact('review'), type: 'video-review-render', reference: 'review-v1.mp4', metadata: { probe: { width: 320 } } };
+  core.addArtifact(x, review);
+  x.videoIteration = { stage: 'accepted', artifactId: 'review' };
+  x.evaluations.push({ ...evaluation('render-review', [], [{ dimensionId: 'render', score: 1, confidence: 1, measurementType: 'pixels' }, { dimensionId: 'artifact-integrity', score: 1, confidence: 1, measurementType: 'ffprobe' }]), evaluatorId: 'video.render.review-analyzer', artifactId: 'review', source: 'real-render-quality' });
+  assert.equal(premiumVideoGate(x).outcome, 'PASS');
+  x.videoIteration.stage = 'rendering-review';
+  assert.equal(premiumVideoGate(x).outcome, 'FAIL');
+});
+test('registered render evaluator refuses preset metrics and executor defaults to unapproved', async () => {
+  assert.throws(() => videoAdapter.getEvaluators().find(e => e.id === 'video.render.review-analyzer').evaluate(artifact('review'), profile()), /actual ffprobe/);
+  const r = registry();
+  r.registerCapability({ id: 'render', provider: 'test', type: 'render', domains: ['video'], taskTypes: ['render'], localOrRemote: 'local', available: true, qualityProfile: 1, speedProfile: 1, costProfile: 0, supportedInputs: [], supportedOutputs: [], limitations: [] });
+  r.registerExecutor({ id: 'adobe-worker.review-render', supportedSkills: ['video.render.review'], supportedCapabilities: ['render'], riskLevel: 'medium', requiresApproval: true, execute: async () => { throw Error('should not run'); } });
+  await assert.rejects(() => core.executeSkillWithApproval(r, 'video.render.review', 'render', artifact('review'), {}), /approval required/);
+});
+test('effect removal repair is registered and bounded to an inspected target', () => {
+  const r = registry(), x = run(); core.addArtifact(x, artifact());
+  r.registerCapability({ id: 'adobe', provider: 'Adobe', type: 'repair', domains: ['video'], taskTypes: ['repair'], localOrRemote: 'local', available: true, qualityProfile: 1, speedProfile: 1, costProfile: 0, supportedInputs: [], supportedOutputs: [], limitations: [] });
+  const repair = { id: 'effect-remove', findingIds: ['haze'], skillId: 'video.effect.remove', capabilityId: 'adobe', inputArtifactIds: ['a'], parameters: { trackIndex: 0, clipStart: 1, clipEnd: 2, componentMatchName: 'ADBE Gaussian Blur' }, expectedQualityEffect: 'remove inspected blur' };
+  core.validateRepairPlan({ repairs: [repair] }, [finding('haze', 'material')], x, r);
+  assert.throws(() => core.validateRepairPlan({ repairs: [{ ...repair, parameters: { ...repair.parameters, clipEnd: 8000 } }] }, [finding('haze')], x, r), /Unbounded/);
+  assert.throws(() => core.validateRepairPlan({ repairs: [{ ...repair, parameters: { ...repair.parameters, componentMatchName: 'x'.repeat(201) } }] }, [finding('haze')], x, r), /Unbounded/);
+});
+test('effect density review respects style intent and preserves lineage metrics', () => {
+  const media = { ...artifact('effects'), metadata: { effectExecutions: Array.from({ length: 6 }, (_, i) => ({ skillId: 'video.effect.flash', timelineStart: i, timelineEnd: i + .2 })) } };
+  const ordinary = effectDensityReview(media, 10, 'quiet interview');
+  const stylized = effectDensityReview(media, 10, 'rapid glitch music video');
+  assert.equal(ordinary.metrics.flashFrequency, .6);
+  assert.equal(ordinary.findings[0].severity, 'material');
+  assert.equal(stylized.findings.length, 0);
 });

@@ -8,6 +8,9 @@ import { CONTROL_KEYS, OBSERVATION_KEYS } from "@freeos/computer-core";
 type Row = Record<string, unknown>;
 
 export const DEFAULT_TOOLS: Array<Omit<ToolDefinition, "id" | "createdAt" | "updatedAt">> = [
+  { toolKey: "premium.video.review-render", name: "Premium video review render", description: "Export an explicit Premiere sequence to a versioned review file.", category: "premium", riskLevel: "medium_risk", enabled: true, requiresApproval: true },
+  { toolKey: "premium.video.final-render", name: "Premium video final render", description: "Export an accepted Premiere sequence to a separate delivery file.", category: "premium", riskLevel: "medium_risk", enabled: true, requiresApproval: true },
+  { toolKey: "premium.video.effect-remove", name: "Remove inspected video effect", description: "Remove one explicitly inspected effect component from one working sequence clip.", category: "premium", riskLevel: "medium_risk", enabled: true, requiresApproval: true },
   { toolKey: "media.audio.analyze", name: "Analyze audio", description: "Read song timing, dynamics, transients, silence, and loudness from the AIO media worker. Requires an allowed AIO file path.", category: "media", riskLevel: "read_only", enabled: true, requiresApproval: false },
   { toolKey: "media.video.analyze", name: "Analyze video", description: "Read sampled visual evidence including sharpness, exposure, motion, scene changes, and face framing from the AIO media worker. Requires an allowed AIO file path.", category: "media", riskLevel: "read_only", enabled: true, requiresApproval: false },
   ...["agents.status", "agents.templates.list", "agents.list", "agents.get", "agents.run.preview", "agents.runs.list", "agents.run.get"].map(toolKey => ({ toolKey, name: toolKey, description: "Project-specific agent inspection or preview.", category: "agents", riskLevel: "read_only" as ToolRiskLevel, enabled: true, requiresApproval: false })),
