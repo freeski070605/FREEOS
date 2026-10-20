@@ -15,6 +15,13 @@ export function qualityTarget(value: unknown): QualityTarget {
 export interface QualityDimension { id: string; description: string; importance: number; required: boolean; threshold?: number }
 export interface ProductionProfile { domain: string; targetQuality: QualityTarget; userIntent: string; requiredStages: Stage[]; optionalStages: Stage[]; domainStages?: string[]; qualityDimensions: QualityDimension[]; constraints: { maxCost?: number; maxLatencyMs?: number; localOnly?: boolean; allowedCapabilityIds?: string[] }; allowedRepairIterations: number; deliveryRequirements: string[] }
 export interface SkillDefinition { id: string; domain: string; category: string; description: string; inputSchema: Record<string, unknown>; outputSchema: Record<string, unknown>; repairParameterSchema?: Record<string, { type: "string" | "number" | "boolean"; min?: number; max?: number; choices?: string[] }>; qualityCapabilities: string[]; requiredCapabilities: string[]; executorId: string; prerequisites: string[]; producesArtifacts: string[]; evaluationHints: string[]; academyTags?: string[] }
+export type ExecutorRiskLevel = "low" | "medium" | "high" | "critical";
+export const EXECUTION_STATES = ["awaiting-approval", "approved", "executing", "completed", "failed", "cancelled"] as const;
+export type ExecutionState = typeof EXECUTION_STATES[number];
+export interface ExecutorContext { runId?: string; taskId?: string; skillId: string; capabilityId?: string; artifactId?: string; stage: Stage; parameters: Record<string, string | number | boolean>; inputArtifacts?: string[]; }
+export interface SkillExecutionResult { executionId: string; skillId: string; capabilityId?: string; success: boolean; producedArtifacts: Artifact[]; modifiedArtifacts: Artifact[]; warnings: string[]; errors: string[]; telemetry: Record<string, unknown>; executedAt: string; }
+export interface ExecutorDefinition { id: string; supportedSkills: string[]; supportedCapabilities: string[]; riskLevel: ExecutorRiskLevel; requiresApproval: boolean; execute: (context: ExecutorContext) => Promise<SkillExecutionResult> | SkillExecutionResult; }
+export interface ExecutionRecord { id: string; skillId: string; capabilityId?: string; runId?: string; state: ExecutionState; createdAt: string; updatedAt: string; approvedBy?: string; approvalReason?: string; result?: SkillExecutionResult; }
 export interface CapabilityDefinition { id: string; provider: string; type: string; domains: string[]; taskTypes: string[]; localOrRemote: "local" | "remote"; available: boolean; qualityProfile: number; speedProfile: number; costProfile: number; hardwareRequirements?: string[]; supportedInputs: string[]; supportedOutputs: string[]; limitations: string[]; benchmarkScore?: number; healthCheck?: () => boolean }
 export interface ArtifactLineage { sourceArtifactIds: string[]; operation: string; skillId?: string; capabilityId?: string; evaluationIds: string[]; repairId?: string; previousVersionId?: string }
 export interface Artifact { artifactId: string; type: string; domain: string; reference?: string; mimeType?: string; sourceArtifacts: string[]; generatedBySkill?: string; generatedByCapability?: string; version: number; status: "planned" | "produced" | "inspected" | "accepted" | "rejected"; qualityState?: string; lineage: ArtifactLineage }
@@ -48,15 +55,19 @@ export class PremiumRegistry {
   readonly evaluators = new Map<string, EvaluatorDefinition>();
   readonly benchmarks = new Map<string, BenchmarkDefinition>();
   readonly academy = new Map<string, AcademyKnowledge>();
+  readonly executors = new Map<string, ExecutorDefinition>();
   registerDomain(adapter: PremiumDomainAdapter): void { if (!adapter.domainId || this.domains.has(adapter.domainId)) throw new Error("Duplicate or empty domain."); this.domains.set(adapter.domainId, adapter); }
-  registerSkill(skill: SkillDefinition): void { if (!this.domains.has(skill.domain)) throw new Error("Unknown skill domain."); unique(this.skills, skill); }
+  registerSkill(skill: SkillDefinition): void { if (!this.domains.has(skill.domain)) throw new Error("Unknown skill domain."); if (this.executors.size > 0 && !this.executors.has(skill.executorId)) throw new Error(`Unknown executor: ${skill.executorId}`); unique(this.skills, skill); }
   registerCapability(capability: CapabilityDefinition): void { unique(this.capabilities, capability); }
   registerEvaluator(evaluator: EvaluatorDefinition): void { if (!this.domains.has(evaluator.domain)) throw new Error("Unknown evaluator domain."); unique(this.evaluators, evaluator); }
   registerBenchmark(benchmark: BenchmarkDefinition): void { if (!this.domains.has(benchmark.domain)) throw new Error("Unknown benchmark domain."); unique(this.benchmarks, benchmark); }
   registerAcademyKnowledge(item: AcademyKnowledge): void { unique(this.academy, item); }
+  registerExecutor(executor: ExecutorDefinition): void { if (!executor.id || this.executors.has(executor.id)) throw new Error("Duplicate or empty executor."); this.executors.set(executor.id, executor); }
   knowledgeForSkill(skillId: string): AcademyKnowledge[] { const skill = this.requireSkill(skillId); return [...this.academy.values()].filter(k => k.domain === skill.domain && k.retrievalTags.some(t => skill.academyTags?.includes(t))); }
   requireSkill(id: string): SkillDefinition { const skill = this.skills.get(id); if (!skill) throw new Error(`Unknown skill: ${id}`); return skill; }
   requireCapability(id: string): CapabilityDefinition { const capability = this.capabilities.get(id); if (!capability) throw new Error(`Unknown capability: ${id}`); return capability; }
+  requireExecutor(id: string): ExecutorDefinition { const executor = this.executors.get(id); if (!executor) throw new Error(`Unknown executor: ${id}`); return executor; }
+  executorForSkill(skillId: string): ExecutorDefinition { const skill = this.requireSkill(skillId); return this.requireExecutor(skill.executorId); }
   registerAdapter(adapter: PremiumDomainAdapter): void { this.registerDomain(adapter); for (const skill of adapter.getSkills()) this.registerSkill(skill); for (const evaluator of adapter.getEvaluators()) this.registerEvaluator(evaluator); for (const benchmark of adapter.getBenchmarks()) this.registerBenchmark(benchmark); }
 }
 
@@ -90,6 +101,25 @@ export function addArtifact(run: PremiumPipelineRun, artifact: Artifact): void {
   for (const id of artifact.sourceArtifacts) if (!run.artifacts.some(a => a.artifactId === id)) throw new Error("Unknown source artifact.");
   if (artifact.lineage.previousVersionId) { const prior = run.artifacts.find(a => a.artifactId === artifact.lineage.previousVersionId); if (!prior || artifact.version !== prior.version + 1) throw new Error("Invalid artifact version lineage."); }
   run.artifacts.push(artifact); run.telemetry.artifactVersions[artifact.artifactId] = artifact.version;
+}
+export async function executeSkillWithApproval(registry: PremiumRegistry, skillId: string, capabilityId: string, artifact: Artifact, parameters: Record<string, string | number | boolean>, stage: Stage = "production", approvalState: ExecutionState = "approved", options: { runId?: string; taskId?: string; approvalReason?: string; approvedBy?: string } = {}): Promise<SkillExecutionResult> {
+  const skill = registry.requireSkill(skillId);
+  const capability = registry.requireCapability(capabilityId);
+  if (artifact.domain !== skill.domain || !capability.domains.includes(artifact.domain)) throw new Error("Skill or capability domain mismatch.");
+  const executor = registry.requireExecutor(skill.executorId);
+  if (!executor.supportedSkills.includes(skill.id) || !executor.supportedCapabilities.includes(capabilityId)) throw new Error("Executor does not support the requested skill or capability.");
+  if (executor.requiresApproval && approvalState !== "approved") throw new Error("Execution approval required.");
+  const result = await executor.execute({ runId: options.runId, taskId: options.taskId, skillId: skill.id, capabilityId, artifactId: artifact.artifactId, stage, parameters, inputArtifacts: artifact.sourceArtifacts });
+  if (!result || typeof result.success !== "boolean") throw new Error("Invalid execution result.");
+  if (result.skillId !== skill.id) result.skillId = skill.id;
+  if (result.capabilityId !== capabilityId) result.capabilityId = capabilityId;
+  if (!result.executedAt) result.executedAt = new Date().toISOString();
+  if (!Array.isArray(result.producedArtifacts)) result.producedArtifacts = [];
+  if (!Array.isArray(result.modifiedArtifacts)) result.modifiedArtifacts = [];
+  if (!Array.isArray(result.warnings)) result.warnings = [];
+  if (!Array.isArray(result.errors)) result.errors = [];
+  if (!result.executionId) result.executionId = randomUUID();
+  return result;
 }
 export function aggregateEvaluations(results: EvaluationResult[]): { dimensions: Record<string, { score: number; confidence: number; measurementTypes: string[] }>; findings: QualityFinding[] } {
   const groups = new Map<string, DimensionScore[]>();
