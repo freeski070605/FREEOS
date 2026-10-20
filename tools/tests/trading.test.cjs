@@ -151,6 +151,41 @@ test("observation log tracks unresolved events until an outcome is recorded", ()
   }
 });
 
+test("paper ledger exposes every unsettled position instead of only the newest", () => {
+  const dir = mkdtempSync(join(tmpdir(), "freeos-trading-ledger-"));
+  try {
+    const ledger = new PaperLedger(dir);
+    const first = snapshot().event;
+    const second = {
+      ...snapshot().event,
+      id: 2,
+      slug: "btc-updown-15m-test-2",
+      startTime: new Date(900_000).toISOString(),
+      endTime: new Date(1_800_000).toISOString(),
+      upMarket: { ...snapshot().event.upMarket, id: 21, slug: "up-2" },
+      downMarket: { ...snapshot().event.downMarket, id: 22, slug: "down-2" },
+    };
+    const decision = {
+      action: "BUY",
+      side: "UP",
+      marketSlug: "up",
+      modelProbability: 0.66,
+      executablePrice: 0.5,
+      rawEdge: 0.16,
+      adjustedEdge: 0.16,
+      notionalUsd: 5,
+      reason: "test",
+    };
+    const firstPosition = ledger.open(decision, first, risk);
+    ledger.open({ ...decision, marketSlug: "up-2" }, second, risk);
+    assert.equal(ledger.openPositions().length, 2);
+    ledger.settle(firstPosition, 1);
+    assert.equal(ledger.openPositions().length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("analytics measures calibration and settled paper PnL", () => {
   const dir = mkdtempSync(join(tmpdir(), "freeos-trading-analytics-"));
   try {

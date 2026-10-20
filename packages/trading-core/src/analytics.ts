@@ -34,6 +34,7 @@ export interface TradingAnalyticsSummary {
   paper: {
     opened: number;
     settled: number;
+    pending: number;
     wins: number;
     losses: number;
     pushes: number;
@@ -141,6 +142,8 @@ export function buildAnalyticsSummary(dataDir: string): TradingAnalyticsSummary 
   const settlements = ledgerRecords
     .filter((record): record is SettleEnvelope => record.type === "PAPER_SETTLE")
     .map(record => record.position);
+  const settledIds = new Set(settlements.map(position => position.id));
+  const pending = opens.filter(position => !settledIds.has(position.id)).length;
   const wins = settlements.filter(position => position.pnlUsd > 1e-9).length;
   const losses = settlements.filter(position => position.pnlUsd < -1e-9).length;
   const pushes = settlements.length - wins - losses;
@@ -161,6 +164,7 @@ export function buildAnalyticsSummary(dataDir: string): TradingAnalyticsSummary 
     paper: {
       opened: opens.length,
       settled: settlements.length,
+      pending,
       wins,
       losses,
       pushes,
