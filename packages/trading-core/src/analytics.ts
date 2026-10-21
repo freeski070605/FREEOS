@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { EventOutcomeRecord, ObservationRecord, PaperPosition, SettledPaperPosition } from "./types";
+import type { EventOutcomeRecord, ObservationRecord, PaperPosition, SettledPaperPosition, TradeSide } from "./types";
 
 interface ObservationEnvelope { type: "OBSERVATION"; observation: ObservationRecord }
 interface OutcomeEnvelope { type: "EVENT_OUTCOME"; outcome: EventOutcomeRecord }
@@ -23,6 +23,30 @@ export interface TimeBucketStats extends CalibrationStats {
   bucket: string;
 }
 
+export interface PaperPerformanceStats {
+  settled: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  totalNotionalUsd: number;
+  totalPnlUsd: number;
+  roi: number | null;
+  winRate: number | null;
+  avgFillPrice: number | null;
+  avgModelProbability: number | null;
+  avgAdjustedEdge: number | null;
+  modelExpectedPnlUsd: number;
+  modelExpectedRoi: number | null;
+}
+
+export interface PaperBucketStats extends PaperPerformanceStats {
+  bucket: string;
+}
+
+export interface PaperSideStats extends PaperPerformanceStats {
+  side: TradeSide;
+}
+
 export interface TradingAnalyticsSummary {
   generatedAt: string;
   latestObservationAt: string | null;
@@ -33,19 +57,14 @@ export interface TradingAnalyticsSummary {
   resolvedObservations: number;
   overall: CalibrationStats;
   byTimeRemaining: TimeBucketStats[];
-  paper: {
+  paper: PaperPerformanceStats & {
     opened: number;
-    settled: number;
     pending: number;
     pendingWithKnownOutcome: number;
     pendingWithoutKnownOutcome: number;
-    wins: number;
-    losses: number;
-    pushes: number;
-    totalNotionalUsd: number;
-    totalPnlUsd: number;
-    roi: number | null;
-    winRate: number | null;
+    byEntryTimeRemaining: PaperBucketStats[];
+    byEntryPrice: PaperBucketStats[];
+    bySide: PaperSideStats[];
   };
 }
 
@@ -83,7 +102,16 @@ function bucketFor(secondsLeft: number): string {
   return "0-2m";
 }
 
+function entryPriceBucket(price: number): string {
+  if (price < 0.20) return "<20c";
+  if (price < 0.40) return "20-40c";
+  if (price < 0.60) return "40-60c";
+  if (price < 0.80) return "60-80c";
+  return "80c+";
+}
+
 const BUCKET_ORDER = ["14-15m", "12-14m", "10-12m", "8-10m", "6-8m", "4-6m", "2-4m", "0-2m"];
+const PRICE_BUCKET_ORDER = ["<20c", "20-40c", "40-60c", "60-80c", "80c+"];
 
 function calibration(rows: Array<{ observation: ObservationRecord; outcome: EventOutcomeRecord }>): CalibrationStats {
   const brier: number[] = [];
@@ -113,6 +141,45 @@ function calibration(rows: Array<{ observation: ObservationRecord; outcome: Even
     marketBrier: round(mean(marketBrier)),
     avgAbsModelMarketGap: round(mean(gaps)),
   };
+}
+
+function paperPerformance(positions: SettledPaperPosition[]): PaperPerformanceStats {
+  const wins = positions.filter(position => position.pnlUsd > 1e-9).length;
+  const losses = positions.filter(position => position.pnlUsd < -1e-9).length;
+  const pushes = positions.length - wins - losses;
+  const totalNotionalUsd = positions.reduce((sum, position) => sum + position.notionalUsd, 0);
+  const totalPnlUsd = positions.reduce((sum, position) => sum + position.pnlUsd, 0);
+  const modelExpectedPnlUsd = positions.reduce((sum, position) => {
+    const expectedPayout = position.shares * position.modelProbability;
+    return sum + expectedPayout - position.notionalUsd;
+  }, 0);
+
+  return {
+    settled: positions.length,
+    wins,
+    losses,
+    pushes,
+    totalNotionalUsd: round(totalNotionalUsd, 2) ?? 0,
+    totalPnlUsd: round(totalPnlUsd, 2) ?? 0,
+    roi: totalNotionalUsd > 0 ? round(totalPnlUsd / totalNotionalUsd) : null,
+    winRate: positions.length > 0 ? round(wins / positions.length) : null,
+    avgFillPrice: round(mean(positions.map(position => position.fillPrice))),
+    avgModelProbability: round(mean(positions.map(position => position.modelProbability))),
+    avgAdjustedEdge: round(mean(positions.map(position => position.adjustedEdge))),
+    modelExpectedPnlUsd: round(modelExpectedPnlUsd, 2) ?? 0,
+    modelExpectedRoi: totalNotionalUsd > 0 ? round(modelExpectedPnlUsd / totalNotionalUsd) : null,
+  };
+}
+
+function groupPaperByBucket(
+  positions: SettledPaperPosition[],
+  keys: string[],
+  keyFor: (position: SettledPaperPosition) => string,
+): PaperBucketStats[] {
+  return keys.map(bucket => ({
+    bucket,
+    ...paperPerformance(positions.filter(position => keyFor(position) === bucket)),
+  }));
 }
 
 export function buildAnalyticsSummary(dataDir: string): TradingAnalyticsSummary {
@@ -151,11 +218,6 @@ export function buildAnalyticsSummary(dataDir: string): TradingAnalyticsSummary 
   const pendingPositions = opens.filter(position => !settledIds.has(position.id));
   const pendingWithKnownOutcome = pendingPositions.filter(position => outcomeByEvent.has(position.eventSlug)).length;
   const pendingWithoutKnownOutcome = pendingPositions.length - pendingWithKnownOutcome;
-  const wins = settlements.filter(position => position.pnlUsd > 1e-9).length;
-  const losses = settlements.filter(position => position.pnlUsd < -1e-9).length;
-  const pushes = settlements.length - wins - losses;
-  const totalNotionalUsd = settlements.reduce((sum, position) => sum + position.notionalUsd, 0);
-  const totalPnlUsd = settlements.reduce((sum, position) => sum + position.pnlUsd, 0);
 
   const latestObservationAt = observations.length
     ? observations.reduce((latest, observation) => Date.parse(observation.observedAt) > Date.parse(latest) ? observation.observedAt : latest, observations[0].observedAt)
@@ -164,6 +226,25 @@ export function buildAnalyticsSummary(dataDir: string): TradingAnalyticsSummary 
   const observationAgeSeconds = Number.isFinite(latestObservationMs)
     ? round(Math.max(0, (nowMs - latestObservationMs) / 1000), 1)
     : null;
+
+  const aggregatePaper = paperPerformance(settlements);
+  const byEntryTimeRemaining = groupPaperByBucket(
+    settlements,
+    BUCKET_ORDER,
+    position => {
+      const endMs = Date.parse(position.eventEndTime);
+      const openedMs = Date.parse(position.openedAt);
+      const secondsLeft = Number.isFinite(endMs) && Number.isFinite(openedMs)
+        ? Math.max(0, (endMs - openedMs) / 1000)
+        : 0;
+      return bucketFor(secondsLeft);
+    },
+  );
+  const byEntryPrice = groupPaperByBucket(settlements, PRICE_BUCKET_ORDER, position => entryPriceBucket(position.fillPrice));
+  const bySide: PaperSideStats[] = (["UP", "DOWN"] as const).map(side => ({
+    side,
+    ...paperPerformance(settlements.filter(position => position.side === side)),
+  }));
 
   return {
     generatedAt: new Date(nowMs).toISOString(),
@@ -180,17 +261,13 @@ export function buildAnalyticsSummary(dataDir: string): TradingAnalyticsSummary 
     })),
     paper: {
       opened: opens.length,
-      settled: settlements.length,
+      ...aggregatePaper,
       pending: pendingPositions.length,
       pendingWithKnownOutcome,
       pendingWithoutKnownOutcome,
-      wins,
-      losses,
-      pushes,
-      totalNotionalUsd: round(totalNotionalUsd, 2) ?? 0,
-      totalPnlUsd: round(totalPnlUsd, 2) ?? 0,
-      roi: totalNotionalUsd > 0 ? round(totalPnlUsd / totalNotionalUsd) : null,
-      winRate: settlements.length > 0 ? round(wins / settlements.length) : null,
+      byEntryTimeRemaining,
+      byEntryPrice,
+      bySide,
     },
   };
 }
