@@ -27,7 +27,15 @@ export function defaultTradingConfig(): TradingEngineConfig {
       minAdjustedEdge: 0.05,
       maxNotionalUsd: 5,
       maxSpread: 0.06,
+      // V2 paper experiment: only consider entries from 6:00 down to 1:15 remaining.
+      // Initial paper data showed much stronger probability calibration late in the market,
+      // while most realized losses came from earlier entries. This is intentionally still
+      // a research gate, not a claim of live profitability.
       minSecondsToExpiry: 75,
+      maxSecondsToExpiry: 360,
+      // Initial paper trades below 40c were 0-for-6. Exclude those longshot entries while
+      // gathering a clean late-window sample; this can be revisited with more data.
+      minExecutablePrice: 0.40,
       maxDailyLossUsd: 20,
       maxConsecutiveLosses: 4,
       // Conservative model friction buffer; it is not a claim about Polymarket's fee formula.
