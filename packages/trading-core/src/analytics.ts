@@ -25,6 +25,8 @@ export interface TimeBucketStats extends CalibrationStats {
 
 export interface TradingAnalyticsSummary {
   generatedAt: string;
+  latestObservationAt: string | null;
+  observationAgeSeconds: number | null;
   observations: number;
   eventsObserved: number;
   eventsResolved: number;
@@ -35,6 +37,8 @@ export interface TradingAnalyticsSummary {
     opened: number;
     settled: number;
     pending: number;
+    pendingWithKnownOutcome: number;
+    pendingWithoutKnownOutcome: number;
     wins: number;
     losses: number;
     pushes: number;
@@ -112,6 +116,7 @@ function calibration(rows: Array<{ observation: ObservationRecord; outcome: Even
 }
 
 export function buildAnalyticsSummary(dataDir: string): TradingAnalyticsSummary {
+  const nowMs = Date.now();
   const directory = resolve(dataDir);
   const observationRecords = readJsonl<ObservationFileRecord>(join(directory, "btc15m-observations.jsonl"));
   const ledgerRecords = readJsonl<LedgerFileRecord>(join(directory, "btc15m-paper-ledger.jsonl"));
@@ -143,15 +148,27 @@ export function buildAnalyticsSummary(dataDir: string): TradingAnalyticsSummary 
     .filter((record): record is SettleEnvelope => record.type === "PAPER_SETTLE")
     .map(record => record.position);
   const settledIds = new Set(settlements.map(position => position.id));
-  const pending = opens.filter(position => !settledIds.has(position.id)).length;
+  const pendingPositions = opens.filter(position => !settledIds.has(position.id));
+  const pendingWithKnownOutcome = pendingPositions.filter(position => outcomeByEvent.has(position.eventSlug)).length;
+  const pendingWithoutKnownOutcome = pendingPositions.length - pendingWithKnownOutcome;
   const wins = settlements.filter(position => position.pnlUsd > 1e-9).length;
   const losses = settlements.filter(position => position.pnlUsd < -1e-9).length;
   const pushes = settlements.length - wins - losses;
   const totalNotionalUsd = settlements.reduce((sum, position) => sum + position.notionalUsd, 0);
   const totalPnlUsd = settlements.reduce((sum, position) => sum + position.pnlUsd, 0);
 
+  const latestObservationAt = observations.length
+    ? observations.reduce((latest, observation) => Date.parse(observation.observedAt) > Date.parse(latest) ? observation.observedAt : latest, observations[0].observedAt)
+    : null;
+  const latestObservationMs = latestObservationAt ? Date.parse(latestObservationAt) : Number.NaN;
+  const observationAgeSeconds = Number.isFinite(latestObservationMs)
+    ? round(Math.max(0, (nowMs - latestObservationMs) / 1000), 1)
+    : null;
+
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt: new Date(nowMs).toISOString(),
+    latestObservationAt,
+    observationAgeSeconds,
     observations: observations.length,
     eventsObserved: new Set(observations.map(observation => observation.eventSlug)).size,
     eventsResolved: outcomes.length,
@@ -164,7 +181,9 @@ export function buildAnalyticsSummary(dataDir: string): TradingAnalyticsSummary 
     paper: {
       opened: opens.length,
       settled: settlements.length,
-      pending,
+      pending: pendingPositions.length,
+      pendingWithKnownOutcome,
+      pendingWithoutKnownOutcome,
       wins,
       losses,
       pushes,
