@@ -14,11 +14,24 @@ Paper-mode research and execution framework for Polymarket US **BTC Up or Down 1
 - Aligns the opening proxy to the one-minute window immediately preceding the market start.
 - Estimates Up/Down probability from price distance to the opening proxy, recent one-second volatility, and seconds remaining.
 - Compares model probability with the executable Polymarket ask after configurable friction and slippage buffers.
-- Paper-trades only when the adjusted edge clears the configured threshold.
 - Persists opens and settlements to a JSONL ledger.
 - Logs every successful 5-second market/model observation, not only trades.
 - Resolves every observed event after settlement is published so model calibration can be measured even when FREEOS passed.
-- Enforces one position per event, spread/time gates, a daily loss stop, and a consecutive-loss stop.
+- Enforces one position per event, spread/time/price gates, a daily loss stop, and a consecutive-loss stop.
+
+## Current paper strategy: v2 late-window value
+
+The first 47 settled paper positions exposed a large gap between model-implied edge and realized P&L. The model was strongest late in the contract, while most actual positions had already been opened much earlier because of the one-position-per-event rule. Cheap contracts also performed poorly in the first sample.
+
+The v2 paper experiment therefore changes **entry selection only** while leaving the observation stream unchanged:
+
+- do not open before `6:00` remains;
+- do not open inside the final `1:15`;
+- do not buy an effective contract price below `40c`;
+- keep the existing `5%` minimum adjusted-edge gate;
+- continue observing the full 15-minute window every 5 seconds.
+
+These are experimental paper gates based on a small initial sample. They are not claims of profitability and must be evaluated on fresh out-of-sample events.
 
 ## Resolution truth vs. signal proxy
 
@@ -68,15 +81,16 @@ npm run analyze --workspace @freeos/trading-core
 
 The report includes:
 
-- number of observations and observed/resolved events;
+- observation freshness and event counts;
 - Brier score and log loss for model calibration;
 - directional accuracy;
 - Polymarket midpoint Brier score when a two-sided quote was available;
 - average absolute disagreement between FREEOS probability and the market midpoint;
-- calibration split into `14-15m`, `12-14m`, `10-12m`, `8-10m`, `6-8m`, `4-6m`, `2-4m`, and `0-2m` time-remaining buckets;
-- paper trades opened/settled, wins/losses, total P&L, ROI, and win rate.
+- calibration by time remaining;
+- paper P&L, ROI, win rate, model-expected P&L, and pending settlement diagnostics;
+- paper performance by entry time remaining, entry price, and side.
 
-Do not interpret tiny samples as evidence of an edge. The point of the observation stream is to accumulate enough resolved windows to compare model behavior by time remaining and disagreement size before changing strategy rules.
+Do not interpret tiny samples as evidence of an edge. The point of the observation stream is to accumulate enough resolved windows to compare model behavior and realized trade performance before changing strategy rules again.
 
 ## Paper-mode controls
 
@@ -86,7 +100,9 @@ Do not interpret tiny samples as evidence of an edge. The point of the observati
 | `FREEOS_TRADING_MIN_EDGE` | `0.05` | Minimum adjusted probability edge |
 | `FREEOS_TRADING_PAPER_NOTIONAL_USD` | `5` | Paper notional per qualifying event |
 | `FREEOS_TRADING_MAX_SPREAD` | `0.06` | Maximum allowed bid/ask spread |
-| `FREEOS_TRADING_MIN_SECONDS_TO_EXPIRY` | `75` | No new positions inside this window |
+| `FREEOS_TRADING_MAX_SECONDS_TO_EXPIRY` | `360` | Wait until 6:00 or less remains before opening |
+| `FREEOS_TRADING_MIN_SECONDS_TO_EXPIRY` | `75` | No new positions inside the final 1:15 |
+| `FREEOS_TRADING_MIN_EXECUTABLE_PRICE` | `0.40` | Reject paper buys below 40c effective price |
 | `FREEOS_TRADING_MAX_DAILY_PAPER_LOSS_USD` | `20` | Daily paper P&L circuit breaker |
 | `FREEOS_TRADING_MAX_CONSECUTIVE_LOSSES` | `4` | Loss-streak circuit breaker |
 | `FREEOS_TRADING_FRICTION_BPS` | `75` | Conservative model friction buffer |
