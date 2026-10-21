@@ -58,6 +58,8 @@ const risk = {
   maxNotionalUsd: 5,
   maxSpread: 0.06,
   minSecondsToExpiry: 75,
+  maxSecondsToExpiry: 360,
+  minExecutablePrice: 0.40,
   maxDailyLossUsd: 20,
   maxConsecutiveLosses: 4,
   frictionBps: 0,
@@ -82,7 +84,7 @@ test("shared binary short quote is complementary to the long book", () => {
   assert.equal(down.bestAsk, 0.97);
 });
 
-test("strategy buys the side with sufficient adjusted edge", () => {
+test("strategy buys the side with sufficient adjusted edge inside v2 entry window", () => {
   const decision = decideTrade(snapshot(), risk, {
     realizedPnlTodayUsd: 0,
     consecutiveLosses: 0,
@@ -124,6 +126,37 @@ test("strategy refuses new entries too close to expiry", () => {
   });
   assert.equal(decision.action, "PASS");
   assert.match(decision.reason, /too close/i);
+});
+
+test("strategy waits until the configured late-entry window", () => {
+  const s = snapshot();
+  s.probability = { ...s.probability, remainingSeconds: 500 };
+  const decision = decideTrade(s, risk, {
+    realizedPnlTodayUsd: 0,
+    consecutiveLosses: 0,
+    alreadyTradedEvent: false,
+  });
+  assert.equal(decision.action, "PASS");
+  assert.match(decision.reason, /late-entry window/i);
+});
+
+test("strategy rejects sub-40c longshot entries in the v2 paper policy", () => {
+  const s = snapshot({
+    up: quote("up", 0.31, 0.32),
+    down: quote("down", 0.68, 0.69),
+    probability: {
+      ...snapshot().probability,
+      pUp: 0.39,
+      pDown: 0.61,
+      remainingSeconds: 300,
+    },
+  });
+  const decision = decideTrade(s, risk, {
+    realizedPnlTodayUsd: 0,
+    consecutiveLosses: 0,
+    alreadyTradedEvent: false,
+  });
+  assert.notEqual(decision.side, "UP");
 });
 
 test("observation log tracks unresolved events until an outcome is recorded", () => {
