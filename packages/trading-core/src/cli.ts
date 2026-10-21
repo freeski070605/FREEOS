@@ -21,6 +21,8 @@ function buildEngine(): Btc15mPaperEngine {
   config.risk.maxNotionalUsd = envNumber("FREEOS_TRADING_PAPER_NOTIONAL_USD", config.risk.maxNotionalUsd);
   config.risk.maxSpread = envNumber("FREEOS_TRADING_MAX_SPREAD", config.risk.maxSpread);
   config.risk.minSecondsToExpiry = envNumber("FREEOS_TRADING_MIN_SECONDS_TO_EXPIRY", config.risk.minSecondsToExpiry);
+  config.risk.maxSecondsToExpiry = envNumber("FREEOS_TRADING_MAX_SECONDS_TO_EXPIRY", config.risk.maxSecondsToExpiry);
+  config.risk.minExecutablePrice = envNumber("FREEOS_TRADING_MIN_EXECUTABLE_PRICE", config.risk.minExecutablePrice);
   config.risk.maxDailyLossUsd = envNumber("FREEOS_TRADING_MAX_DAILY_PAPER_LOSS_USD", config.risk.maxDailyLossUsd);
   config.risk.maxConsecutiveLosses = envNumber("FREEOS_TRADING_MAX_CONSECUTIVE_LOSSES", config.risk.maxConsecutiveLosses);
   config.risk.frictionBps = envNumber("FREEOS_TRADING_FRICTION_BPS", config.risk.frictionBps);
@@ -61,8 +63,14 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({
     service: "FREEOS BTC15M Trader",
     mode: "paper",
+    strategy: "v2-late-window-value",
     ledger: engine.ledger.ledgerPath,
     observations: engine.observations.logPath,
+    entryWindowSeconds: {
+      min: engine.config.risk.minSecondsToExpiry,
+      max: engine.config.risk.maxSecondsToExpiry,
+    },
+    minExecutablePrice: engine.config.risk.minExecutablePrice,
     startupReconcile: {
       pendingBefore: repair.pendingBefore,
       repaired: repair.repaired,
