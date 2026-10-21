@@ -1,4 +1,5 @@
 import { Btc15mPaperEngine, defaultTradingConfig } from "./engine";
+import { reconcilePaperLedgerFromRecordedOutcomes } from "./reconcile";
 
 function envNumber(name: string, fallback: number): number {
   const raw = process.env[name]?.trim();
@@ -43,7 +44,7 @@ function printTick(result: Awaited<ReturnType<Btc15mPaperEngine["tick"]>>): void
     downAsk: result.snapshot?.down.bestAsk,
     decision: result.decision,
     opened: result.opened,
-    settled: result.settled,
+    settled: result.settled?.length ? result.settled : undefined,
     resolvedOutcomes: result.resolvedOutcomes?.length ? result.resolvedOutcomes : undefined,
     message: result.message,
   };
@@ -52,11 +53,23 @@ function printTick(result: Awaited<ReturnType<Btc15mPaperEngine["tick"]>>): void
 
 async function main(): Promise<void> {
   const engine = buildEngine();
+
+  // Always reconcile from already-recorded outcomes before any network-dependent work.
+  // This clears stranded paper positions deterministically on every restart.
+  const repair = reconcilePaperLedgerFromRecordedOutcomes(engine.config.dataDir);
+
   console.log(JSON.stringify({
     service: "FREEOS BTC15M Trader",
     mode: "paper",
     ledger: engine.ledger.ledgerPath,
     observations: engine.observations.logPath,
+    startupReconcile: {
+      pendingBefore: repair.pendingBefore,
+      repaired: repair.repaired,
+      pendingAfter: repair.pendingAfter,
+      pendingWithKnownOutcomeAfter: repair.pendingWithKnownOutcomeAfter,
+      pendingWithoutKnownOutcomeAfter: repair.pendingWithoutKnownOutcomeAfter,
+    },
     liveExecution: false,
   }));
 
