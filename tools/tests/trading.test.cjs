@@ -9,6 +9,7 @@ const { btc15mProbability } = require("../../packages/trading-core/dist/model.js
 const { ObservationLog } = require("../../packages/trading-core/dist/observation-log.js");
 const { PaperLedger } = require("../../packages/trading-core/dist/paper-ledger.js");
 const { complementBinaryQuote } = require("../../packages/trading-core/dist/polymarket-us-public.js");
+const { reconcilePaperLedgerFromRecordedOutcomes } = require("../../packages/trading-core/dist/reconcile.js");
 const { decideTrade } = require("../../packages/trading-core/dist/strategy.js");
 
 function quote(marketSlug, bid, ask) {
@@ -186,6 +187,46 @@ test("paper ledger exposes every unsettled position instead of only the newest",
   }
 });
 
+test("reconciliation settles pending positions from already-recorded outcomes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "freeos-trading-reconcile-"));
+  try {
+    const s = snapshot();
+    const log = new ObservationLog(dir);
+    log.appendObservation(s, { action: "PASS", reason: "test" });
+    log.appendOutcome({
+      eventSlug: s.event.slug,
+      eventEndTime: s.event.endTime,
+      marketStructure: s.marketStructure,
+      upMarketSlug: s.event.upMarket.slug,
+      downMarketSlug: s.event.downMarket.slug,
+      resolvedAt: new Date(906_000).toISOString(),
+      upSettlement: 1,
+      downSettlement: 0,
+    });
+
+    const ledger = new PaperLedger(dir);
+    ledger.open({
+      action: "BUY",
+      side: "UP",
+      marketSlug: "up",
+      modelProbability: 0.66,
+      executablePrice: 0.5,
+      rawEdge: 0.16,
+      adjustedEdge: 0.16,
+      notionalUsd: 5,
+      reason: "test",
+    }, s.event, risk);
+
+    const result = reconcilePaperLedgerFromRecordedOutcomes(dir);
+    assert.equal(result.pendingBefore, 1);
+    assert.equal(result.repaired, 1);
+    assert.equal(result.pendingAfter, 0);
+    assert.equal(new PaperLedger(dir).openPositions().length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("analytics measures calibration and settled paper PnL", () => {
   const dir = mkdtempSync(join(tmpdir(), "freeos-trading-analytics-"));
   try {
@@ -223,6 +264,8 @@ test("analytics measures calibration and settled paper PnL", () => {
     assert.equal(summary.overall.n, 1);
     assert.equal(summary.overall.brier, 0.1156);
     assert.equal(summary.paper.settled, 1);
+    assert.equal(summary.paper.pending, 0);
+    assert.equal(summary.paper.pendingWithKnownOutcome, 0);
     assert.equal(summary.paper.wins, 1);
     assert.equal(summary.paper.totalPnlUsd, 5);
   } finally {
