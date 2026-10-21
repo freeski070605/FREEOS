@@ -6,4 +6,5 @@ export * from "./strategy";
 export * from "./paper-ledger";
 export * from "./observation-log";
 export * from "./analytics";
+export * from "./reconcile";
 export * from "./engine";
