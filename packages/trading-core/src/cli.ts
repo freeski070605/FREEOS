@@ -17,7 +17,10 @@ function buildEngine(): Btc15mPaperEngine {
 
   const config = defaultTradingConfig();
   config.pollMs = envNumber("FREEOS_TRADING_POLL_MS", config.pollMs);
-  config.risk.minAdjustedEdge = envNumber("FREEOS_TRADING_MIN_EDGE", config.risk.minAdjustedEdge);
+  // V3 paper profile: the chronological train/validation replay selected a 10% edge
+  // threshold on training data, and that rule remained positive on the newer holdout.
+  // Keep this as a paper-only research profile; callers can still override it explicitly.
+  config.risk.minAdjustedEdge = envNumber("FREEOS_TRADING_MIN_EDGE", 0.10);
   config.risk.maxNotionalUsd = envNumber("FREEOS_TRADING_PAPER_NOTIONAL_USD", config.risk.maxNotionalUsd);
   config.risk.maxSpread = envNumber("FREEOS_TRADING_MAX_SPREAD", config.risk.maxSpread);
   config.risk.minSecondsToExpiry = envNumber("FREEOS_TRADING_MIN_SECONDS_TO_EXPIRY", config.risk.minSecondsToExpiry);
@@ -63,7 +66,7 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({
     service: "FREEOS BTC15M Trader",
     mode: "paper",
-    strategy: "v2-late-window-value",
+    strategy: "v3-late-window-10pct-edge",
     ledger: engine.ledger.ledgerPath,
     observations: engine.observations.logPath,
     entryWindowSeconds: {
@@ -71,6 +74,7 @@ async function main(): Promise<void> {
       max: engine.config.risk.maxSecondsToExpiry,
     },
     minExecutablePrice: engine.config.risk.minExecutablePrice,
+    minAdjustedEdge: engine.config.risk.minAdjustedEdge,
     startupReconcile: {
       pendingBefore: repair.pendingBefore,
       repaired: repair.repaired,
