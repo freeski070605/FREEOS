@@ -136,6 +136,8 @@ export interface TradingRiskConfig {
   maxNotionalUsd: number;
   maxSpread: number;
   minSecondsToExpiry: number;
+  maxSecondsToExpiry: number;
+  minExecutablePrice: number;
   maxDailyLossUsd: number;
   maxConsecutiveLosses: number;
   frictionBps: number;
