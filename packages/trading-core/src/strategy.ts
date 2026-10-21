@@ -25,8 +25,19 @@ export function decideTrade(snapshot: TradingSnapshot, config: TradingRiskConfig
   if (state.consecutiveLosses >= config.maxConsecutiveLosses) {
     return { action: "PASS", reason: "Consecutive-loss circuit breaker is active." };
   }
-  if (snapshot.probability.remainingSeconds < config.minSecondsToExpiry) {
+
+  const minSecondsToExpiry = Number.isFinite(config.minSecondsToExpiry) ? config.minSecondsToExpiry : 0;
+  const maxSecondsToExpiry = Number.isFinite(config.maxSecondsToExpiry) ? config.maxSecondsToExpiry : Number.POSITIVE_INFINITY;
+  const minExecutablePrice = Number.isFinite(config.minExecutablePrice) ? config.minExecutablePrice : 0;
+
+  if (snapshot.probability.remainingSeconds < minSecondsToExpiry) {
     return { action: "PASS", reason: "Too close to market expiry for a new position." };
+  }
+  if (snapshot.probability.remainingSeconds > maxSecondsToExpiry) {
+    return {
+      action: "PASS",
+      reason: `Waiting for late-entry window; ${snapshot.probability.remainingSeconds.toFixed(1)}s remain and max is ${maxSecondsToExpiry.toFixed(1)}s.`,
+    };
   }
 
   const candidates = (["UP", "DOWN"] as const).flatMap(side => {
@@ -37,12 +48,18 @@ export function decideTrade(snapshot: TradingSnapshot, config: TradingRiskConfig
     const sideSpread = spread(snapshot, side);
     if (sideSpread === null || sideSpread > config.maxSpread) return [];
     const executablePrice = effectiveBuyPrice(ask, config);
+    if (executablePrice < minExecutablePrice) return [];
     const rawEdge = probability - ask;
     const adjustedEdge = probability - executablePrice;
     return [{ side, quote, probability, ask, executablePrice, rawEdge, adjustedEdge, sideSpread }];
   });
 
-  if (!candidates.length) return { action: "PASS", reason: "No side has a tradable BBO inside the spread limit." };
+  if (!candidates.length) {
+    return {
+      action: "PASS",
+      reason: `No side has a tradable BBO inside the spread limit and minimum executable price ${(minExecutablePrice * 100).toFixed(0)}c.`,
+    };
+  }
   candidates.sort((a, b) => b.adjustedEdge - a.adjustedEdge);
   const best = candidates[0];
 
