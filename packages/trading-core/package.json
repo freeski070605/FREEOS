@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "paper": "node dist/cli.js",
     "analyze": "node dist/analytics-cli.js",
+    "repair": "node dist/repair-cli.js",
     "test": "npm run build && node --test ../../tools/tests/trading.test.cjs"
   },
   "devDependencies": {
