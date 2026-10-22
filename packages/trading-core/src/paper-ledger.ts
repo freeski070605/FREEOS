@@ -82,6 +82,7 @@ export class PaperLedger {
       frictionUsd: notionalUsd * (config.frictionBps / 10_000),
       rawEdge: decision.rawEdge,
       adjustedEdge: decision.adjustedEdge,
+      expectedRoi: decision.expectedRoi,
     };
     this.append({ type: "PAPER_OPEN", position });
     return position;
