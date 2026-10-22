@@ -17,6 +17,12 @@ function spread(snapshot: TradingSnapshot, side: TradeSide): number | null {
   return Math.max(0, quote.bestAsk - quote.bestBid);
 }
 
+function modeledExpectedRoi(probability: number, executablePrice: number): number {
+  // A winning binary share settles at $1. For $1 of stake, expected payout is p / price.
+  // Expected ROI is therefore (p / price) - 1, before any unmodeled live execution costs.
+  return probability / executablePrice - 1;
+}
+
 export function decideTrade(snapshot: TradingSnapshot, config: TradingRiskConfig, state: RiskState): StrategyDecision {
   if (state.alreadyTradedEvent) return { action: "PASS", reason: "One-position-per-event guard is active." };
   if (state.realizedPnlTodayUsd <= -Math.abs(config.maxDailyLossUsd)) {
@@ -29,6 +35,7 @@ export function decideTrade(snapshot: TradingSnapshot, config: TradingRiskConfig
   const minSecondsToExpiry = Number.isFinite(config.minSecondsToExpiry) ? config.minSecondsToExpiry : 0;
   const maxSecondsToExpiry = Number.isFinite(config.maxSecondsToExpiry) ? config.maxSecondsToExpiry : Number.POSITIVE_INFINITY;
   const minExecutablePrice = Number.isFinite(config.minExecutablePrice) ? config.minExecutablePrice : 0;
+  const minExpectedRoi = Number.isFinite(config.minExpectedRoi) ? config.minExpectedRoi : 0;
 
   if (snapshot.probability.remainingSeconds < minSecondsToExpiry) {
     return { action: "PASS", reason: "Too close to market expiry for a new position." };
@@ -51,7 +58,8 @@ export function decideTrade(snapshot: TradingSnapshot, config: TradingRiskConfig
     if (executablePrice < minExecutablePrice) return [];
     const rawEdge = probability - ask;
     const adjustedEdge = probability - executablePrice;
-    return [{ side, quote, probability, ask, executablePrice, rawEdge, adjustedEdge, sideSpread }];
+    const expectedRoi = modeledExpectedRoi(probability, executablePrice);
+    return [{ side, quote, probability, ask, executablePrice, rawEdge, adjustedEdge, expectedRoi, sideSpread }];
   });
 
   if (!candidates.length) {
@@ -60,13 +68,24 @@ export function decideTrade(snapshot: TradingSnapshot, config: TradingRiskConfig
       reason: `No side has a tradable BBO inside the spread limit and minimum executable price ${(minExecutablePrice * 100).toFixed(0)}c.`,
     };
   }
-  candidates.sort((a, b) => b.adjustedEdge - a.adjustedEdge);
+
+  // Rank by modeled expected dollars first, then probability edge as a tie-breaker.
+  candidates.sort((a, b) => b.expectedRoi - a.expectedRoi || b.adjustedEdge - a.adjustedEdge);
   const best = candidates[0];
 
   if (best.adjustedEdge < config.minAdjustedEdge) {
     return {
       action: "PASS",
+      expectedRoi: best.expectedRoi,
       reason: `Best adjusted edge ${(best.adjustedEdge * 100).toFixed(2)}% is below ${(config.minAdjustedEdge * 100).toFixed(2)}%.`,
+    };
+  }
+
+  if (best.expectedRoi < minExpectedRoi) {
+    return {
+      action: "PASS",
+      expectedRoi: best.expectedRoi,
+      reason: `Best modeled expected ROI ${(best.expectedRoi * 100).toFixed(2)}% is below ${(minExpectedRoi * 100).toFixed(2)}%.`,
     };
   }
 
@@ -78,7 +97,8 @@ export function decideTrade(snapshot: TradingSnapshot, config: TradingRiskConfig
     executablePrice: best.executablePrice,
     rawEdge: best.rawEdge,
     adjustedEdge: best.adjustedEdge,
+    expectedRoi: best.expectedRoi,
     notionalUsd: config.maxNotionalUsd,
-    reason: `${best.side} has ${(best.adjustedEdge * 100).toFixed(2)}% modeled edge after configured friction/slippage.`,
+    reason: `${best.side} has ${(best.adjustedEdge * 100).toFixed(2)}% modeled edge and ${(best.expectedRoi * 100).toFixed(2)}% modeled expected ROI after configured friction/slippage.`,
   };
 }
