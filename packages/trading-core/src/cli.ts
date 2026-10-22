@@ -17,16 +17,15 @@ function buildEngine(): Btc15mPaperEngine {
 
   const config = defaultTradingConfig();
   config.pollMs = envNumber("FREEOS_TRADING_POLL_MS", config.pollMs);
-  // V4 paper profile: keep the v3 10% edge gate and late-entry window, but raise the
-  // executable-price floor to 60c. In the first 63 forward v3 trades, 40-60c entries
-  // lost money while 60c+ entries were strongly positive. This remains a paper-only
-  // experiment and callers can override the threshold explicitly.
+  // V5: preserve the 10% probability-edge gate, but optimize for modeled expected dollars
+  // rather than a blunt 60c price floor. This remains paper-only research.
   config.risk.minAdjustedEdge = envNumber("FREEOS_TRADING_MIN_EDGE", 0.10);
+  config.risk.minExpectedRoi = envNumber("FREEOS_TRADING_MIN_EXPECTED_ROI", 0.20);
   config.risk.maxNotionalUsd = envNumber("FREEOS_TRADING_PAPER_NOTIONAL_USD", config.risk.maxNotionalUsd);
   config.risk.maxSpread = envNumber("FREEOS_TRADING_MAX_SPREAD", config.risk.maxSpread);
   config.risk.minSecondsToExpiry = envNumber("FREEOS_TRADING_MIN_SECONDS_TO_EXPIRY", config.risk.minSecondsToExpiry);
   config.risk.maxSecondsToExpiry = envNumber("FREEOS_TRADING_MAX_SECONDS_TO_EXPIRY", config.risk.maxSecondsToExpiry);
-  config.risk.minExecutablePrice = envNumber("FREEOS_TRADING_MIN_EXECUTABLE_PRICE", 0.60);
+  config.risk.minExecutablePrice = envNumber("FREEOS_TRADING_MIN_EXECUTABLE_PRICE", 0.40);
   config.risk.maxDailyLossUsd = envNumber("FREEOS_TRADING_MAX_DAILY_PAPER_LOSS_USD", config.risk.maxDailyLossUsd);
   config.risk.maxConsecutiveLosses = envNumber("FREEOS_TRADING_MAX_CONSECUTIVE_LOSSES", config.risk.maxConsecutiveLosses);
   config.risk.frictionBps = envNumber("FREEOS_TRADING_FRICTION_BPS", config.risk.frictionBps);
@@ -60,14 +59,12 @@ function printTick(result: Awaited<ReturnType<Btc15mPaperEngine["tick"]>>): void
 async function main(): Promise<void> {
   const engine = buildEngine();
 
-  // Always reconcile from already-recorded outcomes before any network-dependent work.
-  // This clears stranded paper positions deterministically on every restart.
   const repair = reconcilePaperLedgerFromRecordedOutcomes(engine.config.dataDir);
 
   console.log(JSON.stringify({
     service: "FREEOS BTC15M Trader",
     mode: "paper",
-    strategy: "v4-late-window-10pct-edge-60c-floor",
+    strategy: "v5-late-window-edge-plus-expected-roi",
     ledger: engine.ledger.ledgerPath,
     observations: engine.observations.logPath,
     entryWindowSeconds: {
@@ -76,6 +73,7 @@ async function main(): Promise<void> {
     },
     minExecutablePrice: engine.config.risk.minExecutablePrice,
     minAdjustedEdge: engine.config.risk.minAdjustedEdge,
+    minExpectedRoi: engine.config.risk.minExpectedRoi,
     startupReconcile: {
       pendingBefore: repair.pendingBefore,
       repaired: repair.repaired,
