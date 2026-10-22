@@ -17,15 +17,16 @@ function buildEngine(): Btc15mPaperEngine {
 
   const config = defaultTradingConfig();
   config.pollMs = envNumber("FREEOS_TRADING_POLL_MS", config.pollMs);
-  // V3 paper profile: the chronological train/validation replay selected a 10% edge
-  // threshold on training data, and that rule remained positive on the newer holdout.
-  // Keep this as a paper-only research profile; callers can still override it explicitly.
+  // V4 paper profile: keep the v3 10% edge gate and late-entry window, but raise the
+  // executable-price floor to 60c. In the first 63 forward v3 trades, 40-60c entries
+  // lost money while 60c+ entries were strongly positive. This remains a paper-only
+  // experiment and callers can override the threshold explicitly.
   config.risk.minAdjustedEdge = envNumber("FREEOS_TRADING_MIN_EDGE", 0.10);
   config.risk.maxNotionalUsd = envNumber("FREEOS_TRADING_PAPER_NOTIONAL_USD", config.risk.maxNotionalUsd);
   config.risk.maxSpread = envNumber("FREEOS_TRADING_MAX_SPREAD", config.risk.maxSpread);
   config.risk.minSecondsToExpiry = envNumber("FREEOS_TRADING_MIN_SECONDS_TO_EXPIRY", config.risk.minSecondsToExpiry);
   config.risk.maxSecondsToExpiry = envNumber("FREEOS_TRADING_MAX_SECONDS_TO_EXPIRY", config.risk.maxSecondsToExpiry);
-  config.risk.minExecutablePrice = envNumber("FREEOS_TRADING_MIN_EXECUTABLE_PRICE", config.risk.minExecutablePrice);
+  config.risk.minExecutablePrice = envNumber("FREEOS_TRADING_MIN_EXECUTABLE_PRICE", 0.60);
   config.risk.maxDailyLossUsd = envNumber("FREEOS_TRADING_MAX_DAILY_PAPER_LOSS_USD", config.risk.maxDailyLossUsd);
   config.risk.maxConsecutiveLosses = envNumber("FREEOS_TRADING_MAX_CONSECUTIVE_LOSSES", config.risk.maxConsecutiveLosses);
   config.risk.frictionBps = envNumber("FREEOS_TRADING_FRICTION_BPS", config.risk.frictionBps);
@@ -66,7 +67,7 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({
     service: "FREEOS BTC15M Trader",
     mode: "paper",
-    strategy: "v3-late-window-10pct-edge",
+    strategy: "v4-late-window-10pct-edge-60c-floor",
     ledger: engine.ledger.ledgerPath,
     observations: engine.observations.logPath,
     entryWindowSeconds: {
