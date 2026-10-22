@@ -73,7 +73,12 @@ export function decideTrade(snapshot: TradingSnapshot, config: TradingRiskConfig
   candidates.sort((a, b) => b.expectedRoi - a.expectedRoi || b.adjustedEdge - a.adjustedEdge);
   const best = candidates[0];
 
-  if (best.adjustedEdge < config.minAdjustedEdge) {
+  // Binary quote math frequently lands a few machine epsilons away from round decimal
+  // thresholds (for example 0.10 becoming 0.09999999999999998). Treat threshold
+  // equality as inclusive without materially relaxing either gate.
+  const thresholdEpsilon = 1e-12;
+
+  if (best.adjustedEdge + thresholdEpsilon < config.minAdjustedEdge) {
     return {
       action: "PASS",
       expectedRoi: best.expectedRoi,
@@ -81,7 +86,7 @@ export function decideTrade(snapshot: TradingSnapshot, config: TradingRiskConfig
     };
   }
 
-  if (best.expectedRoi < minExpectedRoi) {
+  if (best.expectedRoi + thresholdEpsilon < minExpectedRoi) {
     return {
       action: "PASS",
       expectedRoi: best.expectedRoi,
