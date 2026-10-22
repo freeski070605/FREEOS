@@ -24,17 +24,16 @@ export function defaultTradingConfig(): TradingEngineConfig {
     dataDir: join(base, "trading"),
     risk: {
       // Paper-mode calibration defaults, not recommended live sizing.
-      minAdjustedEdge: 0.05,
+      minAdjustedEdge: 0.10,
+      // V5 research gate: expected ROI = model probability / effective fill price - 1.
+      // A 48c fill modeled at 60% is about 25% expected ROI and can qualify; an expensive
+      // favorite with the same 10-point probability edge can be rejected for weak payout.
+      minExpectedRoi: 0.20,
       maxNotionalUsd: 5,
       maxSpread: 0.06,
-      // V2 paper experiment: only consider entries from 6:00 down to 1:15 remaining.
-      // Initial paper data showed much stronger probability calibration late in the market,
-      // while most realized losses came from earlier entries. This is intentionally still
-      // a research gate, not a claim of live profitability.
       minSecondsToExpiry: 75,
       maxSecondsToExpiry: 360,
-      // Initial paper trades below 40c were 0-for-6. Exclude those longshot entries while
-      // gathering a clean late-window sample; this can be revisited with more data.
+      // Keep the original 40c longshot guard while removing v4's blunt 60c floor.
       minExecutablePrice: 0.40,
       maxDailyLossUsd: 20,
       maxConsecutiveLosses: 4,
@@ -164,8 +163,6 @@ export class Btc15mPaperEngine {
   }
 
   async tick(nowMs = Date.now()): Promise<TradingTickResult> {
-    // Resolve event truth first so old paper positions can use the locally recorded outcome
-    // instead of depending on historical settlement endpoints remaining immediately available.
     const resolvedOutcomes = await this.resolveObservedEventsIfReady(nowMs);
     const settled = await this.settleOpenPositionsIfReady(nowMs);
 
