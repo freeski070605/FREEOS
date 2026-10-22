@@ -40,9 +40,6 @@ export class ObservationLog {
   }
 
   private append(record: ObservationLogRecord): void {
-    // Prime the in-memory cache before writing. If we wrote first and then lazily loaded
-    // the cache, the just-written record would be read from disk and pushed a second time
-    // in memory even though the JSONL file itself only contained one line.
     const records = this.records();
     appendFileSync(this.logPath, `${JSON.stringify(record)}\n`, "utf8");
     records.push(record);
@@ -75,6 +72,7 @@ export class ObservationLog {
       decisionSide: decision.side,
       decisionReason: decision.reason,
       adjustedEdge: decision.adjustedEdge,
+      expectedRoi: decision.expectedRoi,
     };
     this.append({ type: "OBSERVATION", observation });
     return observation;
