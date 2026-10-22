@@ -55,6 +55,7 @@ function snapshot(overrides = {}) {
 
 const risk = {
   minAdjustedEdge: 0.05,
+  minExpectedRoi: 0,
   maxNotionalUsd: 5,
   maxSpread: 0.06,
   minSecondsToExpiry: 75,
@@ -69,9 +70,7 @@ const risk = {
 test("probability moves above 50% when BTC proxy is above opening proxy", () => {
   const now = 120_000;
   const points = [];
-  for (let ts = 0; ts <= now; ts += 1000) {
-    points.push({ ts, price: 100 + (ts / now) });
-  }
+  for (let ts = 0; ts <= now; ts += 1000) points.push({ ts, price: 100 + (ts / now) });
   const result = btc15mProbability(100, points, 900_000, now);
   assert.ok(result.pUp > 0.5);
   assert.equal(result.pDown, 1 - result.pUp);
@@ -84,34 +83,54 @@ test("shared binary short quote is complementary to the long book", () => {
   assert.equal(down.bestAsk, 0.97);
 });
 
-test("strategy buys the side with sufficient adjusted edge inside v2 entry window", () => {
-  const decision = decideTrade(snapshot(), risk, {
+test("strategy buys the side with sufficient adjusted edge inside entry window", () => {
+  const decision = decideTrade(snapshot(), risk, { realizedPnlTodayUsd: 0, consecutiveLosses: 0, alreadyTradedEvent: false });
+  assert.equal(decision.action, "BUY");
+  assert.equal(decision.side, "UP");
+  assert.equal(decision.marketSlug, "up");
+  assert.ok(decision.adjustedEdge >= 0.15);
+  assert.ok(decision.expectedRoi > 0.3);
+});
+
+test("expected ROI gate allows a roughly 48c contract modeled at 60%", () => {
+  const s = snapshot({
+    up: quote("up", 0.47, 0.48),
+    down: quote("down", 0.51, 0.52),
+    probability: { ...snapshot().probability, pUp: 0.60, pDown: 0.40, remainingSeconds: 240 },
+  });
+  const decision = decideTrade(s, { ...risk, minAdjustedEdge: 0.10, minExpectedRoi: 0.20 }, {
     realizedPnlTodayUsd: 0,
     consecutiveLosses: 0,
     alreadyTradedEvent: false,
   });
   assert.equal(decision.action, "BUY");
   assert.equal(decision.side, "UP");
-  assert.equal(decision.marketSlug, "up");
-  assert.ok(decision.adjustedEdge >= 0.15);
+  assert.ok(decision.expectedRoi >= 0.24);
+});
+
+test("expected ROI gate rejects an expensive favorite with only a 10 point edge", () => {
+  const s = snapshot({
+    up: quote("up", 0.79, 0.80),
+    down: quote("down", 0.19, 0.20),
+    probability: { ...snapshot().probability, pUp: 0.90, pDown: 0.10, remainingSeconds: 240 },
+  });
+  const decision = decideTrade(s, { ...risk, minAdjustedEdge: 0.10, minExpectedRoi: 0.20 }, {
+    realizedPnlTodayUsd: 0,
+    consecutiveLosses: 0,
+    alreadyTradedEvent: false,
+  });
+  assert.equal(decision.action, "PASS");
+  assert.match(decision.reason, /expected ROI/i);
 });
 
 test("strategy refuses a second trade in the same event", () => {
-  const decision = decideTrade(snapshot(), risk, {
-    realizedPnlTodayUsd: 0,
-    consecutiveLosses: 0,
-    alreadyTradedEvent: true,
-  });
+  const decision = decideTrade(snapshot(), risk, { realizedPnlTodayUsd: 0, consecutiveLosses: 0, alreadyTradedEvent: true });
   assert.equal(decision.action, "PASS");
   assert.match(decision.reason, /one-position-per-event/i);
 });
 
 test("strategy stops after the daily loss limit", () => {
-  const decision = decideTrade(snapshot(), risk, {
-    realizedPnlTodayUsd: -20,
-    consecutiveLosses: 1,
-    alreadyTradedEvent: false,
-  });
+  const decision = decideTrade(snapshot(), risk, { realizedPnlTodayUsd: -20, consecutiveLosses: 1, alreadyTradedEvent: false });
   assert.equal(decision.action, "PASS");
   assert.match(decision.reason, /daily paper-loss/i);
 });
@@ -119,11 +138,7 @@ test("strategy stops after the daily loss limit", () => {
 test("strategy refuses new entries too close to expiry", () => {
   const s = snapshot();
   s.probability = { ...s.probability, remainingSeconds: 30 };
-  const decision = decideTrade(s, risk, {
-    realizedPnlTodayUsd: 0,
-    consecutiveLosses: 0,
-    alreadyTradedEvent: false,
-  });
+  const decision = decideTrade(s, risk, { realizedPnlTodayUsd: 0, consecutiveLosses: 0, alreadyTradedEvent: false });
   assert.equal(decision.action, "PASS");
   assert.match(decision.reason, /too close/i);
 });
@@ -131,31 +146,18 @@ test("strategy refuses new entries too close to expiry", () => {
 test("strategy waits until the configured late-entry window", () => {
   const s = snapshot();
   s.probability = { ...s.probability, remainingSeconds: 500 };
-  const decision = decideTrade(s, risk, {
-    realizedPnlTodayUsd: 0,
-    consecutiveLosses: 0,
-    alreadyTradedEvent: false,
-  });
+  const decision = decideTrade(s, risk, { realizedPnlTodayUsd: 0, consecutiveLosses: 0, alreadyTradedEvent: false });
   assert.equal(decision.action, "PASS");
   assert.match(decision.reason, /late-entry window/i);
 });
 
-test("strategy rejects sub-40c longshot entries in the v2 paper policy", () => {
+test("strategy rejects sub-40c longshot entries under the longshot guard", () => {
   const s = snapshot({
     up: quote("up", 0.31, 0.32),
     down: quote("down", 0.68, 0.69),
-    probability: {
-      ...snapshot().probability,
-      pUp: 0.39,
-      pDown: 0.61,
-      remainingSeconds: 300,
-    },
+    probability: { ...snapshot().probability, pUp: 0.39, pDown: 0.61, remainingSeconds: 300 },
   });
-  const decision = decideTrade(s, risk, {
-    realizedPnlTodayUsd: 0,
-    consecutiveLosses: 0,
-    alreadyTradedEvent: false,
-  });
+  const decision = decideTrade(s, risk, { realizedPnlTodayUsd: 0, consecutiveLosses: 0, alreadyTradedEvent: false });
   assert.notEqual(decision.side, "UP");
 });
 
@@ -167,7 +169,6 @@ test("observation log tracks unresolved events until an outcome is recorded", ()
     log.appendObservation(s, { action: "PASS", reason: "test" });
     assert.equal(log.observations().length, 1);
     assert.equal(log.unresolvedEvents(906_000).length, 1);
-
     log.appendOutcome({
       eventSlug: s.event.slug,
       eventEndTime: s.event.endTime,
@@ -207,6 +208,7 @@ test("paper ledger exposes every unsettled position instead of only the newest",
       executablePrice: 0.5,
       rawEdge: 0.16,
       adjustedEdge: 0.16,
+      expectedRoi: 0.32,
       notionalUsd: 5,
       reason: "test",
     };
@@ -236,7 +238,6 @@ test("reconciliation settles pending positions from already-recorded outcomes", 
       upSettlement: 1,
       downSettlement: 0,
     });
-
     const ledger = new PaperLedger(dir);
     ledger.open({
       action: "BUY",
@@ -246,10 +247,10 @@ test("reconciliation settles pending positions from already-recorded outcomes", 
       executablePrice: 0.5,
       rawEdge: 0.16,
       adjustedEdge: 0.16,
+      expectedRoi: 0.32,
       notionalUsd: 5,
       reason: "test",
     }, s.event, risk);
-
     const result = reconcilePaperLedgerFromRecordedOutcomes(dir);
     assert.equal(result.pendingBefore, 1);
     assert.equal(result.repaired, 1);
@@ -276,7 +277,6 @@ test("analytics measures calibration and settled paper PnL", () => {
       upSettlement: 1,
       downSettlement: 0,
     });
-
     const ledger = new PaperLedger(dir);
     const position = ledger.open({
       action: "BUY",
@@ -286,11 +286,11 @@ test("analytics measures calibration and settled paper PnL", () => {
       executablePrice: 0.5,
       rawEdge: 0.16,
       adjustedEdge: 0.16,
+      expectedRoi: 0.32,
       notionalUsd: 5,
       reason: "test",
     }, s.event, risk);
     ledger.settle(position, 1);
-
     const summary = buildAnalyticsSummary(dir);
     assert.equal(summary.observations, 1);
     assert.equal(summary.eventsResolved, 1);
