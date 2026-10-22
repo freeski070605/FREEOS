@@ -17,10 +17,12 @@ function buildEngine(): Btc15mPaperEngine {
 
   const config = defaultTradingConfig();
   config.pollMs = envNumber("FREEOS_TRADING_POLL_MS", config.pollMs);
-  // V5: preserve the 10% probability-edge gate, but optimize for modeled expected dollars
-  // rather than a blunt 60c price floor. This remains paper-only research.
-  config.risk.minAdjustedEdge = envNumber("FREEOS_TRADING_MIN_EDGE", 0.10);
-  config.risk.minExpectedRoi = envNumber("FREEOS_TRADING_MIN_EXPECTED_ROI", 0.20);
+  // V6 paper profile: selected on the older chronological training split only.
+  // The 7.5% adjusted-edge + 15% modeled-EV gate remained profitable on the newer
+  // holdout while retaining more opportunities than the stricter V5 profile.
+  // This is still paper-only research, not evidence of live profitability.
+  config.risk.minAdjustedEdge = envNumber("FREEOS_TRADING_MIN_EDGE", 0.075);
+  config.risk.minExpectedRoi = envNumber("FREEOS_TRADING_MIN_EXPECTED_ROI", 0.15);
   config.risk.maxNotionalUsd = envNumber("FREEOS_TRADING_PAPER_NOTIONAL_USD", config.risk.maxNotionalUsd);
   config.risk.maxSpread = envNumber("FREEOS_TRADING_MAX_SPREAD", config.risk.maxSpread);
   config.risk.minSecondsToExpiry = envNumber("FREEOS_TRADING_MIN_SECONDS_TO_EXPIRY", config.risk.minSecondsToExpiry);
@@ -64,7 +66,7 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({
     service: "FREEOS BTC15M Trader",
     mode: "paper",
-    strategy: "v5-late-window-edge-plus-expected-roi",
+    strategy: "v6-late-window-7.5pct-edge-15pct-ev",
     ledger: engine.ledger.ledgerPath,
     observations: engine.observations.logPath,
     entryWindowSeconds: {
