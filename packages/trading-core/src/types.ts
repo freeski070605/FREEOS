@@ -65,6 +65,7 @@ export interface StrategyDecision {
   executablePrice?: number;
   rawEdge?: number;
   adjustedEdge?: number;
+  expectedRoi?: number;
   notionalUsd?: number;
   reason: string;
 }
@@ -94,6 +95,7 @@ export interface ObservationRecord {
   decisionSide?: TradeSide;
   decisionReason: string;
   adjustedEdge?: number;
+  expectedRoi?: number;
 }
 
 export interface EventOutcomeRecord {
@@ -122,6 +124,7 @@ export interface PaperPosition {
   frictionUsd: number;
   rawEdge: number;
   adjustedEdge: number;
+  expectedRoi?: number;
 }
 
 export interface SettledPaperPosition extends PaperPosition {
@@ -133,6 +136,7 @@ export interface SettledPaperPosition extends PaperPosition {
 
 export interface TradingRiskConfig {
   minAdjustedEdge: number;
+  minExpectedRoi: number;
   maxNotionalUsd: number;
   maxSpread: number;
   minSecondsToExpiry: number;
