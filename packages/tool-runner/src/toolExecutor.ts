@@ -26,6 +26,7 @@ export class ToolExecutor {
   async runApprovedToolRequest(id: number): Promise<ToolRun> {
     const request = this.requests.get(id);
     if (request.status !== "approved") throw new ToolRunnerError(`Tool request must be approved before execution; current status is ${request.status}.`, "blocked");
+    if (request.toolKey.startsWith("premium.video.")) throw new ToolRunnerError("Approved premium video requests are executed by the premium iteration endpoint.", "blocked");
     const agentRequest = /^agent:(\d+):run:(\d+)$/.exec(request.requestedBy);
     if (agentRequest) {
       const store = new AgentStore(this.registry.database, key => this.registry.getToolByKey(key), key => !!getMemoryStore().getProjectByKey(key), this.registry.rootDir);

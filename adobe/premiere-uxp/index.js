@@ -274,6 +274,58 @@ async function sequenceSettings() {
   const settings = await sequence.getSettings();
   return { frameRect: await settings.getVideoFrameRect(), pixelAspectRatio: await settings.getVideoPixelAspectRatio(), audioChannels: await settings.getAudioChannelCount(), editingMode: await settings.getEditingMode() };
 }
+async function renderSequence(command) {
+  const project = await activeProject();
+  if (project.path !== command.args.projectPath) throw new Error("Active project does not match the requested project.");
+  const sequences = await project.getSequences();
+  const sequence = (await Promise.all(sequences.map(async item => ({ item, id: await sequenceId(item) })))).find(item => item.id === command.args.sequenceId)?.item;
+  if (!sequence) throw new Error("Requested sequence is absent from the active project.");
+  if (typeof command.args.outputPath !== "string" || typeof command.args.presetPath !== "string") throw new Error("Explicit output and preset paths are required.");
+  const manager = premiere.EncoderManager.getManager();
+  const ok = await manager.exportSequence(sequence, premiere.Constants.ExportType.IMMEDIATELY, command.args.outputPath, command.args.presetPath, true);
+  if (!ok) throw new Error("Premiere declined the sequence export.");
+  return { projectPath: project.path, sequenceId: command.args.sequenceId, outputPath: command.args.outputPath, presetPath: command.args.presetPath };
+}
+async function targetEffect(command) {
+  const project = await activeProject();
+  if (project.path !== command.args.projectPath) throw new Error("Active project does not match effect request.");
+  const candidates = await Promise.all((await project.getSequences()).map(async item => ({ item, id: await sequenceId(item) })));
+  const selected = candidates.find(candidate => candidate.id === command.args.sequenceId)?.item;
+  if (!selected || selected.name.toUpperCase().includes("MASTER_SYNC")) throw new Error("An explicit non-master working sequence is required.");
+  const trackIndex = Number(command.args.trackIndex), clipStart = Number(command.args.clipStart), clipEnd = Number(command.args.clipEnd);
+  if (!Number.isInteger(trackIndex) || trackIndex < 0 || trackIndex >= await selected.getVideoTrackCount() || !Number.isFinite(clipStart) || !Number.isFinite(clipEnd) || clipEnd <= clipStart) throw new Error("Invalid target clip coordinates.");
+  const track = await selected.getVideoTrack(trackIndex);
+  const clips = track.getTrackItems(premiere.Constants.TrackItemType.CLIP, false);
+  const matches = [];
+  for (const clip of clips) if (Math.abs((await clip.getStartTime()).seconds - clipStart) < .02 && Math.abs((await clip.getEndTime()).seconds - clipEnd) < .02) matches.push(clip);
+  if (matches.length !== 1) throw new Error("Target clip coordinates are ambiguous or absent.");
+  return { project, sequence: selected, clip: matches[0], trackIndex, clipStart, clipEnd };
+}
+async function inspectEffects(command) {
+  const target = await targetEffect(command);
+  const chain = await target.clip.getComponentChain();
+  const components = [];
+  for (let index = 0; index < chain.getComponentCount(); index++) {
+    const component = chain.getComponentAtIndex(index);
+    components.push({ index, matchName: await component.getMatchName(), displayName: await component.getDisplayName() });
+  }
+  return { sequenceId: command.args.sequenceId, trackIndex: target.trackIndex, clipStart: target.clipStart, clipEnd: target.clipEnd, components };
+}
+async function removeEffect(command) {
+  const target = await targetEffect(command);
+  const matchName = command.args.componentMatchName;
+  if (typeof matchName !== "string" || !matchName || /motion|opacity|volume|time.?remap/i.test(matchName)) throw new Error("Intrinsic or unspecified components cannot be removed.");
+  const chain = await target.clip.getComponentChain();
+  const matches = [];
+  for (let index = 0; index < chain.getComponentCount(); index++) {
+    const component = chain.getComponentAtIndex(index);
+    if (await component.getMatchName() === matchName) matches.push({ component, index });
+  }
+  if (matches.length !== 1) throw new Error("Effect component is absent or ambiguous.");
+  const ok = executeLocked(target.project, "FREEOS remove approved video effect", () => chain.createRemoveComponentAction(matches[0].component));
+  if (!ok || !await target.project.save()) throw new Error("Premiere declined effect removal or save.");
+  return { sequenceId: command.args.sequenceId, trackIndex: target.trackIndex, clipStart: target.clipStart, clipEnd: target.clipEnd, componentMatchName: matchName, removedIndex: matches[0].index, saved: true };
+}
 const actions = {
   "project.inspect": inspectProject,
   "project.items": projectItems,
@@ -286,6 +338,9 @@ const actions = {
   "sequence.clone": cloneSequence,
   "sequence.rename": renameSequenceCommand,
   "sequence.applyAssembly": applyAssembly,
+  "sequence.render": renderSequence,
+  "sequence.effects.inspect": inspectEffects,
+  "sequence.effect.remove": removeEffect,
 };
 function connect() {
   if (!secret) return;
@@ -297,7 +352,7 @@ function connect() {
     try {
       const message = JSON.parse(event.data); if (message.type !== "bridge-command" || message.command.application !== "premiere") return;
       command = message.command; const action = actions[command.action]; if (!action) throw new Error("Action unavailable in Premiere bridge.");
-      if (!["project.inspect", "project.items", "project.open", "sequence.inspect", "sequence.markers", "sequence.settings", "sequence.clone", "sequence.rename", "project.save", "project.saveas"].includes(command.action)) { const sequence = await (await activeProject()).getActiveSequence(); if (sequence && sequence.name.toUpperCase().includes("MASTER_SYNC")) throw new Error("Refusing mutation on master sequence."); }
+      if (!["project.inspect", "project.items", "project.open", "sequence.inspect", "sequence.markers", "sequence.settings", "sequence.effects.inspect", "sequence.clone", "sequence.rename", "project.save", "project.saveas"].includes(command.action)) { const sequence = await (await activeProject()).getActiveSequence(); if (sequence && sequence.name.toUpperCase().includes("MASTER_SYNC")) throw new Error("Refusing mutation on master sequence."); }
       const output = await action(command);
       socket.send(JSON.stringify({ type: "bridge-result", result: { id: command.id, jobId: command.id, state: "complete", method: "native", output, progress: 1, timestamp: new Date().toISOString() } }));
     } catch (error) { if (command && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "bridge-result", result: { id: command.id, jobId: command.id, state: "failed", method: "native", error: String(error), progress: 0, timestamp: new Date().toISOString() } })); }

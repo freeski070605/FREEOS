@@ -1,0 +1,20 @@
+{
+  "name": "@freeos/trading-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "paper": "node dist/cli.js",
+    "analyze": "node dist/analytics-cli.js",
+    "backtest": "npm run build && node dist/backtest-cli.js",
+    "repair": "node dist/repair-cli.js",
+    "test": "npm run build && node --test ../../tools/tests/trading.test.cjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.1",
+    "typescript": "^5.9.2"
+  }
+}

@@ -20,6 +20,11 @@ function representative(records: EvidenceRecord[], limit: number): EvidenceRecor
 function thin<T extends { at: number; score: number }>(items: T[], limit: number, switchTimes: number[], start: number, end: number): T[] {
   if (items.length <= limit) return items;
   const chosen = new Set<T>();
+  for (const at of switchTimes) {
+    if (chosen.size >= limit) break;
+    const current = items.find((item) => Math.abs(item.at - at) <= 0.001);
+    if (current) chosen.add(current);
+  }
   // Coverage follows the region's measured candidates; bins are selection quotas, never cut intervals.
   const bins = Math.max(1, Math.min(limit, Math.ceil(Math.sqrt(items.length))));
   for (let b = 0; b < bins && chosen.size < limit; b++) {
@@ -65,22 +70,22 @@ export function buildRegionalRepairPacket(input: {
   }
   const viable = support.map((item, index) => ({ ...item, score: Number(input.candidates[index].score) || 0 })).filter((item) => {
     const active = region.current.find((decision) => decision.start <= item.at && decision.end > item.at)?.clipId;
-    return Object.entries(item.targetSupport).some(([clip, refs]) => clip !== active && refs.length);
+    return Object.entries(item.targetSupport).some(([clip, refs]) => clip !== active && refs.length) ||
+      region.current.slice(1).some((decision) => Math.abs(decision.start - item.at) <= 0.001 && !!item.targetSupport[decision.clipId]?.length);
   });
   const switches = region.current.slice(1).map((decision, index) => ({ id: `s${index}`, at: decision.start, clipId: decision.clipId }));
-  const operationSchema: JsonObject = { type: "object", additionalProperties: false, required: ["outcome", "operations"], properties: { outcome: { const: "repair" }, operations: { type: "array", minItems: 1, maxItems: 32, items: { oneOf: [
-    { type: "object", additionalProperties: false, required: ["operation", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "add-switch" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
-    { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "replace-destination" }, existingSwitchId: { type: "string" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
-    { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"], properties: { operation: { const: "move-switch" }, existingSwitchId: { type: "string" }, candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] } } },
-    { type: "object", additionalProperties: false, required: ["operation", "existingSwitchId"], properties: { operation: { const: "remove-switch" }, existingSwitchId: { type: "string" } } },
-  ] } } } };
+  const repairSchema: JsonObject = { type: "object", additionalProperties: false, required: ["outcome", "switches"], properties: { outcome: { const: "repair" }, switches: { type: "array", maxItems: 32, items: {
+    type: "object", additionalProperties: false, required: ["candidateId", "destinationClipId", "creativeIntent"], properties: {
+      candidateId: { type: "string" }, destinationClipId: { type: "string" }, creativeIntent: { enum: [...creativeIntents] },
+    },
+  } } } };
   const declineSchema: JsonObject = { type: "object", additionalProperties: false,
     required: ["outcome", "basis"], properties: { outcome: { const: "decline" },
       reason: { enum: ["current-shot-preferred", "candidate-support-too-weak", "pacing-change-would-overcorrect"] },
       declineReason: { enum: ["current-shot-preferred", "candidate-support-too-weak", "pacing-change-would-overcorrect"] },
       basis: { enum: ["neighboring-micro-shots", "limited-destination-support", "current-hold-and-user-intent"] } },
     anyOf: [{ required: ["reason"] }, { required: ["declineReason"] }] };
-  const schema: JsonObject = { oneOf: [operationSchema, declineSchema] };
+  const schema: JsonObject = { oneOf: [repairSchema, declineSchema] };
   const switchTimes = switches.map((item) => item.at);
   let result: ReturnType<typeof makePacket> | undefined;
   let smallest: ReturnType<typeof makePacket> | undefined;
@@ -120,7 +125,8 @@ export function buildRegionalRepairPacket(input: {
     }
     if (result) break;
   }
-  if (!result || (viable.length && !result.candidates.length)) throw new Error(`global-repair-context-budget: region ${region.start}-${region.end} cannot fit legal options; minimum estimate ${smallest?.estimated ?? 0}, input budget ${budget.finalInputBudget} tokens.`);
+  if (!result || (viable.length && !result.candidates.length) || switches.some((item) => viable.some((candidate) => Math.abs(candidate.at - item.at) <= 0.001) && !result.candidates.some((candidate) => Math.abs(candidate.at - item.at) <= 0.001)))
+    throw new Error(`global-repair-context-budget: region ${region.start}-${region.end} cannot fit legal options and current switches; minimum estimate ${smallest?.estimated ?? 0}, input budget ${budget.finalInputBudget} tokens.`);
   return { ...result, schema, catalog, budget, support, switches, telemetry: {
     globalRepairEstimatedInputTokens: result.estimated, globalRepairInputBudget: budget.finalInputBudget,
     ...result.components, globalRepairCompactionApplied: result.candidates.length < viable.length || result.packet.academyGuidance.length < input.academy.length || !result.detail,
@@ -160,30 +166,19 @@ export function requiredEditorialEffect(code: string): string {
   return "change the timeline structure relevant to the flagged finding";
 }
 
-export function resolveRegionalOperations(response: unknown, packet: ReturnType<typeof buildRegionalRepairPacket>, region: RepairRegion): JsonObject[] {
-  if (!response || typeof response !== "object" || Array.isArray(response) || (response as JsonObject).outcome !== "repair" || Object.keys(response).sort().join(",") !== "operations,outcome" || !Array.isArray((response as JsonObject).operations)) throw new SectionValidationError("structure", "Repair response requires outcome=repair and operations only.");
-  const operations = (response as { operations: unknown[] }).operations;
-  if (!operations.length) throw new SectionValidationError("structure", "Repair contract requires at least one semantic operation; choose repair or constrained decline.");
-  if (operations.length > 32) throw new SectionValidationError("structure", "Too many repair operations.");
-  const switches = new Map(packet.switches.map((item, index) => [item.id, { at: item.at, clipId: item.clipId, action: region.current[index + 1].action, confidence: region.current[index + 1].confidence, creativeIntent: region.current[index + 1].creativeIntent, evidenceRefs: region.current[index + 1].evidenceRefs }]));
-  const used = new Set<string>();
-  for (const raw of operations) {
-    if (!raw || typeof raw !== "object") throw new SectionValidationError("structure", "Invalid repair operation.");
-    const op = raw as JsonObject, operation = op.operation;
-    if (!["add-switch", "remove-switch", "move-switch", "replace-destination"].includes(String(operation))) throw new SectionValidationError("structure", "Unsupported repair operation.");
-    const allowedFields = new Set(["operation", "existingSwitchId", "candidateId", "destinationClipId", "creativeIntent"]);
-    if (Object.keys(op).some((key) => !allowedFields.has(key))) throw new SectionValidationError("structure", "Repair operation contains unsupported fields.");
-    const existingId = op.existingSwitchId;
-    if (operation === "add-switch" && existingId !== undefined) throw new SectionValidationError("structure", "Add-switch cannot reference an existing switch ID.");
-    if (operation === "remove-switch" && Object.keys(op).some((key) => !["operation", "existingSwitchId"].includes(key))) throw new SectionValidationError("structure", "Remove-switch cannot carry candidate fields.");
-    if (operation !== "add-switch") {
-      if (typeof existingId !== "string" || !switches.has(existingId) || used.has(existingId)) throw new SectionValidationError("structure", "Unknown or repeated existing switch ID.");
-      used.add(existingId);
-      if (operation === "remove-switch" || operation === "move-switch" || operation === "replace-destination") switches.delete(existingId);
-      else throw new SectionValidationError("structure", "Unsupported repair operation.");
-      if (operation === "remove-switch") continue;
-    }
-    if (!["add-switch", "move-switch", "replace-destination"].includes(String(operation))) throw new SectionValidationError("structure", "Unsupported repair operation.");
+export function resolveRegionalSwitches(response: unknown, packet: ReturnType<typeof buildRegionalRepairPacket>, _region: RepairRegion): JsonObject[] {
+  if (!response || typeof response !== "object" || Array.isArray(response) || (response as JsonObject).outcome !== "repair" || Object.keys(response).sort().join(",") !== "outcome,switches" || !Array.isArray((response as JsonObject).switches)) throw new SectionValidationError("structure", "Repair response requires outcome=repair and switches only.");
+  const requested = (response as { switches: unknown[] }).switches;
+  if (requested.length > 32) throw new SectionValidationError("structure", "Too many repair switches.");
+  const seen = new Set<string>();
+  const switches: JsonObject[] = [];
+  for (const raw of requested) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new SectionValidationError("structure", "Invalid repair switch.");
+    const op = raw as JsonObject;
+    if (Object.keys(op).sort().join(",") !== "candidateId,creativeIntent,destinationClipId") throw new SectionValidationError("structure", "Repair switch has missing or unsupported fields.");
+    if (typeof op.candidateId !== "string") throw new SectionValidationError("structure", "Repair switch requires a candidate ID.");
+    if (seen.has(op.candidateId)) throw new SectionValidationError("structure", "Duplicate repair candidate ID.");
+    seen.add(op.candidateId);
     const candidate = packet.candidates.find((item) => item.candidateId === op.candidateId);
     const destination = op.destinationClipId;
     if (!candidate || typeof destination !== "string" || !candidate.targetSupport[destination]?.length) throw new SectionValidationError("target-grounding", `Candidate or destination is not exposed and supported. Legal options: ${packet.candidates.map((item) => `${item.candidateId}=[${Object.entries(item.targetSupport).filter(([, refs]) => refs.length).map(([clip]) => clip).join(",")}]`).join("; ").slice(0, 350)}.`);
@@ -191,7 +186,11 @@ export function resolveRegionalOperations(response: unknown, packet: ReturnType<
     const target = representative(packet.catalog.filter((record) => candidate.targetSupport[destination].includes(record.id)), 4).map((record) => record.id);
     const timing = representative(packet.catalog.filter((record) => isLocalSwitchEvidence(record, candidate.at) && (!record.clipId || record.type === "scene-change" || record.type === "motion-shift")), 2).map((record) => record.id);
     const refs = [...new Set([...timing, ...target])].slice(0, 8);
-    switches.set(typeof existingId === "string" ? existingId : `new${switches.size}`, { at: candidate.at, clipId: destination, action: "cut", confidence: 0.7, creativeIntent: op.creativeIntent as EditingDecision["creativeIntent"], evidenceRefs: refs });
+    switches.push({ at: candidate.at, clipId: destination, action: "cut", confidence: 0.7, creativeIntent: op.creativeIntent as EditingDecision["creativeIntent"], evidenceRefs: refs });
   }
-  return [...switches.values()].sort((a, b) => a.at - b.at).map((item) => ({ ...item }));
+  switches.sort((a, b) => Number(a.at) - Number(b.at));
+  if (switches.length === _region.current.length - 1 && switches.every((item, index) =>
+    Math.abs(Number(item.at) - _region.current[index + 1].start) <= 0.001 && item.clipId === _region.current[index + 1].clipId))
+    throw new SectionValidationError("structure", "repair-contract: target switch set does not change the regional timeline.");
+  return switches;
 }

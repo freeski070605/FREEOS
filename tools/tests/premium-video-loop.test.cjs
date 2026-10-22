@@ -1,0 +1,96 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { mkdtempSync, readFileSync, rmSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join } = require('node:path');
+const { createHash, randomUUID } = require('node:crypto');
+const { spawnSync } = require('node:child_process');
+
+const ffmpeg = process.env.FREEOS_FFMPEG_PATH || 'ffmpeg';
+const python = process.env.FREEOS_VIDEO_PYTHON;
+const ready = spawnSync(ffmpeg, ['-version'], { stdio: 'ignore' }).status === 0 && !!python && spawnSync(python, ['-c', 'import cv2,numpy'], { stdio: 'ignore' }).status === 0;
+const fixtureTest = ready ? test : test.skip;
+function command(exe, args) { const result = spawnSync(exe, args, { encoding: 'utf8', timeout: 120000 }); assert.equal(result.status, 0, result.stderr); return result.stdout; }
+
+fixtureTest('approved plan → real haze review → approved effect removal → real clean review → final delivery', async () => {
+  const originalCwd = process.cwd();
+  const isolated = mkdtempSync(join(tmpdir(), 'freeos-premium-loop-'));
+  let closeStore, closeTools, closeMemory;
+  try {
+    const hazePath = join(isolated, 'review-v1.mp4'), cleanPath = join(isolated, 'review-v2.mp4'), finalPath = join(isolated, 'delivery.mp4');
+    command(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=24', '-t', '3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', cleanPath]);
+    command(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-i', cleanPath, '-vf', 'eq=contrast=0.35:brightness=0.22:saturation=0.65', '-c:v', 'libx264', hazePath]);
+    const hazeHash = createHash('sha256').update(readFileSync(hazePath)).digest('hex');
+    const rawProbe = path => JSON.parse(command('ffprobe', ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', path]));
+    const { analyzeRenderPixels } = require('../../apps/api-server/dist/services/premium/renderQuality.js');
+    const hazePixels = await analyzeRenderPixels(hazePath), cleanPixels = await analyzeRenderPixels(cleanPath);
+    process.chdir(isolated);
+    const core = require('../../apps/api-server/dist/services/premium/core.js');
+    const { videoAdapter } = require('../../apps/api-server/dist/services/premium/adapters.js');
+    const { saveRun, closePremiumRunStore } = require('../../apps/api-server/dist/services/premium/service.js');
+    closeStore = closePremiumRunStore;
+    const loop = require('../../apps/api-server/dist/services/premium/iteration.js');
+    const { adobeService } = require('../../apps/api-server/dist/services/adobe.service.js');
+    const { ToolExecutor, ToolRequests, getToolRegistry } = require('../../packages/tool-runner/dist/index.js');
+    closeTools = () => getToolRegistry().close();
+    closeMemory = () => require('../../packages/memory-core/dist/index.js').getMemoryStore().close();
+    const jobs = new Map();
+    adobeService.status = () => ({ online: true, capabilities: ['sequence.render', 'sequence.effects.inspect', 'sequence.effect.remove'].map(action => ({ application: 'premiere', action, available: true })).concat(['media.probe', 'media.quality.analyze'].map(action => ({ application: 'media', action, available: true }))) });
+    adobeService.submit = (application, action, args) => {
+      const id = randomUUID();
+      let output;
+      if (action === 'sequence.render') { const target = args.outputPath; output = { path: target, filesize: 1000, createdAt: new Date().toISOString(), probe: rawProbe(target === finalPath ? cleanPath : target) }; }
+      else if (action === 'media.quality.analyze') output = { pixels: args.path === hazePath ? hazePixels : cleanPixels };
+      else if (action === 'sequence.effect.remove') output = { componentMatchName: args.componentMatchName, saved: true };
+      else throw Error(action);
+      jobs.set(id, { jobId: id, state: 'complete', output, timestamp: new Date().toISOString() });
+      return id;
+    };
+    adobeService.job = id => jobs.get(id);
+    adobeService.run = async (_app, action) => { assert.equal(action, 'sequence.effects.inspect'); return { components: [{ matchName: 'ADBE Gaussian Blur' }] }; };
+    const requests = new ToolRequests(getToolRegistry());
+    const run = core.createRun('fixture', 'clean premium video', videoAdapter.buildProductionProfile('clean premium video', 'premium'));
+    run.productionPlan = { goals: [], stages: run.productionProfile.requiredStages, skillIds: ['video.edit.plan', 'video.render.review'], capabilityIds: [], dependencies: {}, artifactIds: [], finishingSkillIds: [] };
+    const plan = { artifactId: 'plan', type: 'edit-plan', domain: 'video', metadata: { decisions: [{ start: 0, end: 3, clipId: 'synthetic', action: 'hold' }] }, sourceArtifacts: [], version: 1, status: 'inspected', lineage: { sourceArtifactIds: [], operation: 'test-plan', evaluationIds: [] } };
+    core.addArtifact(run, plan);
+    run.evaluations.push({ id: 'plan-eval', evaluatorId: 'video.editing-core.plan-critic', artifactId: 'plan', reviewType: 'plan', dimensionScores: [{ dimensionId: 'editorial', score: 1, confidence: 1, measurementType: 'critic' }], findings: [], evidence: [], confidence: 1, status: 'complete', source: 'editing-core' });
+    saveRun(run);
+    const renderSpec = (outputPath) => ({ projectPath: join(isolated, 'synthetic.prproj'), sequenceId: 'sequence-1', presetPath: join(isolated, 'synthetic.epr'), outputPath, planArtifactId: 'plan', audioExpected: false });
+    let state = loop.requestPremiumVideoReview(run.runId, renderSpec(hazePath));
+    assert.equal(state.videoIteration.stage, 'awaiting-execution-approval');
+    assert.throws(() => loop.requestFinalVideoRender(run.runId, finalPath, join(isolated, 'delivery.epr')), /passing real review gate/);
+    requests.approveToolRequest(state.videoIteration.approvalId);
+    await assert.rejects(() => new ToolExecutor(getToolRegistry()).runApprovedToolRequest(state.videoIteration.approvalId), /premium iteration endpoint/);
+    assert.equal(requests.get(state.videoIteration.approvalId).status, 'approved');
+    await loop.runPremiumVideoIteration(run.runId);
+    await loop.runPremiumVideoIteration(run.runId);
+    state = (await loop.runPremiumVideoIteration(run.runId)).run;
+    assert.equal(state.videoIteration.stage, 'quality-failed');
+    const finding = state.evaluations.at(-1).findings.find(f => f.description === 'video-quality.low-contrast-haze');
+    assert.ok(finding);
+    state = await loop.requestEffectRemoval(run.runId, finding.id, { trackIndex: 0, clipStart: 0, clipEnd: 3, componentMatchName: 'ADBE Gaussian Blur' });
+    requests.approveToolRequest(state.videoRepair.approvalId);
+    loop.runEffectRemoval(run.runId);
+    state = loop.runEffectRemoval(run.runId).run;
+    assert.equal(state.videoRepair.stage, 'executed');
+    state = loop.requestPremiumVideoReview(run.runId, renderSpec(cleanPath));
+    requests.approveToolRequest(state.videoIteration.approvalId);
+    await loop.runPremiumVideoIteration(run.runId);
+    await loop.runPremiumVideoIteration(run.runId);
+    state = (await loop.runPremiumVideoIteration(run.runId)).run;
+    assert.equal(state.videoIteration.stage, 'accepted');
+    assert.equal(state.artifacts.filter(a => a.type === 'video-review-render').length, 2);
+    assert.equal(createHash('sha256').update(readFileSync(hazePath)).digest('hex'), hazeHash);
+    assert.deepEqual(state.videoIteration.comparison.resolvedFindings, ['video-quality.low-contrast-haze']);
+    assert.equal(state.repairs.length, 1);
+    assert.equal(loop.premiumVideoGate(state).outcome, 'PASS');
+    state = loop.requestFinalVideoRender(run.runId, finalPath, join(isolated, 'delivery.epr'));
+    requests.approveToolRequest(state.finalDelivery.approvalId);
+    loop.runFinalVideoRender(run.runId);
+    state = loop.runFinalVideoRender(run.runId).run;
+    assert.equal(state.status, 'delivered');
+    assert.equal(state.artifacts.at(-1).type, 'final-delivery');
+    assert.equal(state.learningCandidate.finalOutcome, 'delivered');
+    assert.equal(typeof state.learningProposalId, 'number');
+  } finally { closeStore?.(); closeTools?.(); closeMemory?.(); process.chdir(originalCwd); rmSync(isolated, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+});

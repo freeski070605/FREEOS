@@ -1,14 +1,14 @@
 import dotenv from "dotenv";
 import { createServer as createHttpServer, type IncomingMessage } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
-import { readFileSync, existsSync, mkdirSync, appendFileSync, copyFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, appendFileSync, copyFileSync, statSync } from "node:fs";
 import { hostname, cpus, totalmem, networkInterfaces } from "node:os";
 import { basename, dirname, extname, resolve } from "node:path";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import WebSocket, { WebSocketServer } from "ws";
 import { executeComputerTool, listProcesses, getComputerStatus, listWindows, captureScreen } from "@freeos/computer-core";
-import { analyzeRender, analyzeAudio, audioBackendStatus, analyzeVideo, videoBackendStatus } from "@freeos/media-intelligence";
+import { analyzeRender, analyzeAudio, audioBackendStatus, analyzeVideo, videoBackendStatus, analyzeRenderQuality } from "@freeos/media-intelligence";
 import { assertCapability, parseWireMessage, resolveAllowedPath, type AdobeCommand, type AdobeResult, type Capability, type WorkerIdentity, type WireMessage } from "@freeos/adobe-protocol";
 
 dotenv.config({ path: resolve(__dirname, "../../../.env") });
@@ -100,6 +100,7 @@ async function refreshCapabilities(): Promise<Capability[]> {
   base.push({ application: "media", action: "media.review", method: ffmpegAvailable ? "filesystem" : "unavailable", available: ffmpegAvailable, reason: ffmpegAvailable ? undefined : "ffmpeg was not found." });
   base.push({ application: "media", action: "media.audio.analyze", method: audioStatus.available ? "filesystem" : "unavailable", available: audioStatus.available, reason: audioStatus.reason });
   base.push({ application: "media", action: "media.video.analyze", method: videoStatus.available ? "filesystem" : "unavailable", available: videoStatus.available, reason: videoStatus.reason });
+  base.push({ application: "media", action: "media.quality.analyze", method: videoStatus.available && probeAvailable ? "filesystem" : "unavailable", available: videoStatus.available && probeAvailable, reason: !probeAvailable ? "ffprobe was not found." : videoStatus.reason });
   base.push({ application: "media", action: "ui.status", method: "ui", available: true });
   base.push({ application: "media", action: "ui.windows", method: "ui", available: true });
   base.push({ application: "media", action: "ui.capture", method: "ui", available: env.COMPUTER_SCREEN_CAPTURE_ENABLED === "true", reason: env.COMPUTER_SCREEN_CAPTURE_ENABLED === "true" ? undefined : "Computer screen capture is disabled." });
@@ -153,18 +154,63 @@ async function run(command: AdobeCommand): Promise<AdobeResult> {
     const sampleFps = command.args.sampleFps === undefined ? undefined : Number(command.args.sampleFps);
     return result(command, "complete", "filesystem", await analyzeVideo(path, sampleFps === undefined ? {} : { sampleFps }));
   }
+  if (command.action === "media.quality.analyze") {
+    const path = resolveAllowedPath(command.args.path, env.FREEOS_ADOBE_ALLOWED_MEDIA_ROOTS || "");
+    const sampleFps = Number(command.args.sampleFps || 1);
+    if (!Number.isFinite(sampleFps) || sampleFps < .25 || sampleFps > 6) throw new Error("Quality sample rate must be between 0.25 and 6 fps.");
+    const pixels = await analyzeRenderQuality(path, sampleFps);
+    const sourcePixels = typeof command.args.sourcePath === "string" ? await analyzeRenderQuality(resolveAllowedPath(command.args.sourcePath, env.FREEOS_ADOBE_ALLOWED_MEDIA_ROOTS || ""), sampleFps) : undefined;
+    const probe = JSON.parse(execFileSync(probeExecutable, ["-v", "error", "-show_streams", "-of", "json", path], { encoding: "utf8", timeout: 60000, maxBuffer: 2_000_000 }));
+    const audio = probe.streams?.some((stream: { codec_type: string }) => stream.codec_type === "audio") ? await analyzeAudio(path) : undefined;
+    return result(command, "complete", "filesystem", { pixels, sourcePixels, audio });
+  }
   const bridge = bridges.get(command.application);
   if (["project.open", "project.saveas"].includes(command.action)) resolveAllowedPath(command.args.path, env.FREEOS_ADOBE_ALLOWED_PROJECT_ROOTS || "");
-  if (command.application === "premiere" && command.action === "sequence.clone") {
+  if (command.application === "premiere" && ["sequence.clone", "sequence.effect.remove"].includes(command.action)) {
     const path = resolveAllowedPath(command.args.projectPath, env.FREEOS_ADOBE_ALLOWED_PROJECT_ROOTS || "");
     if (!existsSync(path) || extname(path).toLowerCase() !== ".prproj") throw new Error("Source project must be an existing .prproj file.");
     const backup = resolve(dirname(path), `${basename(path, ".prproj")}.freeos-backup-${Date.now()}.prproj`);
     copyFileSync(path, backup, 1);
   }
+  if (command.application === "premiere" && ["sequence.effects.inspect", "sequence.effect.remove"].includes(command.action)) {
+    const projectPath = resolveAllowedPath(command.args.projectPath, env.FREEOS_ADOBE_ALLOWED_PROJECT_ROOTS || "");
+    if (!existsSync(projectPath) || extname(projectPath).toLowerCase() !== ".prproj" || typeof command.args.sequenceId !== "string" || !command.args.sequenceId) throw new Error("Explicit existing project and sequence required for effect operation.");
+  }
+  let renderOutput: string | undefined;
+  if (command.application === "premiere" && command.action === "sequence.render") {
+    const projectPath = resolveAllowedPath(command.args.projectPath, env.FREEOS_ADOBE_ALLOWED_PROJECT_ROOTS || "");
+    const presetPath = resolveAllowedPath(command.args.presetPath, env.FREEOS_ADOBE_ALLOWED_MEDIA_ROOTS || "");
+    renderOutput = resolveAllowedPath(command.args.outputPath, env.FREEOS_ADOBE_ALLOWED_MEDIA_ROOTS || "");
+    if (!existsSync(projectPath) || extname(projectPath).toLowerCase() !== ".prproj") throw new Error("An existing Premiere project is required.");
+    if (!existsSync(presetPath) || extname(presetPath).toLowerCase() !== ".epr") throw new Error("An existing Adobe export preset is required.");
+    if (extname(renderOutput).toLowerCase() !== ".mp4" || existsSync(renderOutput)) throw new Error("Review output must be a new .mp4 file.");
+    if (typeof command.args.sequenceId !== "string" || !command.args.sequenceId) throw new Error("An explicit sequence ID is required.");
+  }
   if (!bridge || bridge.readyState !== WebSocket.OPEN || capability.method !== "native") throw new Error("Native Adobe bridge is offline.");
   return new Promise<AdobeResult>((resolveResult, reject) => {
-    const timer = setTimeout(() => { pending.delete(command.id); reject(new Error("Adobe bridge timed out.")); }, 120000);
-    pending.set(command.id, { resolve: resolveResult, reject, timer });
+    const timer = setTimeout(() => { pending.delete(command.id); reject(new Error("Adobe bridge timed out.")); }, renderOutput ? 3_600_000 : 120_000);
+    pending.set(command.id, { resolve: async value => {
+      if (renderOutput && value.state === "complete") {
+        try {
+          const deadline = Date.now() + 300_000;
+          let stableSize = 0, stableChecks = 0;
+          while (Date.now() < deadline) {
+            const size = existsSync(renderOutput) ? statSync(renderOutput).size : 0;
+            stableChecks = size > 0 && size === stableSize ? stableChecks + 1 : 0;
+            stableSize = size;
+            if (stableChecks >= 2) break;
+            await new Promise(done => setTimeout(done, 1000));
+          }
+          if (stableChecks < 2) throw new Error("Premiere did not create a stable nonempty render file.");
+          const probeStarted = Date.now();
+          const probe = JSON.parse(execFileSync(probeExecutable, ["-v", "error", "-show_format", "-show_streams", "-of", "json", renderOutput], { encoding: "utf8", timeout: 60000, maxBuffer: 4_000_000 }));
+          const video = probe.streams?.find((stream: { codec_type: string }) => stream.codec_type === "video");
+          if (!video || !Number.isFinite(Number(probe.format?.duration)) || Number(probe.format.duration) <= 0) throw new Error("Rendered file has no valid video stream or duration.");
+          value.output = { ...(value.output as object), path: renderOutput, filesize: statSync(renderOutput).size, createdAt: statSync(renderOutput).birthtime.toISOString(), probe, probeElapsedMs: Date.now() - probeStarted };
+        } catch (error) { reject(error instanceof Error ? error : new Error(String(error))); return; }
+      }
+      resolveResult(value);
+    }, reject, timer });
     bridge.send(JSON.stringify({ type: "bridge-command", command }));
   });
 }
