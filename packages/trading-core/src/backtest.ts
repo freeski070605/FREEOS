@@ -15,6 +15,7 @@ export interface ReplayConfig {
   minExecutablePrice: number;
   maxExecutablePrice: number;
   minAdjustedEdge: number;
+  minExpectedRoi?: number;
   maxSpread: number;
   frictionBps: number;
   slippage: number;
@@ -30,6 +31,7 @@ export interface ReplayTrade {
   fillPrice: number;
   modelProbability: number;
   adjustedEdge: number;
+  expectedRoi: number;
   settlement: number;
   pnlUsd: number;
 }
@@ -46,6 +48,7 @@ export interface ReplayStats {
   winRate: number | null;
   avgFillPrice: number | null;
   avgAdjustedEdge: number | null;
+  avgExpectedRoi: number | null;
   upTrades: number;
   downTrades: number;
 }
@@ -68,6 +71,7 @@ export interface BacktestReport {
     validationFrom: string | null;
   };
   currentV2: CandidateReplayResult;
+  currentV5: CandidateReplayResult;
   candidateCount: number;
   topCandidatesSelectedOnTrainOnly: CandidateReplayResult[];
 }
@@ -123,6 +127,7 @@ function summarize(trades: ReplayTrade[], eventCount: number, notionalUsd: numbe
     winRate: trades.length ? round(wins / trades.length) : null,
     avgFillPrice: round(mean(trades.map(trade => trade.fillPrice))),
     avgAdjustedEdge: round(mean(trades.map(trade => trade.adjustedEdge))),
+    avgExpectedRoi: round(mean(trades.map(trade => trade.expectedRoi))),
     upTrades: trades.filter(trade => trade.side === "UP").length,
     downTrades: trades.filter(trade => trade.side === "DOWN").length,
   };
@@ -154,12 +159,14 @@ function replay(
         const fillPrice = effectiveBuyPrice(ask, config);
         if (fillPrice < config.minExecutablePrice || fillPrice > config.maxExecutablePrice) return [];
         const adjustedEdge = probability - fillPrice;
+        const expectedRoi = probability / fillPrice - 1;
         if (adjustedEdge < config.minAdjustedEdge) return [];
-        return [{ side, fillPrice, probability, adjustedEdge }];
+        if (expectedRoi < (config.minExpectedRoi ?? 0)) return [];
+        return [{ side, fillPrice, probability, adjustedEdge, expectedRoi }];
       });
 
       if (!candidates.length) continue;
-      candidates.sort((a, b) => b.adjustedEdge - a.adjustedEdge);
+      candidates.sort((a, b) => b.expectedRoi - a.expectedRoi || b.adjustedEdge - a.adjustedEdge);
       const best = candidates[0];
       const settlement = best.side === "UP" ? outcome.upSettlement : outcome.downSettlement;
       const shares = config.notionalUsd / best.fillPrice;
@@ -172,6 +179,7 @@ function replay(
         fillPrice: best.fillPrice,
         modelProbability: best.probability,
         adjustedEdge: best.adjustedEdge,
+        expectedRoi: best.expectedRoi,
         settlement,
         pnlUsd,
       });
@@ -182,9 +190,9 @@ function replay(
   return summarize(trades, eventSlugs.length, config.notionalUsd);
 }
 
-function configLabel(maxSeconds: number, minPrice: number, maxPrice: number, edge: number, sideMode: ReplaySideMode): string {
+function configLabel(maxSeconds: number, minPrice: number, maxPrice: number, edge: number, minExpectedRoi: number, sideMode: ReplaySideMode): string {
   const price = `${Math.round(minPrice * 100)}-${Math.round(maxPrice * 100)}c`;
-  return `${sideMode} ${Math.round(maxSeconds / 60)}m->75s ${price} edge>=${Math.round(edge * 1000) / 10}%`;
+  return `${sideMode} ${Math.round(maxSeconds / 60)}m->75s ${price} edge>=${Math.round(edge * 1000) / 10}% evROI>=${Math.round(minExpectedRoi * 100)}%`;
 }
 
 function candidateGrid(): ReplayConfig[] {
@@ -197,26 +205,30 @@ function candidateGrid(): ReplayConfig[] {
     [0.80, 0.9999],
   ] as const;
   const edges = [0.05, 0.075, 0.10, 0.125];
+  const expectedRois = [0, 0.15, 0.20, 0.25, 0.30];
   const sideModes: ReplaySideMode[] = ["BOTH", "UP", "DOWN"];
   const configs: ReplayConfig[] = [];
 
   for (const max of maxSeconds) {
     for (const [minPrice, maxPrice] of priceBands) {
       for (const edge of edges) {
-        for (const sideMode of sideModes) {
-          configs.push({
-            label: configLabel(max, minPrice, maxPrice, edge, sideMode),
-            minSecondsToExpiry: 75,
-            maxSecondsToExpiry: max,
-            minExecutablePrice: minPrice,
-            maxExecutablePrice: maxPrice,
-            minAdjustedEdge: edge,
-            maxSpread: 0.06,
-            frictionBps: 75,
-            slippage: 0.005,
-            notionalUsd: 5,
-            sideMode,
-          });
+        for (const minExpectedRoi of expectedRois) {
+          for (const sideMode of sideModes) {
+            configs.push({
+              label: configLabel(max, minPrice, maxPrice, edge, minExpectedRoi, sideMode),
+              minSecondsToExpiry: 75,
+              maxSecondsToExpiry: max,
+              minExecutablePrice: minPrice,
+              maxExecutablePrice: maxPrice,
+              minAdjustedEdge: edge,
+              minExpectedRoi,
+              maxSpread: 0.06,
+              frictionBps: 75,
+              slippage: 0.005,
+              notionalUsd: 5,
+              sideMode,
+            });
+          }
         }
       }
     }
@@ -243,9 +255,7 @@ export function buildBacktestReport(dataDir: string): BacktestReport {
     rows.push(observation);
     observationsByEvent.set(observation.eventSlug, rows);
   }
-  for (const rows of observationsByEvent.values()) {
-    rows.sort((a, b) => Date.parse(a.observedAt) - Date.parse(b.observedAt));
-  }
+  for (const rows of observationsByEvent.values()) rows.sort((a, b) => Date.parse(a.observedAt) - Date.parse(b.observedAt));
 
   const eventSlugs = outcomes.map(outcome => outcome.eventSlug);
   const splitIndex = Math.max(1, Math.min(eventSlugs.length - 1, Math.floor(eventSlugs.length * 0.70)));
@@ -259,6 +269,22 @@ export function buildBacktestReport(dataDir: string): BacktestReport {
     minExecutablePrice: 0.40,
     maxExecutablePrice: 0.9999,
     minAdjustedEdge: 0.05,
+    minExpectedRoi: 0,
+    maxSpread: 0.06,
+    frictionBps: 75,
+    slippage: 0.005,
+    notionalUsd: 5,
+    sideMode: "BOTH",
+  };
+
+  const currentV5Config: ReplayConfig = {
+    label: "current-v5-edge-plus-expected-roi",
+    minSecondsToExpiry: 75,
+    maxSecondsToExpiry: 360,
+    minExecutablePrice: 0.40,
+    maxExecutablePrice: 0.9999,
+    minAdjustedEdge: 0.10,
+    minExpectedRoi: 0.20,
     maxSpread: 0.06,
     frictionBps: 75,
     slippage: 0.005,
@@ -286,7 +312,7 @@ export function buildBacktestReport(dataDir: string): BacktestReport {
 
   return {
     generatedAt: new Date().toISOString(),
-    methodology: "Chronological 70/30 split. Candidate rules are ranked only on the older 70% training events; the newer 30% validation results are displayed but never used for ranking. Each replay takes the first qualifying observation in an event and allows at most one $5 paper position per event. This is research on a small sample, not evidence of live profitability.",
+    methodology: "Chronological 70/30 split. Candidate rules are ranked only on the older 70% training events; the newer 30% validation results are displayed but never used for ranking. Each replay takes the first qualifying observation in an event and allows at most one $5 paper position per event. Expected ROI is modelProbability/effectiveFillPrice-1. This is research on a small sample, not evidence of live profitability.",
     resolvedEvents: eventSlugs.length,
     split: {
       trainEvents: trainSlugs.length,
@@ -295,6 +321,7 @@ export function buildBacktestReport(dataDir: string): BacktestReport {
       validationFrom: validationSlugs.length ? outcomeByEvent.get(validationSlugs[0])?.eventEndTime ?? null : null,
     },
     currentV2: evaluate(currentV2Config),
+    currentV5: evaluate(currentV5Config),
     candidateCount: configs.length,
     topCandidatesSelectedOnTrainOnly: topCandidates,
   };
